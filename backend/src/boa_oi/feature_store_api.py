@@ -22,7 +22,8 @@ from boa_oi.platform import (
 
 app = create_service_app(
     "feature-store-service",
-    "Versioned features derived from Analytics, Signals, published Rule Studio evaluations and profiles.",
+    "Versioned features derived from Analytics, Signals, "
+    "published Rule Studio evaluations and profiles.",
 )
 PREFIX = "/internal/v1/features"
 
@@ -72,9 +73,7 @@ def materialize_one(
     feature_set_version: Annotated[str, Query(alias="featureSetVersion")] = FEATURE_SET_VERSION,
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    return serialize_feature(
-        materialize_customer(session, customer_id, as_of, feature_set_version)
-    )
+    return serialize_feature(materialize_customer(session, customer_id, as_of, feature_set_version))
 
 
 @app.get(

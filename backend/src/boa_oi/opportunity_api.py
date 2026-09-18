@@ -398,7 +398,8 @@ def rerank_with_propensity(
             "priority_components": (*candidate.priority_components, ml_component),
             "why": (
                 *candidate.why,
-                f"Propension commerciale ML {ml_score:.2f} intégrée à la priorité de démonstration.",
+                f"Propension commerciale ML {ml_score:.2f} "
+                "intégrée à la priorité de démonstration.",
             ),
             "engine_version": f"{candidate.engine_version}+ml-rerank-poc-v1",
         }

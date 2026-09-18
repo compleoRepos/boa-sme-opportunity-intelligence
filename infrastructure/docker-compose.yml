@@ -443,6 +443,7 @@ services:
       TRANSACTION_SERVICE_URL: http://transaction:8080
       ANALYTICS_SERVICE_URL: http://analytics:8080
       SIGNAL_SERVICE_URL: http://signal:8080
+      OPPORTUNITY_SERVICE_URL: http://opportunity:8080
       PRODUCT_SERVICE_URL: http://product:8080
       ACTION_SERVICE_URL: http://action:8080
       BANKING_INTEGRATION_SERVICE_URL: http://banking-integration:8080
@@ -466,6 +467,7 @@ services:
       transaction: { condition: service_healthy }
       analytics: { condition: service_healthy }
       signal: { condition: service_healthy }
+      opportunity: { condition: service_healthy }
       product: { condition: service_healthy }
       action: { condition: service_healthy }
       rule-management: { condition: service_healthy }

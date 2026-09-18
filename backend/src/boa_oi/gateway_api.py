@@ -44,6 +44,7 @@ SERVICES = {
     "ml-engine": "ML_ENGINE_SERVICE_URL",
     "portfolio": "PORTFOLIO_SERVICE_URL",
 }
+GLOBAL_ANALYTICS_ROLES = ("DATA_ANALYST", "ADMIN", "SERVICE")
 
 
 def target(service: str) -> str:
@@ -128,7 +129,12 @@ GET_ROUTES = [
         "customers/{customer_id}/propensity",
         ("RELATIONSHIP_MANAGER", "BRANCH_MANAGER", "ADMIN"),
     ),
-    ("/api/v1/opportunities", "opportunity", "opportunities", READ_ROLES),
+    (
+        "/api/v1/opportunities",
+        "opportunity",
+        "opportunities",
+        GLOBAL_ANALYTICS_ROLES,
+    ),
     (
         "/api/v1/opportunities/{opportunity_id}",
         "opportunity",
@@ -197,35 +203,50 @@ GET_ROUTES = [
         "customers/{customer_id}/actions",
         READ_ROLES,
     ),
-    ("/api/v1/accounts", "account", "accounts", READ_ROLES),
-    ("/api/v1/accounts/{account_id}", "account", "accounts/{account_id}", READ_ROLES),
+    ("/api/v1/accounts", "account", "accounts", GLOBAL_ANALYTICS_ROLES),
+    (
+        "/api/v1/accounts/{account_id}",
+        "account",
+        "accounts/{account_id}",
+        GLOBAL_ANALYTICS_ROLES,
+    ),
     (
         "/api/v1/accounts/{account_id}/balances",
         "account",
         "accounts/{account_id}/balances",
-        READ_ROLES,
+        GLOBAL_ANALYTICS_ROLES,
     ),
     (
         "/api/v1/accounts/{account_id}/transactions",
         "transaction",
         "accounts/{account_id}/transactions",
-        READ_ROLES,
+        GLOBAL_ANALYTICS_ROLES,
     ),
-    ("/api/v1/transactions", "transaction", "transactions", READ_ROLES),
+    ("/api/v1/transactions", "transaction", "transactions", GLOBAL_ANALYTICS_ROLES),
     (
         "/api/v1/transactions/{transaction_id}",
         "transaction",
         "transactions/{transaction_id}",
-        READ_ROLES,
+        GLOBAL_ANALYTICS_ROLES,
     ),
-    ("/api/v1/analytics/metrics", "analytics", "metrics", READ_ROLES),
-    ("/api/v1/signals", "signal", "signals", READ_ROLES),
-    ("/api/v1/signals/{signal_id}", "signal", "signals/{signal_id}", READ_ROLES),
+    ("/api/v1/analytics/metrics", "analytics", "metrics", GLOBAL_ANALYTICS_ROLES),
+    ("/api/v1/signals", "signal", "signals", GLOBAL_ANALYTICS_ROLES),
+    (
+        "/api/v1/signals/{signal_id}",
+        "signal",
+        "signals/{signal_id}",
+        GLOBAL_ANALYTICS_ROLES,
+    ),
     ("/api/v1/products", "product", "products", READ_ROLES),
     ("/api/v1/products/{product_id}", "product", "products/{product_id}", READ_ROLES),
     ("/api/v1/admin/rules", "opportunity", "admin/rules", ADMIN_ROLES),
     ("/api/v1/admin/engine", "opportunity", "admin/engine", ADMIN_ROLES),
-    ("/api/v1/metrics/dashboard", "action", "metrics/dashboard", READ_ROLES),
+    (
+        "/api/v1/metrics/dashboard",
+        "action",
+        "metrics/dashboard",
+        GLOBAL_ANALYTICS_ROLES,
+    ),
 ]
 
 

@@ -193,9 +193,7 @@ def upgrade() -> None:
             name="ck_propensity_scores_score_type",
         ),
         sa.CheckConstraint("score BETWEEN 0 AND 1", name="ck_propensity_scores_score"),
-        sa.CheckConstraint(
-            "threshold BETWEEN 0 AND 1", name="ck_propensity_scores_threshold"
-        ),
+        sa.CheckConstraint("threshold BETWEEN 0 AND 1", name="ck_propensity_scores_threshold"),
         sa.CheckConstraint(
             "calibration IN ('LOW','MEDIUM','HIGH')",
             name="ck_propensity_scores_calibration",

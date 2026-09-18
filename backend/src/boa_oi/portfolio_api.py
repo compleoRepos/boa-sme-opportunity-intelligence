@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import Depends, Request
-from sqlalchemy import Select, and_, func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from boa_oi.models.entities import (
@@ -40,9 +40,9 @@ RULES_WEIGHT = float(os.getenv("RULES_PRIORITY_WEIGHT", "0.65"))
 FEATURE_LABELS = {
     "cash_inflow_growth_90d": "Croissance des encaissements sur 90 jours",
     "supplier_payment_growth_90d": "Dynamique des paiements fournisseurs sur 90 jours",
-    "international_activity_ratio_90d": "Part de l’activité internationale sur 90 jours",
+    "international_activity_ratio_90d": "Part de l'activite internationale sur 90 jours",
     "balance_strength_90d": "Solidité de la trésorerie observée sur 90 jours",
-    "activity_density_90d": "Densité d’activité transactionnelle sur 90 jours",
+    "activity_density_90d": "Densite d'activite transactionnelle sur 90 jours",
     "analytics_coverage_90d": "Couverture des données analytiques",
     "customer_tenure_ratio": "Ancienneté de la relation PME",
     "segment_medium": "Appartenance au segment PME intermédiaire",
@@ -54,7 +54,9 @@ def _customer_scope(principal: Principal) -> tuple[tuple[str, ...] | None, tuple
         return None, None
     if "RELATIONSHIP_MANAGER" in principal.roles:
         if not principal.relationship_manager_ids:
-            raise Problem(403, "PORTFOLIO_SCOPE_MISSING", "No relationship-manager scope is assigned.")
+            raise Problem(
+                403, "PORTFOLIO_SCOPE_MISSING", "No relationship-manager scope is assigned."
+            )
         return principal.relationship_manager_ids, None
     if "BRANCH_MANAGER" in principal.roles:
         if not principal.branch_ids:
@@ -212,7 +214,9 @@ def _portfolio_payload(
         rules_score = _normalized_rules_score(customer_opportunities)
         combined, priority_level = _combined_priority(propensity, rules_score)
         distribution[priority_level] += 1
-        open_actions = [item for item in customer_actions if item.status not in {"DONE", "CANCELLED"}]
+        open_actions = [
+            item for item in customer_actions if item.status not in {"DONE", "CANCELLED"}
+        ]
         due_actions += sum(
             1 for item in open_actions if item.due_at is not None and item.due_at <= due_limit
         )
@@ -223,7 +227,11 @@ def _portfolio_payload(
             if item.outcome_type in {"CONTACTED", "MEETING_SCHEDULED", "OFFER_CREATED", "CONVERTED"}
         )
         all_open_opportunities += len(customer_opportunities)
-        top_factor = (score_record.top_factors_json[0] if score_record and score_record.top_factors_json else None)
+        top_factor = (
+            score_record.top_factors_json[0]
+            if score_record and score_record.top_factors_json
+            else None
+        )
         portfolio.append(
             {
                 "customerId": customer.customer_ref,
@@ -236,7 +244,8 @@ def _portfolio_payload(
                 "combinedPriorityScore": combined,
                 "priorityLevel": priority_level,
                 "priorityReason": (
-                    f"{_factor_label(str(top_factor['feature']))} est le principal facteur du score."
+                    f"{_factor_label(str(top_factor['feature']))} est le principal "
+                    "facteur du score."
                     if top_factor
                     else "Aucun score de propension matérialisé pour cette date."
                 ),
@@ -356,8 +365,18 @@ def branch_dashboard(
     )
     stages = [
         ("CONTACTED", contacted),
-        ("MEETING_SCHEDULED", sum(1 for item in all_actions if item.outcome_type in {"MEETING_SCHEDULED", "OFFER_CREATED", "CONVERTED"})),
-        ("OFFER_CREATED", sum(1 for item in all_actions if item.outcome_type in {"OFFER_CREATED", "CONVERTED"})),
+        (
+            "MEETING_SCHEDULED",
+            sum(
+                1
+                for item in all_actions
+                if item.outcome_type in {"MEETING_SCHEDULED", "OFFER_CREATED", "CONVERTED"}
+            ),
+        ),
+        (
+            "OFFER_CREATED",
+            sum(1 for item in all_actions if item.outcome_type in {"OFFER_CREATED", "CONVERTED"}),
+        ),
         ("CONVERTED", sum(1 for item in all_actions if item.outcome_type == "CONVERTED")),
     ]
     branch_id = rows[0][1].branch_code if rows else principal.branch_ids[0]
@@ -421,7 +440,9 @@ def customer_propensity(
     customer, _manager = row
     score_record = _latest_scores(session, [customer.id]).get(customer.id)
     if score_record is None:
-        raise Problem(404, "PROPENSITY_NOT_SCORED", "No propensity score is available for this SME.")
+        raise Problem(
+            404, "PROPENSITY_NOT_SCORED", "No propensity score is available for this SME."
+        )
     opportunities = _opportunities(session, [customer.id]).get(customer.id, [])
     rules_score = _normalized_rules_score(opportunities)
     propensity = float(score_record.score)
@@ -434,7 +455,8 @@ def customer_propensity(
             "direction": item.get("direction", "NEUTRAL"),
             "contribution": item.get("contribution"),
             "explanation": (
-                f"Contribution {item.get('direction', 'NEUTRAL').lower()} au score de propension commerciale."
+                f"Contribution {item.get('direction', 'NEUTRAL').lower()} "
+                "au score de propension commerciale."
             ),
             "source": "Feature Store / Analytics",
         }
@@ -458,12 +480,17 @@ def customer_propensity(
             "mlWeight": ML_WEIGHT,
             "rulesWeight": RULES_WEIGHT,
             "combinedPriorityScore": combined,
-            "summary": "La propension ML complète les règles métier publiées pour ordonner le travail commercial.",
+            "summary": (
+                "La propension ML complete les regles metier publiees "
+                "pour ordonner le travail commercial."
+            ),
         },
         "factors": factors,
         "warnings": [
-            "Aucune décision de crédit : ce score sert uniquement à prioriser une action commerciale.",
-            "Le signal de tension financière, lorsqu’il existe, doit être examiné par un collaborateur.",
+            "Aucune decision de credit : ce score sert uniquement a prioriser "
+            "une action commerciale.",
+            "Le signal de tension financiere, lorsqu'il existe, doit etre examine "
+            "par un collaborateur.",
         ],
         "correlationId": getattr(request.state, "correlation_id", None),
     }

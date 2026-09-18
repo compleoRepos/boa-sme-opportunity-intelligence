@@ -170,9 +170,7 @@ class FeatureBuilder:
             "activity_density_90d": _bounded(
                 math.log1p(max(0.0, activity)) / math.log1p(2_000.0), 0.0, 1.5
             ),
-            "analytics_coverage_90d": _bounded(
-                sum(coverage_items) / len(coverage_items), 0.0, 1.0
-            ),
+            "analytics_coverage_90d": _bounded(sum(coverage_items) / len(coverage_items), 0.0, 1.0),
             "customer_tenure_ratio": _bounded(tenure_years / 15.0, 0.0, 2.0),
             "segment_medium": float(profile.segment_code.upper() == "MEDIUM"),
             "confirmed_signal_ratio": _bounded(

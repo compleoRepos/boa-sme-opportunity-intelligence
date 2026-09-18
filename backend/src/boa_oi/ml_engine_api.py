@@ -12,7 +12,7 @@ from boa_oi.features import FEATURE_SET_VERSION
 from boa_oi.features.service import materialize_customer
 from boa_oi.ml.service import active_model, score_materialization, serialize_model, serialize_score
 from boa_oi.models.entities import ActionOutcome, OpportunityAction, OutcomeLabelSnapshot
-from boa_oi.platform import Problem, READ_ROLES, create_service_app, get_session, require_roles
+from boa_oi.platform import READ_ROLES, Problem, create_service_app, get_session, require_roles
 from boa_oi.technical.ids import deterministic_uuid
 
 app = create_service_app(
@@ -86,8 +86,7 @@ def score_batch(
         modelVersion=payload.modelVersion,
     )
     data = [
-        _score_customer(session, customer_id, score_request)
-        for customer_id in payload.customerIds
+        _score_customer(session, customer_id, score_request) for customer_id in payload.customerIds
     ]
     return {
         "data": data,
@@ -191,7 +190,7 @@ def materialize_outcomes(
         )
         .order_by(ActionOutcome.recorded_at, ActionOutcome.id)
     ).all()
-    written = 0
+    materialized_customers: set[str] = set()
     for outcome, action in rows:
         existing = session.scalar(
             select(OutcomeLabelSnapshot).where(
@@ -222,11 +221,12 @@ def materialize_outcomes(
         record.outcome_value = terminal[outcome.outcome_type]
         record.source_reference = f"action-outcome:{outcome.id}"
         session.add(record)
-        written += 1
+        materialized_customers.add(action.customer_ref)
     session.flush()
     return {
         "snapshotVersion": payload.snapshotVersion,
-        "labelsWritten": written,
+        "labelsWritten": len(materialized_customers),
+        "sourceEventsRead": len(rows),
         "observationAsOf": payload.observationAsOf.isoformat(),
         "labelAvailableFrom": payload.labelAvailableFrom.isoformat(),
         "automaticTraining": False,

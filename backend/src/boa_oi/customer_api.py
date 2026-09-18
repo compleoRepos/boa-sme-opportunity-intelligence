@@ -45,7 +45,9 @@ def scoped_customer_statement(stmt: Any, rm: Any, principal: Principal) -> Any:
     if "RELATIONSHIP_MANAGER" in principal.roles:
         allowed = principal.relationship_manager_ids
         if not allowed:
-            raise Problem(403, "PORTFOLIO_SCOPE_MISSING", "No relationship-manager scope is assigned.")
+            raise Problem(
+                403, "PORTFOLIO_SCOPE_MISSING", "No relationship-manager scope is assigned."
+            )
         stmt = stmt.where(rm.subject_id.in_(allowed))
     elif "BRANCH_MANAGER" in principal.roles:
         allowed = principal.branch_ids

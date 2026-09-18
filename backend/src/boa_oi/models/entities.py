@@ -352,7 +352,7 @@ class Opportunity(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     recommended_products_json: Mapped[list] = mapped_column(JSON, default=list)
     explanation_json: Mapped[dict] = mapped_column(JSON, default=dict)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    engine_version: Mapped[str] = mapped_column(String(30), default="0.1.0")
+    engine_version: Mapped[str] = mapped_column(String(100), default="0.1.0")
     rule_version: Mapped[str] = mapped_column(String(30), default="1")
     rule_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("opportunity.opportunity_rules.id")
@@ -465,7 +465,7 @@ class DecisionAudit(Base, UUIDPrimaryKeyMixin):
     __table_args__ = {"schema": "opportunity"}
     opportunity_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
     customer_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
-    engine_version: Mapped[str] = mapped_column(String(30))
+    engine_version: Mapped[str] = mapped_column(String(100))
     rule_version: Mapped[str] = mapped_column(String(30))
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     input_reference: Mapped[str] = mapped_column(String(120))
