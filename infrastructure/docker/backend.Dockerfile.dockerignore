@@ -1,0 +1,6 @@
+**
+!backend/**
+!database/**
+!infrastructure/docker/backend.Dockerfile
+!infrastructure/docker/backend-entrypoint.sh
+!infrastructure/docker/healthcheck.py

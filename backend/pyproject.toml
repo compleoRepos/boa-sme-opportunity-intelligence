@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "boa-sme-opportunity-intelligence"
+version = "0.1.0"
+description = "Deterministic SME opportunity intelligence backend"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.32,<1",
+  "sqlalchemy>=2.0.36,<3",
+  "alembic>=1.14,<2",
+  "psycopg[binary]>=3.2,<4",
+  "pydantic>=2.10,<3",
+  "pydantic-settings>=2.7,<3",
+  "PyYAML>=6.0.2,<7",
+  "httpx>=0.28,<1",
+  "PyJWT[crypto]>=2.10,<3",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.3,<9",
+  "pytest-cov>=6,<7",
+  "httpx>=0.28,<1",
+  "types-PyYAML>=6.0.12,<7",
+]
+
+[project.scripts]
+boa-api = "boa_oi.api:run"
+boa-seed = "boa_oi.seed:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["boa_oi*"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+testpaths = ["../tests/unit"]
+pythonpath = ["src", ".."]
+
+[tool.coverage.run]
+branch = true
+source = ["boa_oi"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

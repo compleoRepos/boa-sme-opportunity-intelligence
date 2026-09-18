@@ -1,0 +1,967 @@
+{
+  "realm": "boa-sme-mvp",
+  "displayName": "BOA SME Opportunity Intelligence - local development",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "rememberMe": false,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "bruteForceProtected": true,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 30,
+  "maxFailureWaitSeconds": 900,
+  "passwordPolicy": "length(12) and upperCase(1) and lowerCase(1) and digits(1) and specialChars(1) and notUsername(undefined)",
+  "roles": {
+    "realm": [
+      {
+        "name": "RELATIONSHIP_MANAGER",
+        "description": "Read assigned SME portfolio and record commercial actions"
+      },
+      {
+        "name": "BRANCH_MANAGER",
+        "description": "Read branch portfolio and operational KPIs"
+      },
+      {
+        "name": "ADMIN",
+        "description": "Administer products, rules and platform configuration"
+      },
+      {
+        "name": "DATA_ANALYST",
+        "description": "Read analytics, signals and diagnostics"
+      },
+      {
+        "name": "SERVICE",
+        "description": "Technical role for authenticated service-to-service calls"
+      },
+      {
+        "name": "BUSINESS_ANALYST",
+        "description": "Create, edit, validate, simulate and submit rules"
+      },
+      {
+        "name": "RULE_APPROVER",
+        "description": "Approve, publish, disable and rollback submitted rules"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "boa-sme-spa",
+      "name": "BOA SME Opportunity Intelligence SPA",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/*"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "roles",
+        "profile",
+        "email"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        },
+        {
+          "name": "subject-identifier",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "id",
+            "claim.name": "sub",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        },
+        {
+          "name": "boa-branch-ids",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "branchIds",
+            "claim.name": "boa.branchIds",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        },
+        {
+          "name": "boa-customer-scopes",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "customerScope",
+            "claim.name": "boa.customerScopes",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        },
+        {
+          "name": "boa-rm-ids",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "relationshipManagerIds",
+            "claim.name": "boa.relationshipManagerIds",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "boa-sme-api",
+      "name": "BOA SME API audience",
+      "enabled": true,
+      "publicClient": false,
+      "bearerOnly": true,
+      "protocol": "openid-connect"
+    },
+    {
+      "clientId": "api-gateway",
+      "name": "api-gateway service account",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "DevOnly-GatewayClient-ChangeMe!",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "roles",
+        "profile"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "pipeline-runner",
+      "name": "pipeline-runner service account",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "DevOnly-PipelineClient-ChangeMe!",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "roles",
+        "profile"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "customer-service",
+      "name": "customer-service service account",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "DevOnly-CustomerClient-ChangeMe!",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "roles",
+        "profile"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "account-service",
+      "name": "account-service service account",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "DevOnly-AccountClient-ChangeMe!",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "roles",
+        "profile"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "transaction-service",
+      "name": "transaction-service service account",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "DevOnly-TransactionClient-ChangeMe!",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "roles",
+        "profile"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "banking-integration-service",
+      "name": "banking-integration-service service account",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "DevOnly-IntegrationClient-ChangeMe!",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "roles",
+        "profile"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "analytics-service",
+      "name": "analytics-service service account",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "DevOnly-AnalyticsClient-ChangeMe!",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "roles",
+        "profile"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "signal-service",
+      "name": "signal-service service account",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "DevOnly-SignalClient-ChangeMe!",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "roles",
+        "profile"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "opportunity-service",
+      "name": "opportunity-service service account",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "DevOnly-OpportunityClient-ChangeMe!",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "roles",
+        "profile"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "product-service",
+      "name": "product-service service account",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "DevOnly-ProductClient-ChangeMe!",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "roles",
+        "profile"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "action-service",
+      "name": "action-service service account",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "DevOnly-ActionClient-ChangeMe!",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "roles",
+        "profile"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "rule-management-service",
+      "name": "rule-management-service service account",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "DevOnly-RuleManagementClient-ChangeMe!",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "roles",
+        "profile"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "rule-engine-service",
+      "name": "rule-engine-service service account",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "DevOnly-RuleEngineClient-ChangeMe!",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "roles",
+        "profile"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "rule-simulation-service",
+      "name": "rule-simulation-service service account",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "DevOnly-RuleSimulationClient-ChangeMe!",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "roles",
+        "profile"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "feature-store-service",
+      "name": "feature-store-service service account",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "DevOnly-FeatureStoreClient-ChangeMe!",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "roles",
+        "profile"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "ml-engine-service",
+      "name": "ml-engine-service service account",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "DevOnly-MlEngineClient-ChangeMe!",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "roles",
+        "profile"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "portfolio-service",
+      "name": "portfolio-service service account",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "DevOnly-PortfolioClient-ChangeMe!",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "roles",
+        "profile"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-rule-simulation-service",
+      "enabled": true,
+      "serviceAccountClientId": "rule-simulation-service",
+      "realmRoles": [
+        "SERVICE"
+      ]
+    },
+    {
+      "username": "service-account-rule-engine-service",
+      "enabled": true,
+      "serviceAccountClientId": "rule-engine-service",
+      "realmRoles": [
+        "SERVICE"
+      ]
+    },
+    {
+      "username": "service-account-rule-management-service",
+      "enabled": true,
+      "serviceAccountClientId": "rule-management-service",
+      "realmRoles": [
+        "SERVICE"
+      ]
+    },
+    {
+      "username": "service-account-pipeline-runner",
+      "enabled": true,
+      "serviceAccountClientId": "pipeline-runner",
+      "realmRoles": [
+        "SERVICE"
+      ]
+    },
+    {
+      "username": "service-account-banking-integration-service",
+      "enabled": true,
+      "serviceAccountClientId": "banking-integration-service",
+      "realmRoles": [
+        "SERVICE"
+      ]
+    },
+    {
+      "username": "service-account-analytics-service",
+      "enabled": true,
+      "serviceAccountClientId": "analytics-service",
+      "realmRoles": [
+        "SERVICE"
+      ]
+    },
+    {
+      "username": "service-account-signal-service",
+      "enabled": true,
+      "serviceAccountClientId": "signal-service",
+      "realmRoles": [
+        "SERVICE"
+      ]
+    },
+    {
+      "username": "service-account-opportunity-service",
+      "enabled": true,
+      "serviceAccountClientId": "opportunity-service",
+      "realmRoles": [
+        "SERVICE"
+      ]
+    },
+    {
+      "username": "service-account-action-service",
+      "enabled": true,
+      "serviceAccountClientId": "action-service",
+      "realmRoles": [
+        "SERVICE"
+      ]
+    },
+    {
+      "username": "rm.demo",
+      "email": "rm.demo@synthetic.invalid",
+      "firstName": "Demo",
+      "lastName": "Relationship Manager",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "branchIds": [
+          "BR-01"
+        ],
+        "customerScope": [
+          "assigned"
+        ],
+        "synthetic": [
+          "true"
+        ],
+        "relationshipManagerIds": [
+          "rm-01"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DevOnly-Rm1-ChangeMe!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "RELATIONSHIP_MANAGER"
+      ]
+    },
+    {
+      "username": "branch.demo",
+      "email": "branch.demo@synthetic.invalid",
+      "firstName": "Demo",
+      "lastName": "Branch Manager",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "branchIds": [
+          "BR-01"
+        ],
+        "customerScope": [
+          "branch"
+        ],
+        "synthetic": [
+          "true"
+        ],
+        "relationshipManagerIds": []
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DevOnly-Branch1-ChangeMe!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "BRANCH_MANAGER"
+      ]
+    },
+    {
+      "username": "admin.demo",
+      "email": "admin.demo@synthetic.invalid",
+      "firstName": "Demo",
+      "lastName": "Administrator",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "branchIds": [
+          "ALL"
+        ],
+        "customerScope": [
+          "global"
+        ],
+        "synthetic": [
+          "true"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DevOnly-Admin1-ChangeMe!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ADMIN"
+      ]
+    },
+    {
+      "username": "analyst.demo",
+      "email": "analyst.demo@synthetic.invalid",
+      "firstName": "Demo",
+      "lastName": "Data Analyst",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "branchIds": [
+          "ALL"
+        ],
+        "customerScope": [
+          "analytics"
+        ],
+        "synthetic": [
+          "true"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DevOnly-Analyst1-ChangeMe!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "DATA_ANALYST"
+      ]
+    },
+    {
+      "username": "business.analyst.demo",
+      "email": "business.analyst.demo@synthetic.invalid",
+      "firstName": "Demo",
+      "lastName": "Business Analyst",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "branchIds": [
+          "ALL"
+        ],
+        "customerScope": [
+          "rules"
+        ],
+        "synthetic": [
+          "true"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DevOnly-BusinessAnalyst1-ChangeMe!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "BUSINESS_ANALYST"
+      ]
+    },
+    {
+      "username": "rule.approver.demo",
+      "email": "rule.approver.demo@synthetic.invalid",
+      "firstName": "Demo",
+      "lastName": "Rule Approver",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "branchIds": [
+          "ALL"
+        ],
+        "customerScope": [
+          "rules"
+        ],
+        "synthetic": [
+          "true"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DevOnly-RuleApprover1-ChangeMe!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "RULE_APPROVER"
+      ]
+    },
+    {
+      "username": "service-account-feature-store-service",
+      "enabled": true,
+      "serviceAccountClientId": "feature-store-service",
+      "realmRoles": [
+        "SERVICE"
+      ]
+    },
+    {
+      "username": "service-account-ml-engine-service",
+      "enabled": true,
+      "serviceAccountClientId": "ml-engine-service",
+      "realmRoles": [
+        "SERVICE"
+      ]
+    },
+    {
+      "username": "service-account-portfolio-service",
+      "enabled": true,
+      "serviceAccountClientId": "portfolio-service",
+      "realmRoles": [
+        "SERVICE"
+      ]
+    }
+  ],
+  "scopeMappings": [
+    {
+      "clientScope": "roles",
+      "roles": [
+        "RELATIONSHIP_MANAGER",
+        "BRANCH_MANAGER",
+        "ADMIN",
+        "DATA_ANALYST",
+        "SERVICE",
+        "BUSINESS_ANALYST",
+        "RULE_APPROVER"
+      ]
+    }
+  ]
+}

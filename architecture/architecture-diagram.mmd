@@ -1,0 +1,118 @@
+flowchart TB
+  classDef user fill:#f7f7f7,stroke:#1f2937,color:#111827
+  classDef gateway fill:#fce7e7,stroke:#a71930,color:#641220,stroke-width:2px
+  classDef domain fill:#ffffff,stroke:#64748b,color:#0f172a
+  classDef rules fill:#fff7ed,stroke:#c2410c,color:#7c2d12,stroke-width:2px
+  classDef ml fill:#ecfeff,stroke:#0e7490,color:#164e63,stroke-width:2px
+  classDef data fill:#eef2ff,stroke:#4338ca,color:#312e81
+  classDef guard fill:#fef2f2,stroke:#b91c1c,color:#7f1d1d,stroke-width:2px
+  classDef future fill:#f8fafc,stroke:#94a3b8,color:#475569,stroke-dasharray: 6 4
+
+  CC[Chargé de clientèle PME<br/>RELATIONSHIP_MANAGER]:::user
+  BM[Responsable d'agence<br/>BRANCH_MANAGER]:::user
+  WEB[Application React / TypeScript<br/>dashboard CC · dashboard agence · portefeuille · client PME]:::user
+  KC[Keycloak<br/>OIDC · rôles · scopes]:::data
+  GW[API Gateway FastAPI<br/>RBAC · périmètre · corrélation]:::gateway
+
+  CC --> WEB
+  BM --> WEB
+  WEB -->|Authorization Code + PKCE| KC
+  WEB -->|REST JSON /api/v1 + JWT| GW
+
+  subgraph ORG[Customer & Portfolio Scope]
+    direction LR
+    BR[Agence]:::domain --> RM[CC]:::domain --> PF[Portefeuille actif]:::domain --> SME[Client PME]:::domain
+    CUST[Customer Service<br/>affectations temporelles · source de vérité]:::domain
+    CUST --> BR
+    CUST --> RM
+    CUST --> PF
+    CUST --> SME
+  end
+
+  subgraph FACTS[Services de faits existants]
+    direction LR
+    ACC[Account Service]:::domain
+    TX[Transaction Service]:::domain
+    PROD[Product Service]:::domain
+    ACT[Action Service<br/>actions · outcomes observés]:::domain
+    BI[Banking Integration Service]:::domain
+    MOCK[Mock Banking APIs HTTP]:::domain
+    BI -->|ports/adapters| MOCK
+    BI --> ACC
+    BI --> TX
+    BI --> PROD
+  end
+
+  subgraph INTEL[Chaîne d'intelligence commerciale]
+    direction LR
+    AN[Analytics Service<br/>métriques · baselines · qualité]:::rules
+    REN[Rule Engine<br/>évaluation déterministe versionnée]:::rules
+    SIG[Signal Service<br/>signaux et preuves]:::rules
+    FS[Feature Store PostgreSQL<br/>snapshots point-in-time]:::ml
+    FR[Feature Registry<br/>sens · usage · version · lineage]:::ml
+    MLE[ML Engine FastAPI<br/>CPU-only · batch · sans LLM]:::ml
+    MR[Model Registry<br/>artefact · checksum · stages · approbation]:::ml
+    PS[Propensity Score<br/>0..1 · cible · horizon · explication]:::ml
+    OPP[Opportunity Engine<br/>garde-fous · fusion configurable · audit]:::rules
+
+    AN -->|métriques versionnées| REN
+    AN -->|features approuvées| FS
+    REN -->|matches + trace| SIG
+    SIG -->|signaux versionnés| FS
+    FR -->|featureSetVersion| FS
+    FS -->|FeatureSnapshot| MLE
+    MR -->|modèle approuvé + checksum| MLE
+    MLE --> PS
+    REN -->|ruleConfidence| OPP
+    SIG -->|preuves| OPP
+    PS -->|shadow ou hybride| OPP
+  end
+
+  TX --> AN
+  ACC --> AN
+  PROD --> OPP
+  CUST -->|profil + scope| OPP
+  OPP -->|opportunités explicables| ACT
+  ACT -->|outcomes gouvernés| ODS[Dataset futur d'apprentissage<br/>consentement/base approuvée · pseudonymisation · cutoff]:::data
+  ODS -. entraînement futur gouverné .-> MR
+
+  OPP --> CCD[Projection dashboard CC<br/>portefeuille uniquement]:::domain
+  OPP --> BMD[Projection dashboard agence<br/>agrégats + drill-down autorisé]:::domain
+  ACT --> CCD
+  ACT --> BMD
+  CUST --> CCD
+  CUST --> BMD
+  CCD --> GW
+  BMD --> GW
+  GW --> CUST
+  GW --> ACC
+  GW --> TX
+  GW --> PROD
+  GW --> OPP
+  GW --> ACT
+
+  PG[(PostgreSQL<br/>schémas et rôles par service)]:::data
+  CUST --> PG
+  ACC --> PG
+  TX --> PG
+  PROD --> PG
+  ACT --> PG
+  AN --> PG
+  SIG --> PG
+  FS --> PG
+  MR --> PG
+  OPP --> PG
+
+  MON[Monitoring<br/>qualité · drift · latence · CPU · outcomes]:::data
+  FS --> MON
+  MLE --> MON
+  PS --> MON
+  OPP --> MON
+
+  GUARD[Interdiction absolue<br/>aucun scoring ou décision de crédit<br/>Financial Stress = signal relationnel]:::guard
+  GUARD --- REN
+  GUARD --- MLE
+  GUARD --- OPP
+
+  LLM[OpportunityNarrativePort futur<br/>strictement inactif · aucune dépendance/appel]:::future
+  OPP -. décision déjà persistée et expurgée, futur uniquement .-> LLM

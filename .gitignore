@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+.venv/
+
+# Node / frontend
+node_modules/
+dist/
+coverage/
+
+# Playwright
+playwright-report/
+test-results/
+blob-report/
+
+# Local configuration and secrets
+.env
+.env.local
+.env.*.local
+!infrastructure/.env.example
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Generated review and temporary files
+*.log
+.tmp/
+
+# GitHub workflows require a token with workflows permission
+.github/workflows/

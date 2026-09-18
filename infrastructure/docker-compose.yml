@@ -1,0 +1,555 @@
+name: boa-sme-opportunity-intelligence
+
+x-backend-build: &backend-build
+  context: ..
+  dockerfile: infrastructure/docker/backend.Dockerfile
+
+x-backend-environment: &backend-environment
+  APP_ENV: ${APP_ENV:-development}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  HOST: 0.0.0.0
+  PORT: "8080"
+  OIDC_ISSUER_URL: ${OIDC_INTERNAL_ISSUER_URL:-http://keycloak:8080/realms/boa-sme-mvp}
+  OIDC_PUBLIC_ISSUER_URL: ${OIDC_PUBLIC_ISSUER_URL:-http://localhost:8081/realms/boa-sme-mvp}
+  OIDC_AUDIENCE: ${OIDC_AUDIENCE:-boa-sme-api}
+  BOA_AUTH_DISABLED: ${BOA_AUTH_DISABLED:-false}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  OTEL_SERVICE_NAMESPACE: boa-sme-opportunity-intelligence
+  PYTHONUNBUFFERED: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+x-backend: &backend
+  build: *backend-build
+  restart: unless-stopped
+  init: true
+  expose:
+    - "8080"
+  environment: *backend-environment
+  networks:
+    - app
+    - data
+  healthcheck:
+    test: ["CMD", "python", "/opt/boa/healthcheck.py", "http://127.0.0.1:8080/health"]
+    interval: 15s
+    timeout: 5s
+    retries: 8
+    start_period: 25s
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  deploy:
+    resources:
+      limits:
+        cpus: "0.35"
+        memory: 320M
+      reservations:
+        memory: 96M
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-boa_sme}
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-boa_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-DevOnly-Postgres-ChangeMe!}
+      CUSTOMER_DB_PASSWORD: ${CUSTOMER_DB_PASSWORD:-DevOnly-CustomerDb-ChangeMe!}
+      ACCOUNT_DB_PASSWORD: ${ACCOUNT_DB_PASSWORD:-DevOnly-AccountDb-ChangeMe!}
+      TRANSACTION_DB_PASSWORD: ${TRANSACTION_DB_PASSWORD:-DevOnly-TransactionDb-ChangeMe!}
+      INTEGRATION_DB_PASSWORD: ${INTEGRATION_DB_PASSWORD:-DevOnly-IntegrationDb-ChangeMe!}
+      ANALYTICS_DB_PASSWORD: ${ANALYTICS_DB_PASSWORD:-DevOnly-AnalyticsDb-ChangeMe!}
+      SIGNAL_DB_PASSWORD: ${SIGNAL_DB_PASSWORD:-DevOnly-SignalDb-ChangeMe!}
+      OPPORTUNITY_DB_PASSWORD: ${OPPORTUNITY_DB_PASSWORD:-DevOnly-OpportunityDb-ChangeMe!}
+      PRODUCT_DB_PASSWORD: ${PRODUCT_DB_PASSWORD:-DevOnly-ProductDb-ChangeMe!}
+      ACTION_DB_PASSWORD: ${ACTION_DB_PASSWORD:-DevOnly-ActionDb-ChangeMe!}
+      RULE_MANAGEMENT_DB_PASSWORD: ${RULE_MANAGEMENT_DB_PASSWORD:-DevOnly-RuleManagementDb-ChangeMe!}
+      FEATURE_STORE_DB_PASSWORD: ${FEATURE_STORE_DB_PASSWORD:-DevOnly-FeatureStoreDb-ChangeMe!}
+      ML_ENGINE_DB_PASSWORD: ${ML_ENGINE_DB_PASSWORD:-DevOnly-MlEngineDb-ChangeMe!}
+      PORTFOLIO_DB_PASSWORD: ${PORTFOLIO_DB_PASSWORD:-DevOnly-PortfolioDb-ChangeMe!}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-DevOnly-KeycloakDb-ChangeMe!}
+    volumes:
+      - boa_postgres_data:/var/lib/postgresql/data
+      - ./postgres/00-init-service-schemas.sh:/docker-entrypoint-initdb.d/00-init-service-schemas.sh:ro
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.25"
+          memory: 1400M
+        reservations:
+          memory: 384M
+
+  keycloak:
+    image: docker.io/keycloak/keycloak:25.0.6
+    restart: unless-stopped
+    entrypoint: ["/opt/boa/keycloak-entrypoint.sh"]
+    command: ["start-dev", "--import-realm", "--http-port=8080"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-boa_sme}?currentSchema=keycloak
+      KC_DB_USERNAME: keycloak_service
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-DevOnly-KeycloakDb-ChangeMe!}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-boa-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-DevOnly-KeycloakAdmin-ChangeMe!}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USERNAME:-boa-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-DevOnly-KeycloakAdmin-ChangeMe!}
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+      RM_DEMO_PASSWORD: ${RM_DEMO_PASSWORD:-DevOnly-Rm1-ChangeMe!}
+      BRANCH_MANAGER_DEMO_PASSWORD: ${BRANCH_MANAGER_DEMO_PASSWORD:-DevOnly-Branch1-ChangeMe!}
+      ADMIN_DEMO_PASSWORD: ${ADMIN_DEMO_PASSWORD:-DevOnly-Admin1-ChangeMe!}
+      ANALYST_DEMO_PASSWORD: ${ANALYST_DEMO_PASSWORD:-DevOnly-Analyst1-ChangeMe!}
+      BUSINESS_ANALYST_DEMO_PASSWORD: ${BUSINESS_ANALYST_DEMO_PASSWORD:-DevOnly-BusinessAnalyst1-ChangeMe!}
+      RULE_APPROVER_DEMO_PASSWORD: ${RULE_APPROVER_DEMO_PASSWORD:-DevOnly-RuleApprover1-ChangeMe!}
+      API_GATEWAY_CLIENT_SECRET: ${API_GATEWAY_CLIENT_SECRET:-DevOnly-GatewayClient-ChangeMe!}
+      PIPELINE_CLIENT_SECRET: ${PIPELINE_CLIENT_SECRET:-DevOnly-PipelineClient-ChangeMe!}
+      CUSTOMER_CLIENT_SECRET: ${CUSTOMER_CLIENT_SECRET:-DevOnly-CustomerClient-ChangeMe!}
+      ACCOUNT_CLIENT_SECRET: ${ACCOUNT_CLIENT_SECRET:-DevOnly-AccountClient-ChangeMe!}
+      TRANSACTION_CLIENT_SECRET: ${TRANSACTION_CLIENT_SECRET:-DevOnly-TransactionClient-ChangeMe!}
+      INTEGRATION_CLIENT_SECRET: ${INTEGRATION_CLIENT_SECRET:-DevOnly-IntegrationClient-ChangeMe!}
+      ANALYTICS_CLIENT_SECRET: ${ANALYTICS_CLIENT_SECRET:-DevOnly-AnalyticsClient-ChangeMe!}
+      SIGNAL_CLIENT_SECRET: ${SIGNAL_CLIENT_SECRET:-DevOnly-SignalClient-ChangeMe!}
+      OPPORTUNITY_CLIENT_SECRET: ${OPPORTUNITY_CLIENT_SECRET:-DevOnly-OpportunityClient-ChangeMe!}
+      PRODUCT_CLIENT_SECRET: ${PRODUCT_CLIENT_SECRET:-DevOnly-ProductClient-ChangeMe!}
+      ACTION_CLIENT_SECRET: ${ACTION_CLIENT_SECRET:-DevOnly-ActionClient-ChangeMe!}
+      RULE_MANAGEMENT_CLIENT_SECRET: ${RULE_MANAGEMENT_CLIENT_SECRET:-DevOnly-RuleManagementClient-ChangeMe!}
+      RULE_ENGINE_CLIENT_SECRET: ${RULE_ENGINE_CLIENT_SECRET:-DevOnly-RuleEngineClient-ChangeMe!}
+      RULE_SIMULATION_CLIENT_SECRET: ${RULE_SIMULATION_CLIENT_SECRET:-DevOnly-RuleSimulationClient-ChangeMe!}
+      FEATURE_STORE_CLIENT_SECRET: ${FEATURE_STORE_CLIENT_SECRET:-DevOnly-FeatureStoreClient-ChangeMe!}
+      ML_ENGINE_CLIENT_SECRET: ${ML_ENGINE_CLIENT_SECRET:-DevOnly-MlEngineClient-ChangeMe!}
+      PORTFOLIO_CLIENT_SECRET: ${PORTFOLIO_CLIENT_SECRET:-DevOnly-PortfolioClient-ChangeMe!}
+    volumes:
+      - ./keycloak/realm.json:/opt/boa/realm.template.json:ro
+      - ./keycloak/keycloak-entrypoint.sh:/opt/boa/keycloak-entrypoint.sh:ro
+    ports:
+      - "127.0.0.1:${KEYCLOAK_PORT:-8081}:8080"
+    networks:
+      - edge
+      - app
+      - data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 15
+      start_period: 45s
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 900M
+        reservations:
+          memory: 384M
+
+  customer:
+    <<: *backend
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: customer-service
+      APP_MODULE: boa_oi.api:app
+      DATABASE_URL: postgresql+psycopg://customer_service:${CUSTOMER_DB_PASSWORD:-DevOnly-CustomerDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Dcustomer
+      OAUTH_CLIENT_ID: customer-service
+      OAUTH_CLIENT_SECRET: ${CUSTOMER_CLIENT_SECRET:-DevOnly-CustomerClient-ChangeMe!}
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+
+  account:
+    <<: *backend
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: account-service
+      APP_MODULE: boa_oi.api:app
+      DATABASE_URL: postgresql+psycopg://account_service:${ACCOUNT_DB_PASSWORD:-DevOnly-AccountDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Daccount
+      OAUTH_CLIENT_ID: account-service
+      OAUTH_CLIENT_SECRET: ${ACCOUNT_CLIENT_SECRET:-DevOnly-AccountClient-ChangeMe!}
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+
+  transaction:
+    <<: *backend
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: transaction-service
+      APP_MODULE: boa_oi.api:app
+      DATABASE_URL: postgresql+psycopg://transaction_service:${TRANSACTION_DB_PASSWORD:-DevOnly-TransactionDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Dtransaction
+      OAUTH_CLIENT_ID: transaction-service
+      OAUTH_CLIENT_SECRET: ${TRANSACTION_CLIENT_SECRET:-DevOnly-TransactionClient-ChangeMe!}
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+
+  product:
+    <<: *backend
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: product-service
+      APP_MODULE: boa_oi.api:app
+      DATABASE_URL: postgresql+psycopg://product_service:${PRODUCT_DB_PASSWORD:-DevOnly-ProductDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Dproduct
+      OAUTH_CLIENT_ID: product-service
+      OAUTH_CLIENT_SECRET: ${PRODUCT_CLIENT_SECRET:-DevOnly-ProductClient-ChangeMe!}
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+
+  mock-bank:
+    <<: *backend
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: mock-banking-api
+      APP_MODULE: boa_oi.api:app
+      OAUTH_CLIENT_ID: pipeline-runner
+      OAUTH_CLIENT_SECRET: ${PIPELINE_CLIENT_SECRET:-DevOnly-PipelineClient-ChangeMe!}
+    networks:
+      - app
+    depends_on:
+      keycloak: { condition: service_healthy }
+    deploy:
+      resources:
+        limits: { cpus: "0.35", memory: 256M }
+        reservations: { memory: 64M }
+
+  banking-integration:
+    <<: *backend
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: banking-integration-service
+      APP_MODULE: boa_oi.api:app
+      DATABASE_URL: postgresql+psycopg://integration_service:${INTEGRATION_DB_PASSWORD:-DevOnly-IntegrationDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Dintegration
+      OAUTH_CLIENT_ID: banking-integration-service
+      OAUTH_CLIENT_SECRET: ${INTEGRATION_CLIENT_SECRET:-DevOnly-IntegrationClient-ChangeMe!}
+      MOCK_BANK_URL: http://mock-bank:8080
+      CUSTOMER_SERVICE_URL: http://customer:8080
+      ACCOUNT_SERVICE_URL: http://account:8080
+      TRANSACTION_SERVICE_URL: http://transaction:8080
+      PRODUCT_SERVICE_URL: http://product:8080
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+      mock-bank: { condition: service_healthy }
+      customer: { condition: service_healthy }
+      account: { condition: service_healthy }
+      transaction: { condition: service_healthy }
+      product: { condition: service_healthy }
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 384M }
+        reservations: { memory: 96M }
+
+  analytics:
+    <<: *backend
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: analytics-service
+      APP_MODULE: boa_oi.api:app
+      DATABASE_URL: postgresql+psycopg://analytics_service:${ANALYTICS_DB_PASSWORD:-DevOnly-AnalyticsDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Danalytics
+      OAUTH_CLIENT_ID: analytics-service
+      OAUTH_CLIENT_SECRET: ${ANALYTICS_CLIENT_SECRET:-DevOnly-AnalyticsClient-ChangeMe!}
+      TRANSACTION_SERVICE_URL: http://transaction:8080
+      ACCOUNT_SERVICE_URL: http://account:8080
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+      transaction: { condition: service_healthy }
+      account: { condition: service_healthy }
+    deploy:
+      resources:
+        limits: { cpus: "0.75", memory: 512M }
+        reservations: { memory: 128M }
+
+  signal:
+    <<: *backend
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: signal-service
+      APP_MODULE: boa_oi.api:app
+      DATABASE_URL: postgresql+psycopg://signal_service:${SIGNAL_DB_PASSWORD:-DevOnly-SignalDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Dsignal
+      OAUTH_CLIENT_ID: signal-service
+      OAUTH_CLIENT_SECRET: ${SIGNAL_CLIENT_SECRET:-DevOnly-SignalClient-ChangeMe!}
+      ANALYTICS_SERVICE_URL: http://analytics:8080
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+      analytics: { condition: service_healthy }
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 384M }
+        reservations: { memory: 96M }
+
+  feature-store:
+    <<: *backend
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: feature-store-service
+      APP_MODULE: boa_oi.api:app
+      DATABASE_URL: postgresql+psycopg://feature_store_service:${FEATURE_STORE_DB_PASSWORD:-DevOnly-FeatureStoreDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Dfeature_store
+      OAUTH_CLIENT_ID: feature-store-service
+      OAUTH_CLIENT_SECRET: ${FEATURE_STORE_CLIENT_SECRET:-DevOnly-FeatureStoreClient-ChangeMe!}
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+      analytics: { condition: service_healthy }
+
+  ml-engine:
+    <<: *backend
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: ml-engine-service
+      APP_MODULE: boa_oi.api:app
+      DATABASE_URL: postgresql+psycopg://ml_engine_service:${ML_ENGINE_DB_PASSWORD:-DevOnly-MlEngineDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Dml
+      OAUTH_CLIENT_ID: ml-engine-service
+      OAUTH_CLIENT_SECRET: ${ML_ENGINE_CLIENT_SECRET:-DevOnly-MlEngineClient-ChangeMe!}
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+      feature-store: { condition: service_healthy }
+    deploy:
+      resources:
+        limits: { cpus: "0.60", memory: 384M }
+        reservations: { memory: 96M }
+
+  portfolio:
+    <<: *backend
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: portfolio-service
+      APP_MODULE: boa_oi.api:app
+      DATABASE_URL: postgresql+psycopg://portfolio_service:${PORTFOLIO_DB_PASSWORD:-DevOnly-PortfolioDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Dportfolio
+      OAUTH_CLIENT_ID: portfolio-service
+      OAUTH_CLIENT_SECRET: ${PORTFOLIO_CLIENT_SECRET:-DevOnly-PortfolioClient-ChangeMe!}
+      ML_PRIORITY_WEIGHT: "0.35"
+      RULES_PRIORITY_WEIGHT: "0.65"
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+      ml-engine: { condition: service_healthy }
+
+  opportunity:
+    <<: *backend
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: opportunity-service
+      APP_MODULE: boa_oi.api:app
+      DATABASE_URL: postgresql+psycopg://opportunity_service:${OPPORTUNITY_DB_PASSWORD:-DevOnly-OpportunityDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Dopportunity
+      OAUTH_CLIENT_ID: opportunity-service
+      OAUTH_CLIENT_SECRET: ${OPPORTUNITY_CLIENT_SECRET:-DevOnly-OpportunityClient-ChangeMe!}
+      SIGNAL_SERVICE_URL: http://signal:8080
+      ANALYTICS_SERVICE_URL: http://analytics:8080
+      CUSTOMER_SERVICE_URL: http://customer:8080
+      PRODUCT_SERVICE_URL: http://product:8080
+      RULE_ENGINE_SERVICE_URL: http://rule-engine:8080
+      ML_ENGINE_SERVICE_URL: http://ml-engine:8080
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+      signal: { condition: service_healthy }
+      analytics: { condition: service_healthy }
+      customer: { condition: service_healthy }
+      product: { condition: service_healthy }
+      rule-engine: { condition: service_healthy }
+      ml-engine: { condition: service_healthy }
+    deploy:
+      resources:
+        limits: { cpus: "0.75", memory: 512M }
+        reservations: { memory: 128M }
+
+  action:
+    <<: *backend
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: action-service
+      APP_MODULE: boa_oi.api:app
+      DATABASE_URL: postgresql+psycopg://action_service:${ACTION_DB_PASSWORD:-DevOnly-ActionDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Daction
+      OAUTH_CLIENT_ID: action-service
+      OAUTH_CLIENT_SECRET: ${ACTION_CLIENT_SECRET:-DevOnly-ActionClient-ChangeMe!}
+      OPPORTUNITY_SERVICE_URL: http://opportunity:8080
+      CUSTOMER_SERVICE_URL: http://customer:8080
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+      opportunity: { condition: service_healthy }
+      customer: { condition: service_healthy }
+
+  rule-management:
+    <<: *backend
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: rule-management-service
+      APP_MODULE: boa_oi.api:app
+      DATABASE_URL: postgresql+psycopg://rule_management_service:${RULE_MANAGEMENT_DB_PASSWORD:-DevOnly-RuleManagementDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Drule
+      OAUTH_CLIENT_ID: rule-management-service
+      OAUTH_CLIENT_SECRET: ${RULE_MANAGEMENT_CLIENT_SECRET:-DevOnly-RuleManagementClient-ChangeMe!}
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+
+  rule-engine:
+    <<: *backend
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: rule-engine-service
+      APP_MODULE: boa_oi.api:app
+      DATABASE_URL: postgresql+psycopg://rule_management_service:${RULE_MANAGEMENT_DB_PASSWORD:-DevOnly-RuleManagementDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Drule
+      OAUTH_CLIENT_ID: rule-engine-service
+      OAUTH_CLIENT_SECRET: ${RULE_ENGINE_CLIENT_SECRET:-DevOnly-RuleEngineClient-ChangeMe!}
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+
+  rule-simulation:
+    <<: *backend
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: rule-simulation-service
+      APP_MODULE: boa_oi.api:app
+      DATABASE_URL: postgresql+psycopg://rule_management_service:${RULE_MANAGEMENT_DB_PASSWORD:-DevOnly-RuleManagementDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Drule
+      OAUTH_CLIENT_ID: rule-simulation-service
+      OAUTH_CLIENT_SECRET: ${RULE_SIMULATION_CLIENT_SECRET:-DevOnly-RuleSimulationClient-ChangeMe!}
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+
+  api-gateway:
+    <<: *backend
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: api-gateway
+      APP_MODULE: boa_oi.api:app
+      OAUTH_CLIENT_ID: api-gateway
+      OAUTH_CLIENT_SECRET: ${API_GATEWAY_CLIENT_SECRET:-DevOnly-GatewayClient-ChangeMe!}
+      CUSTOMER_SERVICE_URL: http://customer:8080
+      ACCOUNT_SERVICE_URL: http://account:8080
+      TRANSACTION_SERVICE_URL: http://transaction:8080
+      ANALYTICS_SERVICE_URL: http://analytics:8080
+      SIGNAL_SERVICE_URL: http://signal:8080
+      PRODUCT_SERVICE_URL: http://product:8080
+      ACTION_SERVICE_URL: http://action:8080
+      BANKING_INTEGRATION_SERVICE_URL: http://banking-integration:8080
+      RULE_MANAGEMENT_SERVICE_URL: http://rule-management:8080
+      RULE_ENGINE_SERVICE_URL: http://rule-engine:8080
+      RULE_SIMULATION_SERVICE_URL: http://rule-simulation:8080
+      FEATURE_STORE_SERVICE_URL: http://feature-store:8080
+      ML_ENGINE_SERVICE_URL: http://ml-engine:8080
+      PORTFOLIO_SERVICE_URL: http://portfolio:8080
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
+    ports:
+      - "127.0.0.1:${API_GATEWAY_PORT:-8080}:8080"
+    networks:
+      - edge
+      - app
+    depends_on:
+      keycloak: { condition: service_healthy }
+      customer: { condition: service_healthy }
+      account: { condition: service_healthy }
+      transaction: { condition: service_healthy }
+      analytics: { condition: service_healthy }
+      signal: { condition: service_healthy }
+      product: { condition: service_healthy }
+      action: { condition: service_healthy }
+      rule-management: { condition: service_healthy }
+      rule-engine: { condition: service_healthy }
+      rule-simulation: { condition: service_healthy }
+      feature-store: { condition: service_healthy }
+      ml-engine: { condition: service_healthy }
+      portfolio: { condition: service_healthy }
+    deploy:
+      resources:
+        limits: { cpus: "0.65", memory: 448M }
+        reservations: { memory: 128M }
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: infrastructure/docker/frontend.Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:-http://localhost:8081}
+        VITE_KEYCLOAK_REALM: ${VITE_KEYCLOAK_REALM:-boa-sme-mvp}
+        VITE_KEYCLOAK_CLIENT_ID: ${VITE_KEYCLOAK_CLIENT_ID:-boa-sme-spa}
+        VITE_AUTH_DISABLED: ${VITE_AUTH_DISABLED:-false}
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:8080"
+    networks:
+      - edge
+    depends_on:
+      api-gateway: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=32m
+      - /var/run:size=4m
+      - /tmp:size=16m
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 160M }
+        reservations: { memory: 32M }
+
+  demo-data-generator:
+    build: *backend-build
+    profiles: ["tools"]
+    entrypoint: []
+    command: ["boa-seed", "--database-url", "postgresql+psycopg://boa_admin:${POSTGRES_ADMIN_PASSWORD:-DevOnly-Postgres-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}"]
+    environment:
+      <<: *backend-environment
+      DEMO_DATA_SEED: ${DEMO_DATA_SEED:-20260918}
+    networks:
+      - data
+    depends_on:
+      postgres: { condition: service_healthy }
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 768M }
+
+networks:
+  edge:
+    name: boa_sme_edge
+  app:
+    name: boa_sme_app
+    internal: true
+  data:
+    name: boa_sme_data
+    internal: true
+
+volumes:
+  boa_postgres_data:
+    name: boa_postgres_data

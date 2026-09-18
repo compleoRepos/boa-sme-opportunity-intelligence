@@ -1,0 +1,80 @@
+config_id: BOA-SME-MVP-2026-09
+engine_version: 0.1.0
+rule_set_version: 2026-09-18-v1
+status: ACTIVE
+effective_from: '2026-09-18'
+created_by: system
+approved_by: mvp-governance
+change_reason: Initial deterministic MVP configuration
+confidence_levels: {high: 0.75, medium: 0.50}
+priority:
+  weights: {confidence: 0.30, signal_strength: 0.20, urgency: 0.15, recency: 0.15, relationship_context: 0.10, product_gap: 0.10}
+  p1: 80
+  p2: 60
+  p3: 40
+signal_rules:
+  INFLOW_GROWTH: {version: '1', metric: inflow_amount, value_field: growth_rate, operator: gt, threshold: 0.25, minimum_sample_size: 6, require_confirmation: true, strong_evidence_margin: 0.50}
+  OUTFLOW_GROWTH: {version: '1', metric: outflow_amount, value_field: growth_rate, operator: gt, threshold: 0.20, minimum_sample_size: 6, require_confirmation: true, strong_evidence_margin: 0.50}
+  SUPPLIER_PAYMENT_GROWTH: {version: '1', metric: supplier_payment_amount, value_field: growth_rate, operator: gt, threshold: 0.20, minimum_sample_size: 3, require_confirmation: true, strong_evidence_margin: 0.50}
+  INTERNATIONAL_FLOW_GROWTH: {version: '1', metric: international_flow_amount, value_field: growth_rate, operator: gt, threshold: 0.30, minimum_sample_size: 2, require_confirmation: true, strong_evidence_margin: 0.50}
+  BALANCE_SURPLUS: {version: '1', metric: average_balance, value_field: current_value, operator: gt, threshold: 1000000, minimum_sample_size: 75, require_confirmation: true, strong_evidence_margin: 0.50}
+  BALANCE_DECLINE: {version: '1', metric: average_balance, value_field: growth_rate, operator: lt, threshold: -0.20, minimum_sample_size: 75, require_confirmation: true, strong_evidence_margin: 0.50}
+  CREDIT_UTILIZATION_INCREASE: {version: '1', metric: credit_line_utilization, value_field: change, operator: gt, threshold: 0.20, minimum_sample_size: 75, require_confirmation: true, strong_evidence_margin: 0.50}
+  TRANSACTION_VOLUME_GROWTH: {version: '1', metric: transaction_count, value_field: growth_rate, operator: gt, threshold: 0.15, minimum_sample_size: 6, require_confirmation: true, strong_evidence_margin: 0.50}
+opportunity_rules:
+  INVESTMENT_FINANCING:
+    version: '1'
+    horizon: 1-3_MONTHS
+    what: Potential investment financing need to discuss with the customer.
+    when: Contact within one to three months.
+    recommended_product_codes: [INVESTMENT_FINANCING, WORKING_CAPITAL_FACILITY]
+    minimum_data_coverage: 0.83
+    all_conditions:
+      - {key: inflow_growth_rate, operator: gt, value: 0.25, label: Inflow growth}
+      - {key: supplier_payment_growth_rate, operator: gt, value: 0.20, label: Supplier payment growth}
+      - {key: transaction_volume_growth_rate, operator: gt, value: 0.15, label: Transaction volume growth}
+      - {key: no_recent_investment_financing, operator: eq, value: true, label: No recent investment financing}
+    confidence_weights: {signal_strength: 35, persistence: 15, baseline_separation: 15, product_gap: 10, recency: 10, data_quality: 10, corroboration: 5}
+    priority_defaults: {signal_strength: 0.85, urgency: 0.70, recency: 1.0, relationship_context: 0.75, product_gap: 1.0}
+  TRADE_FINANCE:
+    version: '1'
+    horizon: 0-3_MONTHS
+    what: Potential trade finance need to discuss with the customer.
+    when: Contact within zero to three months.
+    recommended_product_codes: [TRADE_FINANCE]
+    minimum_data_coverage: 0.83
+    all_conditions:
+      - {key: international_flow_growth_rate, operator: gt, value: 0.30, label: International flow growth}
+      - {key: international_frequency_growth_rate, operator: gt, value: 0.10, label: International frequency growth}
+      - {key: international_frequency_confirmed, operator: eq, value: true, label: Repeated international activity}
+      - {key: trade_finance_gap, operator: eq, value: true, label: Trade finance absent or underutilized}
+    confidence_weights: {signal_strength: 35, persistence: 15, baseline_separation: 15, product_gap: 20, recency: 10, data_quality: 5}
+    priority_defaults: {signal_strength: 0.90, urgency: 0.80, recency: 1.0, relationship_context: 0.75, product_gap: 1.0}
+  CASH_INVESTMENT:
+    version: '1'
+    horizon: 0-1_MONTH
+    what: Potential cash management or liquidity investment need to discuss.
+    when: Contact within one month.
+    recommended_product_codes: [CASH_MANAGEMENT, TERM_DEPOSIT, LIQUIDITY_INVESTMENT]
+    minimum_data_coverage: 0.83
+    all_conditions:
+      - {key: average_balance, operator: gt, value: 1000000, label: High average balance}
+      - {key: surplus_day_ratio, operator: gte, value: 0.70, label: Persistent cash surplus}
+      - {key: surplus_persistence_periods, operator: gte, value: 2, label: Surplus confirmed in multiple periods}
+      - {key: credit_line_utilization, operator: lte, value: 0.25, label: Low credit utilization}
+    confidence_weights: {signal_strength: 40, persistence: 25, baseline_separation: 15, product_gap: 10, recency: 5, data_quality: 5}
+    priority_defaults: {signal_strength: 0.85, urgency: 0.85, recency: 1.0, relationship_context: 0.75, product_gap: 0.90}
+  FINANCIAL_STRESS_SIGNAL:
+    version: '1'
+    horizon: 0-1_MONTH
+    what: Relational financial stress signal to examine with the customer.
+    when: Relational contact within one month.
+    recommended_product_codes: [CASH_MANAGEMENT, WORKING_CAPITAL_FACILITY]
+    minimum_data_coverage: 0.83
+    all_conditions:
+      - {key: credit_utilization_change, operator: gt, value: 0.20, label: Increasing credit utilization}
+    any_conditions:
+      - {key: inflow_growth_rate, operator: lt, value: -0.25, label: Inflow decline}
+      - {key: balance_growth_rate, operator: lt, value: -0.20, label: Balance decline}
+    confidence_weights: {signal_strength: 40, persistence: 15, baseline_separation: 15, recency: 10, data_quality: 10, corroboration: 10}
+    priority_defaults: {signal_strength: 0.90, urgency: 1.0, recency: 1.0, relationship_context: 0.75, product_gap: 0.0}
