@@ -32,6 +32,8 @@ def upgrade():
     # ml et portfolio sont créés par 0003 et 0004, sinon la chaîne échoue sur base vide.
     future_governance_tables = {
         "portfolio_assignments",
+        "portfolio_sync_events",
+        "portfolio_sync_receipts",
         "scoring_policies",
         "scoring_policy_versions",
         "scoring_policy_audit_logs",

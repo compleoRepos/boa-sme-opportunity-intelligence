@@ -2,7 +2,7 @@
 
 **Produit :** BOA SME Opportunity Intelligence  
 **Statut :** dashboards CC/agence et contrôles de périmètre MVP implémentés ; politiques ABAC avancées différées
-**Auteur :** Manus AI  
+**Responsable documentaire :** équipe produit pilote
 
 > Dans ce document, **CC** désigne le chargé de clientèle PME. Le rôle technique existant reste `RELATIONSHIP_MANAGER`. Le responsable d’agence utilise `BRANCH_MANAGER`. Cette correspondance évite d’introduire un second rôle pour la même fonction.
 
@@ -32,7 +32,7 @@ Agence
 | `PortfolioAssignment` | `assignmentId` | relation temporelle entre client, portefeuille, CC et agence |
 | `Customer` | `customerId` | PME source de vérité Customer Service |
 
-Une affectation contient `validFrom`, `validTo`, `status`, `isPrimary`, `assignmentReason` et `sourceSystem`. Un client possède au plus une affectation primaire active à un instant donné. Une affectation secondaire, une équipe de couverture ou une délégation temporaire ne donne accès que si son type est explicitement autorisé par la politique de périmètre.
+Une affectation contient `portfolioId`, `relationshipManagerId`, `branchId`, `validFrom`, `validTo`, `assignmentType`, `isPrimary`, `reason`, `actor`, `sourceSystem`, `sourceEventId`, `sourceWatermark` et `sourcePayloadHash`. Un client possède au plus une affectation primaire active à un instant donné. Le pilote refuse les chevauchements au niveau PostgreSQL. Une affectation secondaire, une équipe de couverture ou une délégation temporaire restent hors contrat.
 
 ## 3. Dashboards distincts
 
@@ -108,7 +108,7 @@ Pour chaque accès à une ressource client :
 5. le service applique la finalité et le niveau de détail permis ;
 6. l’accès autorisé ou refusé est audité avec la règle de périmètre utilisée.
 
-Une projection de périmètre doit porter `projectionVersion`, `sourceWatermark`, `generatedAt` et `validUntil`. Si elle est stale au-delà du seuil, les écritures sont refusées. Les lectures peuvent être refusées ou dégradées selon la politique ; elles ne basculent jamais vers un accès global.
+Une projection de périmètre future devra porter `projectionVersion`, `sourceWatermark`, `generatedAt` et `validUntil`. Elle n’est pas implémentée dans le pilote : les services interrogent les affectations datées de Customer Service. Si une projection est ajoutée, son expiration devra refuser les écritures et ne devra jamais basculer vers un accès global.
 
 ## 7. Réaffectations, délégations et historique
 
@@ -144,13 +144,21 @@ Les outcomes utilisés dans un dataset futur conservent le périmètre et la fin
 
 L’audit enregistre le sujet, les rôles/scopes, le type de périmètre, l’identifiant demandé, la décision, la règle appliquée, le watermark d’affectation, l’endpoint et le `correlationId`. Les refus n’enregistrent pas plus de données client qu’il n’est nécessaire.
 
-Les tests bloquants couvrent : accès CC à son client, accès CC à un client d’un autre portefeuille, accès responsable à sa branche et à une autre branche, absence de droit d’action par défaut du responsable, rôle admin sans scope client, réaffectation à date d’effet, délégation expirée, projection stale et cohérence entre totaux et listes paginées.
+Les tests bloquants couvrent : accès CC à son client, accès CC à un client d’un autre portefeuille, accès responsable à sa branche et à une autre branche, réaffectation à date d’effet, lecture historique `asOf`, rejeu idempotent, événement source conflictuel, événement hors ordre, compte de service non autorisé et cohérence entre totaux et listes paginées. La délégation et la projection stale ne peuvent pas être déclarées PASS car elles restent hors périmètre du pilote.
 
 ## 11. Limites du MVP
 
 Le MVP conserve une hiérarchie simple : un client, une affectation primaire active, un portefeuille principal et une agence. Les équipes multi-agences, portefeuilles matriciels, délégations complexes, contrôle géographique dynamique et politiques ABAC externes sont différés.
 
-Les dashboards agence et CC sont servis par Portfolio Service et exposés uniquement via le Gateway. Le dashboard CC force l’identifiant de chargé issu du token, même lorsqu’un autre `relationshipManagerId` est fourni. Le dashboard agence limite ses agrégats et son drill-down aux `branchIds` autorisés. Customer Service et le Gateway renvoient `404` pour une ressource hors périmètre afin d’éviter d’en révéler l’existence. Les délégations complexes, le moteur ABAC externe et les scopes d’action agence restent hors du MVP.
+Les dashboards agence et CC sont servis par Portfolio Service et exposés uniquement via le Gateway. Le dashboard CC force l’identifiant de chargé issu du token, même lorsqu’un autre `relationshipManagerId` est fourni. Le dashboard agence limite ses agrégats et son drill-down aux `branchIds` autorisés. Customer Service et le Gateway renvoient `404` pour une ressource hors périmètre afin d’éviter d’en révéler l’existence. Les délégations complexes, le moteur ABAC externe, une projection signée et les scopes d’action agence restent hors du MVP.
+
+## 12. Synchronisation gouvernée implémentée
+
+La migration `0012_portfolio_sync_governance` ajoute les identifiants durables de portefeuille, la provenance source, les reçus rejouables et le journal des événements. La route administrative `POST /api/v1/admin/portfolio-assignments/sync` exige une clé d’idempotence et un lot de contrat `1.0`. La route interne correspondante accepte uniquement un administrateur ou le compte de service `banking-integration-service`; le rôle générique `SERVICE` ne suffit pas.
+
+Les événements sont triés par date d’effet et identifiant source. Une date d’effet future clôt l’affectation courante à cette date tout en la laissant active jusque-là. Les trois services Customer, Portfolio et Opportunity appliquent `validFrom <= now < validTo`, avec `validTo` ouvert lorsque nul. Les lectures d’administration acceptent `asOf` et restituent la structure valable à l’instant demandé.
+
+Le pilote adopte une politique explicite pour les événements hors ordre : un événement antérieur au dernier intervalle connu est refusé par `409 OUT_OF_ORDER_ASSIGNMENT`. La correction d’un historique ancien exige donc un processus de réconciliation administré ; elle n’est jamais appliquée silencieusement. Cette décision est réversible après validation du contrat source réel par BOA.
 
 ## Références
 

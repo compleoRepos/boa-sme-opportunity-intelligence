@@ -10,7 +10,7 @@ from uuid import UUID
 
 from fastapi import Depends, Header, Query, Request, status
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import and_, func, inspect, select
+from sqlalchemy import and_, func, inspect, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, aliased
 
@@ -215,7 +215,10 @@ def scoped_customer_ids(session: Session, principal: Principal) -> Any | None:
             .join(manager, assignment.relationship_manager_id == manager.id)
             .where(
                 assignment.valid_from <= datetime.now(timezone.utc),
-                assignment.valid_to.is_(None),
+                or_(
+                    assignment.valid_to.is_(None),
+                    assignment.valid_to > datetime.now(timezone.utc),
+                ),
             )
         )
         branch_code: Any = assignment.branch_code
@@ -679,7 +682,10 @@ def list_for(
                 and_(
                     PortfolioAssignment.customer_id == Customer.id,
                     PortfolioAssignment.valid_from <= datetime.now(timezone.utc),
-                    PortfolioAssignment.valid_to.is_(None),
+                    or_(
+                        PortfolioAssignment.valid_to.is_(None),
+                        PortfolioAssignment.valid_to > datetime.now(timezone.utc),
+                    ),
                 ),
             )
             .join(

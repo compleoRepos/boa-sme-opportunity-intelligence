@@ -299,6 +299,30 @@ async def json_body(request: Request) -> Any:
         raise Problem(400, "VALIDATION_ERROR", "The request body must be valid JSON.") from exc
 
 
+@app.get("/api/v1/admin/portfolio-assignments", tags=["Portfolio synchronization"])
+async def portfolio_assignment_history(
+    request: Request,
+    _principal: Principal = Depends(require_roles("ADMIN")),
+) -> JSONResponse:
+    return await proxy(request, "customer", "portfolio-assignments")
+
+
+@app.post("/api/v1/admin/portfolio-assignments/sync", tags=["Portfolio synchronization"])
+async def portfolio_assignment_sync(
+    request: Request,
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=200)],
+    _principal: Principal = Depends(require_roles("ADMIN")),
+) -> JSONResponse:
+    return await proxy(
+        request,
+        "customer",
+        "portfolio-assignments/sync",
+        body=await json_body(request),
+        idempotency_key=idempotency_key,
+        response_status=202,
+    )
+
+
 @app.api_route(
     "/api/v1/admin/scoring-policies",
     methods=["GET", "POST"],

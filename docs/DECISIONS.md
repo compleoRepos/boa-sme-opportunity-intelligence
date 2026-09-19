@@ -30,6 +30,18 @@
 
 **Limite acceptée pour le pilote.** Il ne s’agit pas d’un commit distribué ACID et aucun dispatcher permanent ne reprend automatiquement les échecs. L’état durable rend cependant chaque succès partiel visible et reprenable. Un worker avec backoff et file morte est requis avant production à haute disponibilité.
 
+## 19 septembre 2026 — Contrat de synchronisation portefeuille du pilote
+
+**Question.** Le mandat exige une synchronisation contrôlée et datée, mais ne fournit pas encore le contrat du système source, les règles de correction rétroactive, les affectations secondaires ni les délégations.
+
+**Option retenue.** Ajouter un contrat batch `1.0` séparé de l’import client. Chaque événement source contient un identifiant stable, le client, le portefeuille, le CC, l’agence, la date d’effet, le motif et le watermark du lot. Le pilote accepte uniquement une affectation `PRIMARY`, interdit les chevauchements en PostgreSQL et conserve un reçu rejouable, un journal d’événements, un audit avant/après et une outbox dans la même transaction.
+
+**Politique d’autorisation.** La route publique est réservée à `ADMIN`. La route interne accepte `ADMIN` ou le compte dont le `client_id` est exactement `banking-integration-service`. Le rôle générique `SERVICE` n’accorde donc pas la capacité de synchronisation à tous les microservices. Le compte et les scopes définitifs devront être alignés avec l’IAM BOA.
+
+**Politique temporelle.** Une affectation future clôt l’intervalle courant à sa date d’effet. Un événement antérieur au dernier intervalle est refusé par `409 OUT_OF_ORDER_ASSIGNMENT`; une réconciliation rétroactive administrée est différée jusqu’à validation des règles BOA. Les délégations, affectations secondaires, corrections multi-intervalles et suppressions source restent hors périmètre du pilote.
+
+**Audit.** La migration `0012_portfolio_sync_governance` ajoute un trigger qui refuse `UPDATE` et `DELETE` sur `audit.audit_logs`. Cette protection append-only PostgreSQL n’est ni un stockage WORM, ni une intégration SIEM, ni une politique de rétention ; ces contrôles restent à définir avant production.
+
 ## Références
 
 [1]: ./business-rules.md "Moteur déterministe d’intelligence d’opportunités"

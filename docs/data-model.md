@@ -1,7 +1,7 @@
 # Modèle relationnel PostgreSQL et pipeline de données synthétiques
 
 **Produit :** BOA SME Opportunity Intelligence  
-**Statut :** conception du MVP, sans code ni opportunités préchargées  
+**Statut :** modèle implémenté du pilote ; extensions de production explicitement signalées
 **Source fonctionnelle :** exigences du projet [1]
 
 ## 1. Décisions structurantes
@@ -271,15 +271,15 @@ Chaque bounded context possède un schéma, un utilisateur SQL, des modèles SQL
 
 ---
 
-## 11. Extensions cibles pour portefeuilles et ML de propension
+## 11. Extensions portefeuilles et ML de propension
 
-Cette section spécifie un incrément futur ; elle ne constitue ni une migration ni une preuve d’implémentation. Les règles existantes restent applicables : un schéma et un rôle PostgreSQL par service, aucune clé étrangère interschéma et aucun accès SQL tiers.
+Cette section distingue l’état implémenté des cibles encore différées. Les affectations datées, la synchronisation gouvernée, le Feature Store, le registre ML POC/shadow et la lignée d’inférence sont implémentés. Les projections de scope signées, le WORM externe et les topologies multi-agences restent des cibles de production.
 
 ### 11.1 Ownership cible
 
 | Schéma | Service propriétaire | Tables cibles | Finalité |
 |---|---|---|---|
-| `customer` | Customer Service | `branches`, `portfolios`, `portfolio_assignments`, `scope_projection_versions` | agence, CC, portefeuille et affectations temporelles |
+| `customer` | Customer Service | `portfolio_assignments`, `portfolio_sync_events`, `portfolio_sync_receipts` | agence, CC, portefeuille, affectations temporelles et provenance de synchronisation |
 | `feature` | Feature Service | `feature_definitions`, `feature_definition_versions`, `feature_sets`, `feature_set_members`, `feature_snapshots`, `feature_values`, `feature_lineage` | registre et snapshots point-in-time |
 | `ml_registry` | ML Management Service | `models`, `model_versions`, `model_artifacts`, `model_approvals`, `training_datasets`, `dataset_consents`, `fusion_policies` | modèles, datasets et fusion gouvernés |
 | `ml_inference` | ML Engine | `inference_runs`, `propensity_scores`, `prediction_explanations` | inférences CPU et scores immuables |
@@ -288,9 +288,11 @@ Cette section spécifie un incrément futur ; elle ne constitue ni une migration
 
 ### 11.2 Agence, CC et portefeuille
 
-`customer.portfolio_assignments` porte portefeuille, client, agence, CC, type d’affectation, caractère primaire, dates de validité, motif et source. Il existe au plus une affectation primaire active par client à un instant donné. Une réaffectation clôt une ligne et en crée une autre ; elle ne réécrit ni opportunité, ni score, ni action historique.
+`customer.portfolio_assignments` porte portefeuille, client, agence, CC, type d’affectation, caractère primaire, dates de validité, motif, acteur, système source, événement source, watermark et hash canonique. La contrainte d’exclusion PostgreSQL interdit tout chevauchement des intervalles `[validFrom, validTo)` d’un même client. Une réaffectation clôt une ligne et en crée une autre ; elle ne réécrit ni opportunité, ni score, ni action historique.
 
-Une projection de scope porte version, watermark, dates de génération/expiration et checksum. Une projection périmée bloque les écritures et ne donne jamais un accès global. Le CC est relié logiquement au sujet Keycloak ; aucun secret n’est stocké dans ce schéma.
+`customer.portfolio_sync_events` garantit l’idempotence de `(sourceSystem, sourceEventId)`. `customer.portfolio_sync_receipts` garantit l’idempotence du lot et conserve la réponse HTTP rejouable. Une modification d’affectation écrit aussi une outbox `PORTFOLIO_ASSIGNMENT_CHANGED` et un audit avant/après. Les événements antidatés antérieurs au dernier intervalle sont refusés et nécessitent une réconciliation explicite.
+
+Les lectures courantes Customer, Portfolio et Opportunity interrogent l’affectation valable à l’instant de la requête. Une future projection de scope signée portera version, watermark, dates de génération/expiration et checksum ; elle n’est pas encore implémentée. Le CC est relié logiquement au sujet Keycloak ; aucun secret n’est stocké dans ce schéma.
 
 ### 11.3 Feature Registry et snapshots
 
@@ -312,9 +314,9 @@ Un dataset d’apprentissage est immuable et manifesté. Il conserve finalité, 
 
 Le monitoring conserve fenêtres/populations de référence, méthodes, valeurs, seuils `WARNING/BLOCKING`, statuts et alertes. La performance différée utilise uniquement des outcomes matures. Aucun drift ne déclenche automatiquement entraînement ou promotion.
 
-### 11.6 Limites MVP
+### 11.6 Limites du pilote
 
-Le MVP existant ne crée aucune de ces tables. Le premier incrément cible PostgreSQL batch, CPU-only et `ML_SHADOW`. Il exclut streaming, GPU, apprentissage en ligne, auto-réentraînement, auto-promotion, `HYBRID_CANDIDATE`, texte libre et LLM [2] [3].
+Le pilote crée les tables de synchronisation et les tables ML/Feature Store décrites par les migrations versionnées. Il reste batch, PostgreSQL et CPU-only. Il exclut affectations secondaires, délégations, streaming, GPU, apprentissage en ligne, auto-réentraînement, auto-promotion, `HYBRID_CANDIDATE`, texte libre et LLM [2] [3]. Aucune performance ML de production n’est revendiquée à partir des données synthétiques.
 
 ## Références de l’extension
 

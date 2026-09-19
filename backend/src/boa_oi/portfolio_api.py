@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import Depends, Request
-from sqlalchemy import Select, and_, func, inspect, select
+from sqlalchemy import Select, and_, func, inspect, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from boa_oi.models.entities import (
@@ -82,7 +82,7 @@ def _scoped_customers(
         active_assignment = and_(
             Customer.id == assignment.customer_id,
             assignment.valid_from <= datetime.now(timezone.utc),
-            assignment.valid_to.is_(None),
+            or_(assignment.valid_to.is_(None), assignment.valid_to > datetime.now(timezone.utc)),
         )
         if bind.dialect.name == "sqlite":
             manager_id = func.coalesce(assignment.relationship_manager_id, Customer.rm_id)

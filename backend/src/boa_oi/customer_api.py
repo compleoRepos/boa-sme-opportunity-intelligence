@@ -2,18 +2,23 @@ from __future__ import annotations
 
 import hashlib
 from datetime import date, datetime, timedelta, timezone
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import Depends, Header, Query, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import and_, func, inspect, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, aliased
 
+from boa_oi.audit.service import canonical_hash
 from boa_oi.models.entities import (
+    AuditLog,
     Customer,
     CustomerImportReceipt,
+    OutboxMessage,
     PortfolioAssignment,
+    PortfolioSyncEvent,
+    PortfolioSyncReceipt,
     RelationshipManager,
     Sector,
 )
@@ -48,14 +53,20 @@ def _assignment_table_available(session: Session) -> bool:
     return inspect(bind).has_table(PortfolioAssignment.__tablename__, schema="customer")
 
 
+def assignment_active_at(assignment: Any, at: datetime) -> Any:
+    return and_(
+        assignment.valid_from <= at,
+        or_(assignment.valid_to.is_(None), assignment.valid_to > at),
+    )
+
+
 def _customer_statement(session: Session) -> tuple[Any, Any, Any]:
     rm = aliased(RelationshipManager)
     if _assignment_table_available(session):
         assignment = aliased(PortfolioAssignment)
         active_assignment = and_(
             Customer.id == assignment.customer_id,
-            assignment.valid_from <= datetime.now(timezone.utc),
-            assignment.valid_to.is_(None),
+            assignment_active_at(assignment, datetime.now(timezone.utc)),
         )
         if session.get_bind().dialect.name == "sqlite":
             manager_id = func.coalesce(assignment.relationship_manager_id, Customer.rm_id)
@@ -114,6 +125,41 @@ class CustomerImportBatch(BaseModel):
     sourceSystem: str = "BANKING_ADAPTER"
     externalBatchId: str
     customers: list[CustomerImport] = Field(max_length=10_000)
+
+
+class PortfolioAssignmentEvent(BaseModel):
+    sourceEventId: str = Field(min_length=1, max_length=120)
+    customerId: str = Field(min_length=1, max_length=20)
+    portfolioId: str = Field(min_length=1, max_length=80)
+    relationshipManagerId: str = Field(min_length=1, max_length=120)
+    relationshipManagerName: str | None = Field(default=None, max_length=160)
+    branchId: str = Field(min_length=1, max_length=30)
+    assignmentType: Literal["PRIMARY"] = "PRIMARY"
+    isPrimary: Literal[True] = True
+    validFrom: datetime
+    validTo: datetime | None = None
+    reason: str = Field(min_length=3, max_length=1_000)
+
+    @field_validator("validFrom", "validTo")
+    @classmethod
+    def timezone_required(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            raise ValueError("Assignment timestamps must include a timezone.")
+        return value.astimezone(timezone.utc) if value is not None else None
+
+    @model_validator(mode="after")
+    def validity_is_ordered(self) -> PortfolioAssignmentEvent:
+        if self.validTo is not None and self.validTo <= self.validFrom:
+            raise ValueError("validTo must be later than validFrom.")
+        return self
+
+
+class PortfolioSyncBatch(BaseModel):
+    contractVersion: Literal["1.0"] = "1.0"
+    sourceSystem: str = Field(min_length=1, max_length=40)
+    batchRef: str = Field(min_length=1, max_length=120)
+    sourceWatermark: str | None = Field(default=None, max_length=120)
+    assignments: list[PortfolioAssignmentEvent] = Field(min_length=1, max_length=10_000)
 
 
 def serialize(
@@ -290,6 +336,421 @@ def get_relationship(
     }
 
 
+def _utc(value: datetime) -> datetime:
+    return (
+        value.replace(tzinfo=timezone.utc)
+        if value.tzinfo is None
+        else value.astimezone(timezone.utc)
+    )
+
+
+def serialize_assignment(
+    assignment: PortfolioAssignment,
+    manager: RelationshipManager | None = None,
+) -> dict[str, Any]:
+    return {
+        "assignmentId": str(assignment.id),
+        "customerId": assignment.customer_id.hex,
+        "portfolioId": assignment.portfolio_id,
+        "relationshipManagerId": manager.subject_id if manager else None,
+        "branchId": assignment.branch_code,
+        "assignmentType": assignment.assignment_type,
+        "isPrimary": assignment.is_primary,
+        "validFrom": assignment.valid_from.isoformat(),
+        "validTo": assignment.valid_to.isoformat() if assignment.valid_to else None,
+        "sourceSystem": assignment.source_system,
+        "sourceEventId": assignment.source_event_id,
+        "sourceWatermark": assignment.source_watermark,
+        "actor": assignment.actor,
+        "reason": assignment.reason,
+    }
+
+
+def _claim_sync_key(
+    session: Session,
+    namespace: str,
+    key: str,
+    *,
+    code: str,
+    message: str,
+) -> None:
+    if session.get_bind().dialect.name != "postgresql":
+        return
+    claimed = session.scalar(
+        select(
+            func.pg_try_advisory_xact_lock(
+                func.hashtext(namespace),
+                func.hashtext(key),
+            )
+        )
+    )
+    if not claimed:
+        raise Problem(409, code, message)
+
+
+def portfolio_sync_principal(
+    principal: Principal = Depends(current_principal),
+) -> Principal:
+    if "ADMIN" in principal.roles:
+        return principal
+    if "SERVICE" in principal.roles and principal.client_id == "banking-integration-service":
+        return principal
+    raise Problem(
+        403,
+        "FORBIDDEN",
+        "Portfolio synchronization is restricted to administrators and the banking "
+        "integration service.",
+    )
+
+
+@app.get(
+    f"{PREFIX}/portfolio-assignments",
+    tags=["Portfolio synchronization"],
+)
+def list_portfolio_assignments(
+    request: Request,
+    customer_id: Annotated[str, Query(alias="customerId", min_length=1)],
+    as_of: Annotated[datetime | None, Query(alias="asOf")] = None,
+    _principal: Principal = Depends(portfolio_sync_principal),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    reject_unknown_filters(request, {"customerId", "asOf"})
+    customer = session.scalar(select(Customer).where(Customer.customer_ref == customer_id))
+    if customer is None:
+        raise not_found("Customer")
+    stmt = (
+        select(PortfolioAssignment, RelationshipManager)
+        .join(
+            RelationshipManager,
+            PortfolioAssignment.relationship_manager_id == RelationshipManager.id,
+        )
+        .where(PortfolioAssignment.customer_id == customer.id)
+    )
+    if as_of is not None:
+        at = _utc(as_of)
+        stmt = stmt.where(assignment_active_at(PortfolioAssignment, at))
+    rows = session.execute(stmt.order_by(PortfolioAssignment.valid_from)).all()
+    data = []
+    for assignment, manager in rows:
+        item = serialize_assignment(assignment, manager)
+        item["customerId"] = customer.customer_ref
+        data.append(item)
+    return {
+        "data": data,
+        "meta": {"customerId": customer_id, "asOf": _utc(as_of).isoformat() if as_of else None},
+    }
+
+
+@app.post(
+    f"{PREFIX}/portfolio-assignments/sync",
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["Portfolio synchronization"],
+)
+def sync_portfolio_assignments(
+    batch: PortfolioSyncBatch,
+    request: Request,
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=200)],
+    principal: Principal = Depends(portfolio_sync_principal),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    request_payload = batch.model_dump(mode="json")
+    request_hash = canonical_hash(request_payload)
+    _claim_sync_key(
+        session,
+        f"portfolio-sync-batch:{batch.sourceSystem}",
+        batch.batchRef,
+        code="PORTFOLIO_SYNC_IN_PROGRESS",
+        message="This source batch is already being synchronized.",
+    )
+    existing_receipt = session.scalar(
+        select(PortfolioSyncReceipt).where(
+            or_(
+                PortfolioSyncReceipt.idempotency_key == idempotency_key,
+                and_(
+                    PortfolioSyncReceipt.source_system == batch.sourceSystem,
+                    PortfolioSyncReceipt.batch_ref == batch.batchRef,
+                ),
+            )
+        )
+    )
+    if existing_receipt is not None:
+        if existing_receipt.request_hash != request_hash:
+            raise Problem(
+                409,
+                "IDEMPOTENCY_KEY_REUSED",
+                "The idempotency key or source batch was reused with different content.",
+            )
+        return {**existing_receipt.response_json, "replayed": True}
+
+    applied = 0
+    unchanged = 0
+    replayed_events = 0
+    event_results: list[dict[str, Any]] = []
+    now = datetime.now(timezone.utc)
+    corr = correlation_id(request)
+    for event in sorted(batch.assignments, key=lambda item: (item.validFrom, item.sourceEventId)):
+        _claim_sync_key(
+            session,
+            f"portfolio-sync-event:{batch.sourceSystem}",
+            event.sourceEventId,
+            code="SOURCE_EVENT_IN_PROGRESS",
+            message=f"Source event {event.sourceEventId} is already being processed.",
+        )
+        _claim_sync_key(
+            session,
+            "portfolio-sync-customer",
+            event.customerId,
+            code="CUSTOMER_ASSIGNMENT_IN_PROGRESS",
+            message=f"Customer {event.customerId} is already being reassigned.",
+        )
+        event_payload = event.model_dump(mode="json")
+        event_hash = canonical_hash(event_payload)
+        previous_event = session.scalar(
+            select(PortfolioSyncEvent).where(
+                PortfolioSyncEvent.source_system == batch.sourceSystem,
+                PortfolioSyncEvent.source_event_id == event.sourceEventId,
+            )
+        )
+        if previous_event is not None:
+            if previous_event.payload_hash != event_hash:
+                raise Problem(
+                    409,
+                    "SOURCE_EVENT_REUSED",
+                    f"Source event {event.sourceEventId} was reused with different content.",
+                )
+            replayed_events += 1
+            event_results.append(
+                {
+                    "sourceEventId": event.sourceEventId,
+                    "status": "REPLAYED",
+                    "assignmentId": (
+                        str(previous_event.assignment_id)
+                        if previous_event.assignment_id is not None
+                        else None
+                    ),
+                }
+            )
+            continue
+
+        customer = session.scalar(select(Customer).where(Customer.customer_ref == event.customerId))
+        if customer is None:
+            raise Problem(422, "CUSTOMER_NOT_FOUND", f"Unknown customer: {event.customerId}.")
+        if event.validTo is not None and _utc(event.validTo) <= now:
+            raise Problem(
+                409,
+                "HISTORICAL_RECONCILIATION_REQUIRED",
+                "An assignment that already ended requires the historical reconciliation process.",
+            )
+        manager = session.scalar(
+            select(RelationshipManager).where(
+                RelationshipManager.subject_id == event.relationshipManagerId
+            )
+        )
+        if manager is None:
+            manager = RelationshipManager(
+                id=deterministic_uuid("rm", event.relationshipManagerId),
+                subject_id=event.relationshipManagerId,
+                display_name=event.relationshipManagerName or event.relationshipManagerId,
+                branch_code=event.branchId,
+                active=True,
+                created_by=principal.subject,
+            )
+            session.add(manager)
+            session.flush()
+        else:
+            if manager.branch_code != event.branchId:
+                raise Problem(
+                    409,
+                    "RELATIONSHIP_MANAGER_BRANCH_CONFLICT",
+                    "The relationship manager belongs to another branch in the master data.",
+                )
+
+        effective_at = _utc(event.validFrom)
+        latest = session.scalar(
+            select(PortfolioAssignment)
+            .where(PortfolioAssignment.customer_id == customer.id)
+            .order_by(PortfolioAssignment.valid_from.desc())
+            .limit(1)
+        )
+        if latest is not None and effective_at < _utc(latest.valid_from):
+            raise Problem(
+                409,
+                "OUT_OF_ORDER_ASSIGNMENT",
+                "Backdated assignment events require an explicit reconciliation process.",
+            )
+        current = session.scalar(
+            select(PortfolioAssignment).where(
+                PortfolioAssignment.customer_id == customer.id,
+                PortfolioAssignment.valid_from <= effective_at,
+                or_(
+                    PortfolioAssignment.valid_to.is_(None),
+                    PortfolioAssignment.valid_to > effective_at,
+                ),
+            )
+        )
+        before = serialize_assignment(current) if current is not None else None
+        same_target = current is not None and (
+            current.relationship_manager_id == manager.id
+            and current.branch_code == event.branchId
+            and current.portfolio_id == event.portfolioId
+            and current.assignment_type == event.assignmentType
+            and current.is_primary == event.isPrimary
+        )
+        assignment = current
+        event_status = "NO_CHANGE"
+        if same_target:
+            assert current is not None
+            requested_valid_to = _utc(event.validTo) if event.validTo else None
+            current_valid_to = _utc(current.valid_to) if current.valid_to else None
+            if effective_at == _utc(current.valid_from) and requested_valid_to == current_valid_to:
+                unchanged += 1
+            else:
+                raise Problem(
+                    409,
+                    "ASSIGNMENT_INTERVAL_CONFLICT",
+                    "An existing interval can only be replayed with identical bounds.",
+                )
+        else:
+            if current is not None:
+                if effective_at <= _utc(current.valid_from):
+                    raise Problem(
+                        409,
+                        "ASSIGNMENT_INTERVAL_CONFLICT",
+                        "The effective timestamp conflicts with the current assignment.",
+                    )
+                current.valid_to = effective_at
+            assignment_id = deterministic_uuid(
+                "portfolio-assignment",
+                batch.sourceSystem,
+                event.sourceEventId,
+            )
+            assignment = PortfolioAssignment(
+                id=assignment_id,
+                customer_id=customer.id,
+                relationship_manager_id=manager.id,
+                branch_code=event.branchId,
+                portfolio_id=event.portfolioId,
+                assignment_type=event.assignmentType,
+                is_primary=event.isPrimary,
+                valid_from=effective_at,
+                valid_to=_utc(event.validTo) if event.validTo else None,
+                source_system=batch.sourceSystem,
+                source_event_id=event.sourceEventId,
+                source_payload_hash=event_hash,
+                source_watermark=batch.sourceWatermark,
+                actor=principal.subject,
+                reason=event.reason,
+            )
+            session.add(assignment)
+            if effective_at <= now and (event.validTo is None or _utc(event.validTo) > now):
+                customer.rm_id = manager.id
+            applied += 1
+            event_status = "APPLIED"
+
+        resolved_assignment_id = assignment.id if assignment is not None else None
+        after = serialize_assignment(assignment, manager) if assignment is not None else None
+        session.add(
+            PortfolioSyncEvent(
+                id=deterministic_uuid(
+                    "portfolio-sync-event", batch.sourceSystem, event.sourceEventId
+                ),
+                source_system=batch.sourceSystem,
+                source_event_id=event.sourceEventId,
+                batch_ref=batch.batchRef,
+                payload_hash=event_hash,
+                customer_ref=event.customerId,
+                status=event_status,
+                assignment_id=resolved_assignment_id,
+                correlation_id=corr,
+                occurred_at=now,
+            )
+        )
+        session.add(
+            AuditLog(
+                id=deterministic_uuid("audit", batch.sourceSystem, event.sourceEventId),
+                actor_subject_id=principal.subject,
+                service_name="customer-service",
+                action=f"PORTFOLIO_ASSIGNMENT_{event_status}",
+                resource_type="PORTFOLIO_ASSIGNMENT",
+                resource_id=event.customerId,
+                correlation_id=corr,
+                result="SUCCESS",
+                metadata_json={
+                    "before": before,
+                    "after": after,
+                    "sourceSystem": batch.sourceSystem,
+                    "sourceEventId": event.sourceEventId,
+                    "batchRef": batch.batchRef,
+                    "sourceWatermark": batch.sourceWatermark,
+                    "payloadHash": event_hash,
+                },
+            )
+        )
+        if event_status == "APPLIED" and assignment is not None:
+            session.add(
+                OutboxMessage(
+                    id=deterministic_uuid("outbox", batch.sourceSystem, event.sourceEventId),
+                    event_type="PORTFOLIO_ASSIGNMENT_CHANGED",
+                    aggregate_type="CUSTOMER",
+                    aggregate_id=event.customerId,
+                    payload_json={
+                        "customerId": event.customerId,
+                        "assignmentId": str(assignment.id),
+                        "portfolioId": event.portfolioId,
+                        "relationshipManagerId": event.relationshipManagerId,
+                        "branchId": event.branchId,
+                        "validFrom": effective_at.isoformat(),
+                        "validTo": event.validTo.isoformat() if event.validTo else None,
+                        "sourceSystem": batch.sourceSystem,
+                        "sourceEventId": event.sourceEventId,
+                    },
+                    correlation_id=corr,
+                    causation_id=event.sourceEventId,
+                    occurred_at=now,
+                )
+            )
+        event_results.append(
+            {
+                "sourceEventId": event.sourceEventId,
+                "status": event_status,
+                "assignmentId": (str(resolved_assignment_id) if resolved_assignment_id else None),
+            }
+        )
+
+    receipt_id = deterministic_uuid("portfolio-sync", batch.sourceSystem, batch.batchRef)
+    response = {
+        "jobId": str(receipt_id),
+        "status": "COMPLETED",
+        "sourceSystem": batch.sourceSystem,
+        "batchRef": batch.batchRef,
+        "sourceWatermark": batch.sourceWatermark,
+        "received": len(batch.assignments),
+        "applied": applied,
+        "unchanged": unchanged,
+        "replayedEvents": replayed_events,
+        "events": event_results,
+        "replayed": False,
+    }
+    session.add(
+        PortfolioSyncReceipt(
+            id=receipt_id,
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+            source_system=batch.sourceSystem,
+            batch_ref=batch.batchRef,
+            source_watermark=batch.sourceWatermark,
+            row_count=len(batch.assignments),
+            status="COMPLETED",
+            response_json=response,
+            correlation_id=corr,
+            created_at=now,
+            completed_at=now,
+        )
+    )
+    session.commit()
+    return response
+
+
 @app.post(
     f"{PREFIX}/imports/customers",
     status_code=status.HTTP_202_ACCEPTED,
@@ -373,13 +834,30 @@ def import_customers(
             )
         )
         if assignment_table_available:
+            assignment_time = datetime.now(timezone.utc)
+            scheduled_assignment = session.scalar(
+                select(PortfolioAssignment.id).where(
+                    PortfolioAssignment.customer_id == customer_uuid,
+                    PortfolioAssignment.valid_from > assignment_time,
+                )
+            )
+            if scheduled_assignment is not None:
+                raise Problem(
+                    409,
+                    "SCHEDULED_ASSIGNMENT_EXISTS",
+                    "Use the governed portfolio synchronization endpoint when a future "
+                    "assignment exists.",
+                )
             current_assignment = session.scalar(
                 select(PortfolioAssignment).where(
                     PortfolioAssignment.customer_id == customer_uuid,
-                    PortfolioAssignment.valid_to.is_(None),
+                    PortfolioAssignment.valid_from <= assignment_time,
+                    or_(
+                        PortfolioAssignment.valid_to.is_(None),
+                        PortfolioAssignment.valid_to > assignment_time,
+                    ),
                 )
             )
-            assignment_time = datetime.now(timezone.utc)
             if current_assignment is not None and (
                 current_assignment.relationship_manager_id != rm_id
                 or current_assignment.branch_code != item.branchId
@@ -401,8 +879,15 @@ def import_customers(
                         customer_id=customer_uuid,
                         relationship_manager_id=rm_id,
                         branch_code=item.branchId,
+                        portfolio_id=f"PORTFOLIO-{item.branchId}",
+                        assignment_type="PRIMARY",
+                        is_primary=True,
                         valid_from=assignment_time,
                         valid_to=None,
+                        source_system=batch.sourceSystem,
+                        source_event_id=f"{batch.externalBatchId}:{item.customerId}",
+                        source_payload_hash=canonical_hash(item.model_dump(mode="json")),
+                        source_watermark=batch.externalBatchId,
                         actor=batch.sourceSystem,
                         reason=f"Customer import {batch.externalBatchId}",
                     )

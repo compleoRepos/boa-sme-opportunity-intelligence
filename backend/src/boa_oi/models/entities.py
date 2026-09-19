@@ -73,6 +73,8 @@ class PortfolioAssignment(Base, UUIDPrimaryKeyMixin):
     __tablename__ = "portfolio_assignments"
     __table_args__ = (
         CheckConstraint("valid_to IS NULL OR valid_to > valid_from", name="validity"),
+        CheckConstraint("assignment_type IN ('PRIMARY')", name="assignment_type"),
+        UniqueConstraint("source_system", "source_event_id"),
         Index(
             "uq_portfolio_assignments_active_customer",
             "customer_id",
@@ -102,8 +104,15 @@ class PortfolioAssignment(Base, UUIDPrimaryKeyMixin):
         ForeignKey("customer.relationship_managers.id", ondelete="RESTRICT"),
     )
     branch_code: Mapped[str] = mapped_column(String(30))
+    portfolio_id: Mapped[str] = mapped_column(String(80), default="LEGACY")
+    assignment_type: Mapped[str] = mapped_column(String(20), default="PRIMARY")
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=True)
     valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source_system: Mapped[str | None] = mapped_column(String(40))
+    source_event_id: Mapped[str | None] = mapped_column(String(120))
+    source_payload_hash: Mapped[str | None] = mapped_column(String(64))
+    source_watermark: Mapped[str | None] = mapped_column(String(120))
     actor: Mapped[str] = mapped_column(String(120))
     reason: Mapped[str] = mapped_column(Text)
 
@@ -231,6 +240,45 @@ class CustomerImportReceipt(Base, UUIDPrimaryKeyMixin):
     status: Mapped[str] = mapped_column(String(20))
     correlation_id: Mapped[str] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PortfolioSyncReceipt(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "portfolio_sync_receipts"
+    __table_args__ = (
+        UniqueConstraint("source_system", "batch_ref"),
+        {"schema": "customer"},
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(200), unique=True)
+    request_hash: Mapped[str] = mapped_column(String(64))
+    source_system: Mapped[str] = mapped_column(String(40))
+    batch_ref: Mapped[str] = mapped_column(String(120))
+    source_watermark: Mapped[str | None] = mapped_column(String(120))
+    row_count: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20))
+    response_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    correlation_id: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PortfolioSyncEvent(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "portfolio_sync_events"
+    __table_args__ = (
+        UniqueConstraint("source_system", "source_event_id"),
+        Index("ix_portfolio_sync_events_batch", "source_system", "batch_ref"),
+        {"schema": "customer"},
+    )
+    source_system: Mapped[str] = mapped_column(String(40))
+    source_event_id: Mapped[str] = mapped_column(String(120))
+    batch_ref: Mapped[str] = mapped_column(String(120))
+    payload_hash: Mapped[str] = mapped_column(String(64))
+    customer_ref: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20))
+    assignment_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    correlation_id: Mapped[str] = mapped_column(String(100))
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class AccountImportReceipt(Base, UUIDPrimaryKeyMixin):

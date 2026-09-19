@@ -1,7 +1,7 @@
 # Contrats API-first — BOA SME Opportunity Intelligence
 
 **Statut :** contrat cible du MVP  
-**Version du contrat :** `1.2.0`
+**Version du contrat :** `1.3.0`
 **Préfixe public :** `/api/v1`  
 **Préfixe interne :** `/internal/v1`  
 **Format :** REST/JSON, OpenAPI 3.0  
@@ -1233,3 +1233,59 @@ Les routes de liste, détail et explication d’Opportunity Service appliquent l
 
 [7]: ./business-rules.md "Moteur déterministe d’intelligence d’opportunités — cycle de vie pilote"
 [8]: ./lots/LOT-02-LIFECYCLE-OPPORTUNITY-ACTIONS.md "Rapport de validation du lot 2"
+
+## 18. Contrats implémentés — synchronisation portefeuille gouvernée
+
+### 18.1 Écriture datée et idempotente
+
+La route publique d’administration est `POST /api/v1/admin/portfolio-assignments/sync`. Le Gateway exige le rôle `ADMIN`, transmet `Idempotency-Key` et `X-Correlation-ID`, puis appelle `POST /internal/v1/portfolio-assignments/sync`. La route interne accepte un administrateur ou le compte de service dont le `client_id` est exactement `banking-integration-service`; un autre compte `SERVICE` reçoit `403 FORBIDDEN`.
+
+```http
+POST /api/v1/admin/portfolio-assignments/sync
+Authorization: Bearer <token-admin>
+Idempotency-Key: portfolio-sync-20260919-001
+Content-Type: application/json
+
+{
+  "contractVersion": "1.0",
+  "sourceSystem": "CRM_PORTFOLIO",
+  "batchRef": "batch-20260919-001",
+  "sourceWatermark": "2026-09-19T16:00:00Z",
+  "assignments": [
+    {
+      "sourceEventId": "evt-SME-00427-001",
+      "customerId": "SME-00427",
+      "portfolioId": "PORTFOLIO-BR-05-PILOT",
+      "relationshipManagerId": "rm-25",
+      "relationshipManagerName": "Chargé PME 25",
+      "branchId": "BR-05",
+      "assignmentType": "PRIMARY",
+      "isPrimary": true,
+      "validFrom": "2026-10-15T08:00:00Z",
+      "validTo": null,
+      "reason": "Réaffectation validée"
+    }
+  ]
+}
+```
+
+Un succès retourne `202` avec `jobId`, `received`, `applied`, `unchanged`, `replayedEvents` et le résultat de chaque événement. La transaction contenant affectation, reçu, événement source, audit et outbox est commitée avant la réponse. Le rejeu immédiat du même lot et de la même clé retourne le même `jobId` avec `replayed=true`, sans nouvelle affectation ni nouvel audit.
+
+La clé `(sourceSystem, sourceEventId)` déduplique les événements entre lots. La réutilisation d’une clé HTTP ou d’un lot source avec un contenu différent retourne `409 IDEMPOTENCY_KEY_REUSED`; la réutilisation d’un événement avec un autre contenu retourne `409 SOURCE_EVENT_REUSED`. Des advisory locks transactionnels non bloquants revendiquent le lot, chaque événement source et chaque client avant mutation. Une concurrence reçoit respectivement `409 PORTFOLIO_SYNC_IN_PROGRESS`, `409 SOURCE_EVENT_IN_PROGRESS` ou `409 CUSTOMER_ASSIGNMENT_IN_PROGRESS`, jamais un doublon silencieux. Un événement antérieur au dernier intervalle connu reçoit `409 OUT_OF_ORDER_ASSIGNMENT`; un intervalle déjà terminé reçoit `409 HISTORICAL_RECONCILIATION_REQUIRED`. Une date sans fuseau, une période inversée ou un type autre que `PRIMARY` reçoit `422`.
+
+Le flux d’affectation ne modifie jamais le référentiel d’un CC existant. Si le `relationshipManagerId` existe dans une autre agence, la requête reçoit `409 RELATIONSHIP_MANAGER_BRANCH_CONFLICT`. Une réaffirmation strictement identique de la cible et des deux bornes est classée `NO_CHANGE`; toute divergence de `validFrom` ou `validTo` sur l’intervalle existant reçoit `409 ASSIGNMENT_INTERVAL_CONFLICT`.
+
+### 18.2 Historique et date de référence
+
+`GET /api/v1/admin/portfolio-assignments?customerId=SME-00427` retourne l’historique complet. Le paramètre optionnel `asOf` sélectionne l’intervalle qui contient cet instant selon la convention demi-ouverte `[validFrom, validTo)`. La contrainte PostgreSQL `ex_portfolio_assignments_no_overlap` interdit deux intervalles superposés pour un même client. Customer, Portfolio et Opportunity utilisent la même définition temporelle : `validFrom <= maintenant` et `validTo` absent ou strictement postérieur à maintenant.
+
+Chaque affectation expose `portfolioId`, `relationshipManagerId`, `branchId`, `assignmentType`, `isPrimary`, `validFrom`, `validTo`, `sourceSystem`, `sourceEventId`, `sourceWatermark`, `actor` et `reason`. Le MVP pilote n’autorise que l’affectation `PRIMARY`; les délégations et affectations secondaires restent hors contrat.
+
+### 18.3 Provenance et audit
+
+Chaque événement accepté écrit `customer.portfolio_sync_events`, puis une entrée `audit.audit_logs` avec état avant/après, source, événement, lot, watermark, hash canonique SHA-256 et corrélation. Une modification métier produit aussi `integration.outbox_messages` avec `PORTFOLIO_ASSIGNMENT_CHANGED`. `customer.portfolio_sync_receipts` conserve la réponse rejouable du lot. Depuis la migration `0012_portfolio_sync_governance`, un trigger PostgreSQL refuse tout `UPDATE` ou `DELETE` de `audit.audit_logs`; cette garantie append-only locale ne remplace pas une politique WORM/SIEM à définir avant production.
+
+## Références de la synchronisation portefeuille
+
+[9]: ./portfolio-scoping.md "Périmètres agence, chargé de clientèle et portefeuille"
+[10]: ./lots/LOT-03-SYNCHRONISATION-PORTEFEUILLE.md "Rapport de validation du lot 3"

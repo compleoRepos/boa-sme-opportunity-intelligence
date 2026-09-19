@@ -140,9 +140,10 @@ def _principal_from_claims(claims: dict[str, Any]) -> Principal:
     realm_roles = claims.get("realm_access", {}).get("roles", [])
     resource_access = claims.get("resource_access", {})
     client_roles: list[str] = []
-    for value in resource_access.values():
-        if isinstance(value, dict):
-            client_roles.extend(value.get("roles", []))
+    audience = os.getenv("OAUTH_AUDIENCE") or os.getenv("OIDC_AUDIENCE")
+    audience_access = resource_access.get(audience, {}) if audience else {}
+    if isinstance(audience_access, dict):
+        client_roles.extend(audience_access.get("roles", []))
     scopes = str(claims.get("scope", "")).split()
     boa_scope = claims.get("boa", {}) if isinstance(claims.get("boa"), dict) else {}
     return Principal(
