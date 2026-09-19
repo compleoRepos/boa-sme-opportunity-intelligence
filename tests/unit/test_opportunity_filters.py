@@ -4,11 +4,13 @@ import json
 from collections.abc import Iterator
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from io import BytesIO
 from typing import cast
 
 import pytest
 from boa_oi.api import application_for
 from boa_oi.models.entities import (
+    AuditLog,
     Customer,
     Opportunity,
     OpportunityRule,
@@ -17,6 +19,7 @@ from boa_oi.models.entities import (
 )
 from boa_oi.technical.ids import deterministic_uuid
 from fastapi.testclient import TestClient
+from openpyxl import load_workbook
 from sqlalchemy import Table, create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -37,9 +40,10 @@ def opportunity_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
         PortfolioAssignment.__mapper__.local_table,
         OpportunityRule.__mapper__.local_table,
         Opportunity.__mapper__.local_table,
+        AuditLog.__mapper__.local_table,
     ]
     with engine.connect() as connection:
-        for schema in ("customer", "opportunity"):
+        for schema in ("customer", "opportunity", "audit"):
             connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS '{schema}'")
         for table in tables:
             cast(Table, table).create(connection)
@@ -259,3 +263,65 @@ def test_relationship_manager_without_scope_is_forbidden(
 
     assert response.status_code == 403
     assert response.json()["code"] == "PORTFOLIO_SCOPE_MISSING"
+
+
+def test_opportunity_export_is_a_real_scoped_workbook(
+    opportunity_client: TestClient,
+) -> None:
+    response = opportunity_client.get(
+        "/internal/v1/exports/opportunities.xlsx?status=OPEN&sort=-priorityScore",
+        headers={
+            **persona("RELATIONSHIP_MANAGER", relationship_manager_ids=["rm-01"]),
+            "X-Correlation-ID": "corr-export-rm-01",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    assert response.headers["content-disposition"].endswith('.xlsx"')
+    assert len(response.headers["x-content-sha256"]) == 64
+    workbook = load_workbook(BytesIO(response.content), read_only=True)
+    rows = list(workbook["Opportunités"].iter_rows(values_only=True))
+    assert [row[0] for row in rows[1:]] == ["OPP-1", "OPP-2"]
+    metadata = dict(workbook["Métadonnées"].iter_rows(min_row=2, values_only=True))
+    assert metadata["rowCount"] == 2
+    assert metadata["actorSubjectId"] == "scope-relationship_manager"
+
+    replay = opportunity_client.get(
+        "/internal/v1/exports/opportunities.xlsx?status=OPEN&sort=-priorityScore",
+        headers={
+            **persona("RELATIONSHIP_MANAGER", relationship_manager_ids=["rm-01"]),
+            "X-Correlation-ID": "corr-export-rm-01",
+        },
+    )
+    assert replay.status_code == 200
+    assert replay.headers["x-content-sha256"] != response.headers["x-content-sha256"]
+
+
+def test_opportunity_export_refuses_pagination_and_other_portfolios(
+    opportunity_client: TestClient,
+) -> None:
+    pagination = opportunity_client.get(
+        "/internal/v1/exports/opportunities.xlsx?pageSize=1",
+        headers=persona("RELATIONSHIP_MANAGER", relationship_manager_ids=["rm-01"]),
+    )
+    assert pagination.status_code == 400
+    assert pagination.json()["code"] == "UNKNOWN_FILTER"
+
+    ignored_search = opportunity_client.get(
+        "/internal/v1/exports/opportunities.xlsx?q=Entreprise",
+        headers=persona("RELATIONSHIP_MANAGER", relationship_manager_ids=["rm-01"]),
+    )
+    assert ignored_search.status_code == 400
+    assert ignored_search.json()["code"] == "UNKNOWN_FILTER"
+
+    other_scope = opportunity_client.get(
+        "/internal/v1/exports/opportunities.xlsx",
+        headers=persona("RELATIONSHIP_MANAGER", relationship_manager_ids=["rm-02"]),
+    )
+    assert other_scope.status_code == 200
+    workbook = load_workbook(BytesIO(other_scope.content), read_only=True)
+    rows = list(workbook["Opportunités"].iter_rows(values_only=True))
+    assert [row[0] for row in rows[1:]] == ["OPP-3"]

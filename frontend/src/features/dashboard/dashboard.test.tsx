@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RelationshipManagerDashboard } from '../../api/types'
+import { ToastProvider } from '../../ui'
 import { CcDashboardPage, selectCustomers } from './CcDashboardPage'
 
 const hooks = vi.hoisted(() => ({ useRelationshipManagerDashboard: vi.fn() }))
@@ -21,6 +22,8 @@ const dashboard: RelationshipManagerDashboard = {
 
 beforeEach(() => { hooks.useRelationshipManagerDashboard.mockReturnValue({ data: dashboard, isPending: false, isError: false, error: null, refetch: vi.fn() }) })
 
+const renderDashboard = () => render(<MemoryRouter><ToastProvider><CcDashboardPage /></ToastProvider></MemoryRouter>)
+
 describe('selectCustomers', () => {
   it('filtre « aujourd’hui » sur P1 et actions planifiées, trié par priorité combinée', () => {
     expect(selectCustomers(dashboard, 'today', '', 'priority').map((item) => item.customerId)).toEqual(['SME-00001', 'SME-00002'])
@@ -30,7 +33,7 @@ describe('selectCustomers', () => {
 
 describe('CcDashboardPage', () => {
   it('rend les KPI, les signaux chiffrés et le lien vers la fiche PME', () => {
-    render(<MemoryRouter><CcDashboardPage /></MemoryRouter>)
+    renderDashboard()
     expect(screen.getByRole('heading', { name: /Bon.* Ahmed/ })).toBeInTheDocument()
     expect(screen.getByText('Atlas Métal Industrie SAS')).toBeInTheDocument()
     expect(screen.getByText((_, node) => Boolean(node?.tagName === 'B' && node.textContent?.replace(/\u202f|\u00a0/g, ' ') === '+32 %'))).toBeInTheDocument()
@@ -40,7 +43,7 @@ describe('CcDashboardPage', () => {
   })
 
   it('bascule la file quand un KPI est cliqué', () => {
-    render(<MemoryRouter><CcDashboardPage /></MemoryRouter>)
+    renderDashboard()
     fireEvent.click(screen.getByRole('button', { name: /Clients PME/ }))
     expect(screen.getByText('Souss Agri SARL')).toBeInTheDocument()
   })

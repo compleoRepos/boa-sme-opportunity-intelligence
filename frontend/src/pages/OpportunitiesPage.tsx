@@ -1,9 +1,11 @@
 import { ArrowRight, Filter, X } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { buildSearch } from '../api/client'
 import { formatDate, formatNumber, formatPercent, getCustomerName, label, opportunityTone } from '../api/format'
 import { useOpportunities, useOpportunity } from '../api/hooks'
 import type { ListQuery } from '../api/types'
+import { ExportButton } from '../features/export/ExportButton'
 import { Badge, Button, ErrorState, NoResults, Panel, PriorityBadge, SkeletonStack } from '../ui'
 
 const initial = { type: '', confidence: '', priority: '', horizon: '', status: '', sort: '-priorityScore' }
@@ -14,11 +16,12 @@ export function OpportunitiesPage() {
   const [filters, setFilters] = useState(initial)
   const [cursors, setCursors] = useState<Array<string | undefined>>([undefined])
   const params = useMemo<ListQuery>(() => ({ pageSize: 25, cursor: cursors[cursors.length - 1], type: filters.type, minConfidence: filters.confidence, priorityLevel: filters.priority, horizon: filters.horizon, status: filters.status, sort: filters.sort }), [filters, cursors])
+  const exportPath = `/api/v1/exports/opportunities.xlsx${buildSearch({ type: filters.type, minConfidence: filters.confidence, priorityLevel: filters.priority, horizon: filters.horizon, status: filters.status, sort: filters.sort })}`
   const query = useOpportunities(params)
   const submit = (event: FormEvent) => { event.preventDefault(); setFilters(draft); setCursors([undefined]) }
   const set = (key: keyof typeof initial, value: string) => setDraft((current) => ({ ...current, [key]: value }))
   return <>
-    <header className="page-head"><div><p className="eyebrow accent">Pipeline commercial</p><h1>Opportunités</h1><p className="subtitle">Recommandations calculées par le moteur, filtrées et paginées côté serveur.</p></div></header>
+    <header className="page-head"><div><p className="eyebrow accent">Pipeline commercial</p><h1>Opportunités</h1><p className="subtitle">Recommandations calculées par le moteur, filtrées et paginées côté serveur.</p></div><div className="page-actions"><ExportButton path={exportPath} /></div></header>
     <Panel flush id="opportunities">
       <form className="panel-body filter-row" onSubmit={submit}>
         <label className="field">Type<select className="select sm" value={draft.type} onChange={(event) => set('type', event.target.value)}><option value="">Tous</option>{['INVESTMENT_FINANCING', 'TRADE_FINANCE', 'CASH_INVESTMENT', 'FINANCIAL_STRESS_SIGNAL'].map((value) => <option key={value} value={value}>{label(value)}</option>)}</select></label>

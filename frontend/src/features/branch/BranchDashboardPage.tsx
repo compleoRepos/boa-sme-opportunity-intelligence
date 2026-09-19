@@ -8,6 +8,7 @@ import { TimelineChart } from '../../charts/TimelineChart'
 import { CHART, OPPORTUNITY_COLORS, OUTCOME_COLORS } from '../../charts/theme'
 import { EmptyState, ErrorState, Kpi, Panel, SkeletonStack } from '../../ui'
 import { PriorityStack } from '../dashboard/CcDashboardPage'
+import { ExportButton } from '../export/ExportButton'
 
 export function BranchDashboardPage() {
   const dashboard = useBranchDashboard()
@@ -21,7 +22,7 @@ export function BranchDashboardPage() {
   return <>
     <header className="page-head" data-demo="branch">
       <div><p className="eyebrow accent">Pilotage commercial</p><h1>Agence {data.scope.branchName || data.scope.branchId}</h1><p className="subtitle"><strong>{formatNumber(data.relationshipManagers.length)} chargés de clientèle</strong> · <strong>{formatNumber(kpis.portfolioCustomers)} PME</strong> · {formatNumber(kpis.openOpportunities)} opportunités ouvertes · priorités et conversions calculées par le Gateway.</p></div>
-      <div className="page-actions"><span className="badge outline"><span className="dot live" /> Consolidé {new Date(data.generatedAt || Date.now()).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span></div>
+      <div className="page-actions"><ExportButton path="/api/v1/exports/portfolio.xlsx" label="Exporter l’agence" /><span className="badge outline"><span className="dot live" /> Consolidé {new Date(data.generatedAt || Date.now()).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span></div>
     </header>
 
     <section className="grid cols-4" aria-label="Indicateurs agence">

@@ -1,10 +1,10 @@
 # Contrats API-first — BOA SME Opportunity Intelligence
 
 **Statut :** contrat cible du MVP  
-**Version du contrat :** `1.3.0`
+**Version du contrat :** `1.4.0`
 **Préfixe public :** `/api/v1`  
 **Préfixe interne :** `/internal/v1`  
-**Format :** REST/JSON, OpenAPI 3.0  
+**Format :** REST/JSON et XLSX, OpenAPI 3.0
 **Source normative :** exigences du MVP [1]
 
 ## 1. Objet et principes contractuels
@@ -1289,3 +1289,27 @@ Chaque événement accepté écrit `customer.portfolio_sync_events`, puis une en
 
 [9]: ./portfolio-scoping.md "Périmètres agence, chargé de clientèle et portefeuille"
 [10]: ./lots/LOT-03-SYNCHRONISATION-PORTEFEUILLE.md "Rapport de validation du lot 3"
+
+## 19. Contrats implémentés — exports Excel
+
+### 19.1 Opportunités filtrées
+
+`GET /api/v1/exports/opportunities.xlsx` retourne un classeur au type `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`. La route accepte `customerId`, `type` ou `opportunityType`, `minConfidence`, `maxConfidence`, `priorityLevel`, `sector`, `customerSegment`, `relationshipManagerId`, `horizon`, `fromDate`, `toDate`, `status` et `sort`. Les paramètres de pagination `pageSize` et `cursor` sont refusés, car le fichier porte le résultat complet dans la limite du pilote.
+
+Opportunity Service applique les mêmes prédicats SQL que la liste paginée. Il limite un chargé de clientèle à ses affectations actives et un responsable d’agence à ses agences. Un filtre `relationshipManagerId` affine ce périmètre sans l’élargir. Le classeur contient les scores de confiance et de priorité, les raisons, les produits, le cycle de vie, les versions du moteur et de la règle, la politique de scoring ainsi que le mode de fallback.
+
+### 19.2 Portefeuille PME
+
+`GET /api/v1/exports/portfolio.xlsx` est réservé aux rôles `RELATIONSHIP_MANAGER` et `BRANCH_MANAGER`. Sans paramètre, il exporte le portefeuille autorisé courant. Le paramètre facultatif `relationshipManagerId` permet au responsable d’agence de sélectionner un CC de son agence. Une cible hors périmètre retourne `404`.
+
+La feuille `Portefeuille PME` expose l’identité synthétique de la PME, le secteur, le segment, le CC, l’agence, la propension POC, la priorité combinée, les opportunités ouvertes et les actions à venir. Ces colonnes servent au pilotage commercial et ne constituent aucune décision de crédit.
+
+### 19.3 Réponse, sécurité et audit
+
+Le Gateway utilise un proxy binaire dédié. Il n’interprète pas le classeur comme du JSON et n’accepte que le type MIME XLSX attendu. La réponse contient `Content-Disposition`, `Cache-Control: no-store`, `X-Correlation-ID` et `X-Content-SHA256`.
+
+Les chaînes qui pourraient être interprétées comme une formule Excel sont neutralisées. Un export synchrone est limité à 10 000 lignes. Au-delà, le service retourne `413 EXPORT_LIMIT_EXCEEDED` sans produire de fichier partiel. Chaque succès est inscrit dans `audit.audit_logs` avec acteur, ressource, corrélation, nombre de lignes et empreinte SHA-256. Aucun fichier n’est conservé côté serveur.
+
+## Référence des exports Excel
+
+[11]: ./lots/LOT-04-EXPORTS-EXCEL.md "Rapport de validation du lot 4 — exports Excel"

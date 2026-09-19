@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -74,6 +75,14 @@ class ServiceTokenProvider:
 _token_provider = ServiceTokenProvider()
 
 
+@dataclass(frozen=True)
+class ServiceBinaryResponse:
+    content: bytes
+    media_type: str
+    content_disposition: str | None
+    sha256: str | None
+
+
 async def service_request(
     method: str,
     url: str,
@@ -130,6 +139,68 @@ async def service_request(
     if response.status_code == 204:
         return None
     return response.json()
+
+
+async def service_binary_request(
+    method: str,
+    url: str,
+    *,
+    correlation_id: str,
+    params: dict[str, Any] | None = None,
+    timeout: float = 30.0,
+    incoming_authorization: str | None = None,
+    dev_principal: str | None = None,
+) -> ServiceBinaryResponse:
+    headers = {
+        "X-Correlation-ID": correlation_id,
+        "Accept": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }
+    if dev_principal and auth_disabled():
+        headers["X-Dev-Principal"] = dev_principal
+    token = None if incoming_authorization else await _token_provider.token()
+    if incoming_authorization:
+        headers["Authorization"] = incoming_authorization
+    elif token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.request(method, url, headers=headers, params=params)
+            if response.status_code == 401 and incoming_authorization is None and token:
+                _token_provider.invalidate(token)
+                token = await _token_provider.token()
+                if token:
+                    headers["Authorization"] = f"Bearer {token}"
+                response = await client.request(method, url, headers=headers, params=params)
+    except httpx.TimeoutException as exc:
+        raise Problem(504, "DEPENDENCY_TIMEOUT", "A dependent service timed out.") from exc
+    except httpx.HTTPError as exc:
+        raise Problem(503, "DEPENDENCY_UNAVAILABLE", "A dependent service is unavailable.") from exc
+    if response.status_code >= 400:
+        try:
+            body = response.json()
+        except ValueError:
+            body = {}
+        code = body.get("code") or "DEPENDENCY_ERROR"
+        message = body.get("message") or "A dependent service rejected the request."
+        if response.status_code in {401, 403, 404, 409, 413, 422}:
+            raise Problem(response.status_code, code, message, details=body.get("details"))
+        if response.status_code == 504:
+            raise Problem(504, "DEPENDENCY_TIMEOUT", message)
+        raise Problem(502, "DEPENDENCY_UNAVAILABLE", message)
+    media_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip()
+    expected = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    if media_type != expected:
+        raise Problem(
+            502,
+            "DEPENDENCY_INVALID_RESPONSE",
+            "A dependent service returned an unexpected export format.",
+        )
+    return ServiceBinaryResponse(
+        content=response.content,
+        media_type=media_type,
+        content_disposition=response.headers.get("Content-Disposition"),
+        sha256=response.headers.get("X-Content-SHA256"),
+    )
 
 
 class HttpBankingAdapter:
@@ -234,4 +305,10 @@ class HttpBankingAdapter:
         )
 
 
-__all__ = ["HttpBankingAdapter", "ServiceTokenProvider", "service_request"]
+__all__ = [
+    "HttpBankingAdapter",
+    "ServiceBinaryResponse",
+    "ServiceTokenProvider",
+    "service_binary_request",
+    "service_request",
+]

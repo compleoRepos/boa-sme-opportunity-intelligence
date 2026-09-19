@@ -137,3 +137,74 @@ def test_malformed_service_token_response_is_controlled(monkeypatch) -> None:
 
     assert captured.value.status_code == 503
     assert captured.value.code == "AUTH_PROVIDER_UNAVAILABLE"
+
+
+class FakeBinaryAsyncClient:
+    media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+
+    async def __aenter__(self) -> FakeBinaryAsyncClient:
+        return self
+
+    async def __aexit__(self, *args: Any) -> None:
+        del args
+
+    async def request(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers: dict[str, str],
+        params: dict[str, Any] | None,
+    ) -> httpx.Response:
+        del headers, params
+        return httpx.Response(
+            200,
+            content=b"PK\x03\x04workbook",
+            headers={
+                "Content-Type": type(self).media_type,
+                "Content-Disposition": 'attachment; filename="export.xlsx"',
+                "X-Content-SHA256": "b" * 64,
+            },
+            request=httpx.Request(method, url),
+        )
+
+
+def test_service_binary_request_returns_controlled_export(monkeypatch) -> None:
+    monkeypatch.setenv("BOA_AUTH_DISABLED", "true")
+    monkeypatch.setattr(http_clients.httpx, "AsyncClient", FakeBinaryAsyncClient)
+    FakeBinaryAsyncClient.media_type = (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    result = asyncio.run(
+        http_clients.service_binary_request(
+            "GET",
+            "http://opportunity/internal/v1/exports/opportunities.xlsx",
+            correlation_id="corr-binary",
+        )
+    )
+
+    assert result.content.startswith(b"PK")
+    assert result.content_disposition == 'attachment; filename="export.xlsx"'
+    assert result.sha256 == "b" * 64
+
+
+def test_service_binary_request_rejects_unexpected_media_type(monkeypatch) -> None:
+    monkeypatch.setenv("BOA_AUTH_DISABLED", "true")
+    monkeypatch.setattr(http_clients.httpx, "AsyncClient", FakeBinaryAsyncClient)
+    FakeBinaryAsyncClient.media_type = "text/html"
+
+    with pytest.raises(Problem) as captured:
+        asyncio.run(
+            http_clients.service_binary_request(
+                "GET",
+                "http://opportunity/internal/v1/exports/opportunities.xlsx",
+                correlation_id="corr-invalid-binary",
+            )
+        )
+
+    assert captured.value.status_code == 502
+    assert captured.value.code == "DEPENDENCY_INVALID_RESPONSE"

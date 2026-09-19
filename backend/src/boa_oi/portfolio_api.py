@@ -4,12 +4,15 @@ from collections import Counter
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from uuid import uuid4
 
-from fastapi import Depends, Request
+from fastapi import Depends, Query, Request, Response
 from sqlalchemy import Select, and_, func, inspect, or_, select
 from sqlalchemy.orm import Session, aliased
 
+from boa_oi.export_xlsx import MAX_EXPORT_ROWS, XLSX_MIME, build_workbook, portfolio_columns
 from boa_oi.models.entities import (
+    AuditLog,
     Customer,
     Opportunity,
     OpportunityAction,
@@ -20,10 +23,12 @@ from boa_oi.models.entities import (
 from boa_oi.platform import (
     Principal,
     Problem,
+    correlation_id,
     create_service_app,
     current_principal,
     get_session,
     not_found,
+    reject_unknown_filters,
     require_roles,
 )
 from boa_oi.technical.reference import branch_label
@@ -371,6 +376,89 @@ def relationship_manager_dashboard(
         generatedAt=datetime.now(timezone.utc).isoformat(),
     )
     return payload
+
+
+@app.get(
+    f"{PREFIX}/exports/portfolio.xlsx",
+    dependencies=[Depends(require_roles(*COMMERCIAL_READ_ROLES))],
+    tags=["Exports"],
+)
+def export_portfolio(
+    request: Request,
+    relationship_manager_id: str | None = Query(
+        default=None,
+        alias="relationshipManagerId",
+        min_length=1,
+        max_length=120,
+    ),
+    principal: Principal = Depends(current_principal),
+    session: Session = Depends(get_session),
+) -> Response:
+    reject_unknown_filters(request, {"relationshipManagerId"})
+    rows = list(
+        session.execute(
+            _scoped_customers(
+                session,
+                principal,
+                relationship_manager_id=relationship_manager_id,
+            ).limit(MAX_EXPORT_ROWS + 1)
+        ).tuples()
+    )
+    if relationship_manager_id and not rows:
+        raise not_found("Relationship manager")
+    if len(rows) > MAX_EXPORT_ROWS:
+        raise Problem(
+            413,
+            "EXPORT_LIMIT_EXCEEDED",
+            f"The pilot export is limited to {MAX_EXPORT_ROWS} rows.",
+        )
+    payload = _portfolio_payload(session, rows)
+    trace_id = correlation_id(request)
+    export_id = str(uuid4())
+    artifact = build_workbook(
+        filename=f"portefeuille-pme-{datetime.now(timezone.utc).date().isoformat()}.xlsx",
+        sheet_name="Portefeuille PME",
+        columns=portfolio_columns(),
+        rows=payload["portfolio"],
+        metadata={
+            "exportId": export_id,
+            "exportType": "PORTFOLIO",
+            "actorSubjectId": principal.subject,
+            "scope": {
+                "relationshipManagerIds": principal.relationship_manager_ids,
+                "branchIds": principal.branch_ids,
+                "requestedRelationshipManagerId": relationship_manager_id,
+            },
+            "correlationId": trace_id,
+        },
+    )
+    session.add(
+        AuditLog(
+            id=uuid4(),
+            actor_subject_id=principal.subject,
+            service_name="portfolio-service",
+            action="EXPORT_XLSX_SUCCEEDED",
+            resource_type="PORTFOLIO_EXPORT",
+            resource_id=export_id,
+            correlation_id=trace_id,
+            result="SUCCESS",
+            metadata_json={
+                "rowCount": artifact.row_count,
+                "sha256": artifact.sha256,
+                "relationshipManagerId": relationship_manager_id,
+            },
+        )
+    )
+    return Response(
+        artifact.content,
+        media_type=XLSX_MIME,
+        headers={
+            "Content-Disposition": f'attachment; filename="{artifact.filename}"',
+            "Cache-Control": "no-store",
+            "X-Content-SHA256": artifact.sha256,
+            "X-Correlation-ID": trace_id,
+        },
+    )
 
 
 def _counter_payload(counter: Counter[str], key: str) -> list[dict[str, Any]]:

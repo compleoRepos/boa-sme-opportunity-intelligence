@@ -5,6 +5,7 @@ import { formatNumber, formatPercent } from '../../api/format'
 import { useRelationshipManagerPortfolio } from '../../api/hooks'
 import { ErrorState, Kpi, NoResults, Panel, Segmented, SkeletonStack } from '../../ui'
 import { PriorityStack, selectCustomers } from '../dashboard/CcDashboardPage'
+import { ExportButton } from '../export/ExportButton'
 import { PriorityRow } from '../dashboard/PriorityRow'
 
 /** Drill-down responsable d'agence : Agence → CC → portefeuille → PME → opportunité. */
@@ -19,7 +20,7 @@ export function RmPortfolioPage() {
   const data = portfolio.data
   return <>
     <Link to="/" className="btn ghost sm" style={{ justifySelf: 'start' }}><ArrowLeft size={14} /> Pilotage agence</Link>
-    <header className="page-head"><div><p className="eyebrow accent">Portefeuille d’un chargé de clientèle</p><h1>{data.scope.relationshipManagerName || relationshipManagerId}</h1><p className="subtitle">Agence {data.scope.branchName} · {formatNumber(data.kpis.portfolioCustomers)} PME affectées · lecture responsable d’agence, périmètre contrôlé par le Gateway.</p></div></header>
+    <header className="page-head"><div><p className="eyebrow accent">Portefeuille d’un chargé de clientèle</p><h1>{data.scope.relationshipManagerName || relationshipManagerId}</h1><p className="subtitle">Agence {data.scope.branchName} · {formatNumber(data.kpis.portfolioCustomers)} PME affectées · lecture responsable d’agence, périmètre contrôlé par le Gateway.</p></div><div className="page-actions"><ExportButton path={`/api/v1/exports/portfolio.xlsx?relationshipManagerId=${encodeURIComponent(relationshipManagerId)}`} /></div></header>
     <section className="grid cols-4">
       <Kpi label="PME affectées" value={data.kpis.portfolioCustomers} tone="navy" icon={<Building2 size={20} />} onClick={() => setFilter('all')} active={filter === 'all'} />
       <Kpi label="Priorités P1" value={data.kpis.highPriorityCustomers} tone="red" icon={<Flame size={20} />} note={formatPercent(data.kpis.portfolioCustomers ? data.kpis.highPriorityCustomers / data.kpis.portfolioCustomers : 0)} onClick={() => setFilter('P1')} active={filter === 'P1'} />

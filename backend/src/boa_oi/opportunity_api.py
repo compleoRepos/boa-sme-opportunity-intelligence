@@ -6,15 +6,21 @@ import os
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import Depends, Header, Query, Request, status
+from fastapi import Depends, Header, Query, Request, Response, status
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import and_, func, inspect, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, aliased
 
 from boa_oi.audit import DecisionAuditBuilder
+from boa_oi.export_xlsx import (
+    MAX_EXPORT_ROWS,
+    XLSX_MIME,
+    build_workbook,
+    opportunity_columns,
+)
 from boa_oi.http_clients import service_request
 from boa_oi.models.entities import (
     AuditLog,
@@ -756,6 +762,96 @@ def list_opportunities(
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     return list_for(request, session, principal, page_size=page_size, cursor=cursor)
+
+
+@app.get(
+    f"{PREFIX}/exports/opportunities.xlsx",
+    dependencies=[Depends(require_roles(*READ_ROLES))],
+    tags=["Exports"],
+)
+def export_opportunities(
+    request: Request,
+    principal: Principal = Depends(current_principal),
+    session: Session = Depends(get_session),
+) -> Response:
+    reject_unknown_filters(
+        request,
+        {
+            "customerId",
+            "type",
+            "opportunityType",
+            "minConfidence",
+            "maxConfidence",
+            "priorityLevel",
+            "sector",
+            "customerSegment",
+            "relationshipManagerId",
+            "horizon",
+            "fromDate",
+            "toDate",
+            "status",
+            "sort",
+        },
+    )
+    result = list_for(
+        request,
+        session,
+        principal,
+        page_size=MAX_EXPORT_ROWS,
+        cursor=None,
+    )
+    if result["meta"]["hasMore"]:
+        raise Problem(
+            413,
+            "EXPORT_LIMIT_EXCEEDED",
+            f"The pilot export is limited to {MAX_EXPORT_ROWS} rows.",
+        )
+    trace_id = correlation_id(request)
+    export_id = str(uuid4())
+    artifact = build_workbook(
+        filename=f"opportunites-{datetime.now(timezone.utc).date().isoformat()}.xlsx",
+        sheet_name="Opportunités",
+        columns=opportunity_columns(),
+        rows=result["data"],
+        metadata={
+            "exportId": export_id,
+            "exportType": "OPPORTUNITIES",
+            "actorSubjectId": principal.subject,
+            "scope": {
+                "relationshipManagerIds": principal.relationship_manager_ids,
+                "branchIds": principal.branch_ids,
+            },
+            "filters": dict(request.query_params),
+            "correlationId": trace_id,
+        },
+    )
+    session.add(
+        AuditLog(
+            id=uuid4(),
+            actor_subject_id=principal.subject,
+            service_name="opportunity-service",
+            action="EXPORT_XLSX_SUCCEEDED",
+            resource_type="OPPORTUNITY_EXPORT",
+            resource_id=export_id,
+            correlation_id=trace_id,
+            result="SUCCESS",
+            metadata_json={
+                "rowCount": artifact.row_count,
+                "sha256": artifact.sha256,
+                "filters": dict(request.query_params),
+            },
+        )
+    )
+    return Response(
+        artifact.content,
+        media_type=XLSX_MIME,
+        headers={
+            "Content-Disposition": f'attachment; filename="{artifact.filename}"',
+            "Cache-Control": "no-store",
+            "X-Content-SHA256": artifact.sha256,
+            "X-Correlation-ID": trace_id,
+        },
+    )
 
 
 @app.get(

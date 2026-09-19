@@ -73,3 +73,47 @@ export async function apiRequest<T>(path: string, init: RequestInit & { idempote
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
+
+export async function apiDownload(path: string): Promise<{ filename: string; correlationId?: string }> {
+  const headers = new Headers()
+  headers.set('Accept', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  headers.set('X-Correlation-ID', uuid())
+  const token = tokenProvider()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  const persona = devPersonaProvider()
+  if (persona && !token) headers.set('X-Dev-Principal', persona)
+
+  let response: Response
+  try {
+    response = await fetch(`${baseUrl}${path}`, { headers })
+  } catch {
+    throw new ApiError(0, { code: 'NETWORK_ERROR', message: 'Le Gateway est injoignable. Vérifiez la connexion et réessayez.' })
+  }
+  if (response.status === 401) authenticationFailure()
+  if (!response.ok) {
+    let problem: ApiProblem = { code: 'HTTP_ERROR', message: `La requête a échoué (${response.status}).` }
+    try {
+      problem = await response.json() as ApiProblem
+    } catch {
+      // Une dépendance indisponible peut répondre sans corps JSON.
+    }
+    problem.correlationId ||= response.headers.get('X-Correlation-ID') || undefined
+    throw new ApiError(response.status, problem)
+  }
+
+  const disposition = response.headers.get('Content-Disposition') || ''
+  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || 'export.xlsx'
+  const url = URL.createObjectURL(await response.blob())
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.style.display = 'none'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+  return {
+    filename,
+    correlationId: response.headers.get('X-Correlation-ID') || undefined,
+  }
+}

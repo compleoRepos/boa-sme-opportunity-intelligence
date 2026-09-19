@@ -72,6 +72,8 @@ GRANT USAGE ON SCHEMA audit TO action_service;
 GRANT SELECT, INSERT ON audit.audit_logs TO action_service;
 GRANT USAGE ON SCHEMA audit TO customer_service;
 GRANT SELECT, INSERT ON audit.audit_logs TO customer_service;
+GRANT USAGE ON SCHEMA audit TO portfolio_service;
+GRANT SELECT, INSERT ON audit.audit_logs TO portfolio_service;
 GRANT USAGE ON SCHEMA integration TO customer_service;
 GRANT SELECT, INSERT ON integration.outbox_messages TO customer_service;
 GRANT USAGE ON SCHEMA customer TO opportunity_service;

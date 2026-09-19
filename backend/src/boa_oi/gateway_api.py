@@ -5,10 +5,10 @@ from datetime import date
 from typing import Annotated, Any
 
 from fastapi import Depends, Header, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from boa_oi.http_clients import service_request
+from boa_oi.http_clients import service_binary_request, service_request
 from boa_oi.platform import (
     ADMIN_ROLES,
     COMMERCIAL_ROLES,
@@ -114,6 +114,41 @@ async def proxy(
         status_code=status_code,
         headers={"X-Correlation-ID": correlation_id(request)},
     )
+
+
+async def binary_proxy(request: Request, service: str, path: str) -> Response:
+    result = await service_binary_request(
+        request.method,
+        f"{target(service)}/internal/v1/{path.lstrip('/')}",
+        correlation_id=correlation_id(request),
+        params=dict(request.query_params),
+        incoming_authorization=request.headers.get("Authorization"),
+        dev_principal=request.headers.get("X-Dev-Principal"),
+    )
+    headers = {
+        "Content-Disposition": result.content_disposition or 'attachment; filename="export.xlsx"',
+        "Cache-Control": "no-store",
+        "X-Correlation-ID": correlation_id(request),
+    }
+    if result.sha256:
+        headers["X-Content-SHA256"] = result.sha256
+    return Response(result.content, media_type=result.media_type, headers=headers)
+
+
+@app.get("/api/v1/exports/opportunities.xlsx", tags=["Exports"])
+async def export_opportunities_xlsx(
+    request: Request,
+    _principal: Principal = Depends(require_roles(*READ_ROLES)),
+) -> Response:
+    return await binary_proxy(request, "opportunity", "exports/opportunities.xlsx")
+
+
+@app.get("/api/v1/exports/portfolio.xlsx", tags=["Exports"])
+async def export_portfolio_xlsx(
+    request: Request,
+    _principal: Principal = Depends(require_roles("RELATIONSHIP_MANAGER", "BRANCH_MANAGER")),
+) -> Response:
+    return await binary_proxy(request, "portfolio", "exports/portfolio.xlsx")
 
 
 # Public GET routes consumed by frontend/src/api/hooks.ts and required by docs/api.md.

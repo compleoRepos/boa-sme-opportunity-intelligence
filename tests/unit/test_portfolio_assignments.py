@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+from io import BytesIO
 from typing import cast
 
 import pytest
+from boa_oi import portfolio_api
 from boa_oi.api import application_for
 from boa_oi.models.entities import (
+    AuditLog,
     Customer,
     Opportunity,
     OpportunityAction,
@@ -16,6 +19,7 @@ from boa_oi.models.entities import (
 from boa_oi.platform import Principal, current_principal
 from boa_oi.technical.ids import deterministic_uuid
 from fastapi.testclient import TestClient
+from openpyxl import load_workbook
 from sqlalchemy import Table, create_engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
@@ -59,10 +63,15 @@ def factory(*, with_assignments: bool = True):
                 PropensityScoreRecord.__mapper__.local_table,
                 Opportunity.__mapper__.local_table,
                 OpportunityAction.__mapper__.local_table,
+                AuditLog.__mapper__.local_table,
             ]
         )
     with engine.connect() as connection:
-        schemas = ("customer", "ml", "opportunity", "action") if with_assignments else ("customer",)
+        schemas = (
+            ("customer", "ml", "opportunity", "action", "audit")
+            if with_assignments
+            else ("customer",)
+        )
         for schema in schemas:
             connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS '{schema}'")
         for table in tables:
@@ -254,3 +263,49 @@ def test_assignment_validity_metadata_is_persisted():
     assert history[1].valid_to is None
     assert history[1].actor == "portfolio-admin"
     assert history[1].reason == "Réaffectation vers la nouvelle agence"
+
+
+def test_portfolio_export_uses_active_assignment_and_hides_other_branch(monkeypatch):
+    monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
+    session_factory = factory()
+    seed_reassigned_customer(session_factory)
+
+    new_cc = client_for(
+        "portfolio-service",
+        session_factory,
+        principal("RELATIONSHIP_MANAGER", managers=("rm-new",), branches=("BR-02",)),
+    )
+    response = new_cc.get(
+        "/internal/v1/exports/portfolio.xlsx",
+        headers={"X-Correlation-ID": "corr-portfolio-export"},
+    )
+    assert response.status_code == 200
+    workbook = load_workbook(BytesIO(response.content), read_only=True)
+    rows = list(workbook["Portefeuille PME"].iter_rows(values_only=True))
+    assert [row[0] for row in rows[1:]] == ["SME-00999"]
+    assert rows[1][4:7] == ("rm-new", "Nouveau CC", "Casablanca Sidi Maârouf")
+
+    old_branch = client_for(
+        "portfolio-service",
+        session_factory,
+        principal("BRANCH_MANAGER", branches=("BR-01",)),
+    )
+    denied = old_branch.get("/internal/v1/exports/portfolio.xlsx?relationshipManagerId=rm-new")
+    assert denied.status_code == 404
+
+
+def test_portfolio_export_rejects_volume_before_building_payload(monkeypatch):
+    monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
+    monkeypatch.setattr(portfolio_api, "MAX_EXPORT_ROWS", 0)
+    session_factory = factory()
+    seed_reassigned_customer(session_factory)
+    client = client_for(
+        "portfolio-service",
+        session_factory,
+        principal("RELATIONSHIP_MANAGER", managers=("rm-new",), branches=("BR-02",)),
+    )
+
+    response = client.get("/internal/v1/exports/portfolio.xlsx")
+
+    assert response.status_code == 413
+    assert response.json()["code"] == "EXPORT_LIMIT_EXCEEDED"

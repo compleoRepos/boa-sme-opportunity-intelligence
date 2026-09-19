@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { formatNumber, formatPercent, label } from '../../api/format'
 import { useRelationshipManagerDashboard } from '../../api/hooks'
 import type { PortfolioCustomerSummary, RelationshipManagerDashboard } from '../../api/types'
+import { ExportButton } from '../export/ExportButton'
 import { EmptyState, ErrorState, Kpi, NoResults, Panel, Segmented, SkeletonStack } from '../../ui'
 import { PriorityRow } from './PriorityRow'
 
@@ -57,7 +58,7 @@ export function CcDashboardPage() {
         <h1>{greeting()} {scope.relationshipManagerName?.split(' ')[0] || ''}</h1>
         <p className="subtitle">Agence {scope.branchName || scope.branchId} · Votre portefeuille PME — <strong>{formatNumber(kpis.portfolioCustomers)} clients</strong>, dont <strong>{formatNumber(withSignal)}</strong> présentent au moins un signal commercial.</p>
       </div>
-      <div className="page-actions"><span className="badge outline"><span className="dot live" /> Données Gateway · {new Date(data.generatedAt || Date.now()).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span></div>
+      <div className="page-actions"><ExportButton path="/api/v1/exports/portfolio.xlsx" /><span className="badge outline"><span className="dot live" /> Données Gateway · {new Date(data.generatedAt || Date.now()).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span></div>
     </header>
 
     <section className="grid cols-4" aria-label="Indicateurs clés" data-demo="kpis">
