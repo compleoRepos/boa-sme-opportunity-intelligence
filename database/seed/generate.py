@@ -10,6 +10,7 @@ from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
 
+from boa_oi.catalog import BOA_PRODUCTS, PRODUCTS_BY_CODE, demo_ownerships
 from boa_oi.models.entities import (
     Account,
     AccountBalance,
@@ -27,7 +28,7 @@ from boa_oi.models.entities import (
 )
 from boa_oi.technical.config import load_rule_set
 from boa_oi.technical.ids import deterministic_uuid
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -62,17 +63,6 @@ SCENARIOS = (
     "FALSE_POSITIVE_SEASONAL",
     "FALSE_POSITIVE_ONE_OFF",
 )
-PRODUCTS = (
-    ("INVESTMENT_FINANCING", "Investment Financing", "FINANCING"),
-    ("WORKING_CAPITAL_FACILITY", "Working Capital Facility", "FINANCING"),
-    ("OVERDRAFT", "Overdraft", "FINANCING"),
-    ("TRADE_FINANCE", "Trade Finance", "TRADE"),
-    ("CASH_MANAGEMENT", "Cash Management", "CASH"),
-    ("TERM_DEPOSIT", "Term Deposit", "INVESTMENT"),
-    ("LIQUIDITY_INVESTMENT", "Liquidity Investment", "INVESTMENT"),
-)
-
-
 @dataclass(frozen=True)
 class GeneratedRow:
     table: str
@@ -224,6 +214,84 @@ def manifest() -> dict:
     }
 
 
+PRODUCT_UPDATABLE_FIELDS = (
+    "name",
+    "category",
+    "family",
+    "description",
+    "source_url",
+    "eligibility_rules_json",
+    "target_segments_json",
+    "active",
+)
+
+
+def product_row(code: str) -> dict:
+    item = PRODUCTS_BY_CODE[code]
+    return {
+        "id": deterministic_uuid("product", code),
+        "product_code": code,
+        "name": item.name,
+        "category": item.category,
+        "family": item.family,
+        "description": item.description,
+        "source_url": item.source_url,
+        "eligibility_rules_json": dict(item.eligibility),
+        "target_segments_json": list(item.target_segments),
+        "currencies_json": ["MAD"],
+        "active": True,
+        "created_by": "demo-data-generator",
+    }
+
+
+def seed_products(session: Session) -> dict[str, dict]:
+    """Insère ou met à jour le catalogue BANK OF AFRICA ; renvoie les lignes par code."""
+    rows = {item.code: product_row(item.code) for item in BOA_PRODUCTS}
+    for row in rows.values():
+        session.execute(
+            pg_insert(Product)
+            .values(**row)
+            .on_conflict_do_update(
+                index_elements=[Product.product_code],
+                set_={key: row[key] for key in PRODUCT_UPDATABLE_FIELDS},
+            )
+        )
+    # Les anciens codes génériques (catalogue de démonstration initial) sont désactivés,
+    # jamais supprimés : des détentions ou des opportunités peuvent encore y renvoyer.
+    session.execute(
+        update(Product).where(Product.product_code.not_in(list(rows))).values(active=False)
+    )
+    return rows
+
+
+def seed_products_only(database_url: str) -> dict:
+    engine = create_engine(database_url, pool_pre_ping=True)
+    with Session(engine) as session, session.begin():
+        rows = seed_products(session)
+        session.execute(delete(CustomerProduct))
+        count = 0
+        for index in range(1, CUSTOMER_COUNT + 1):
+            ref = f"SME-{index:05d}"
+            customer_id = deterministic_uuid("customer", ref)
+            for code in demo_ownerships(ref, scenario_for(index)):
+                product = rows[code]
+                session.execute(
+                    pg_insert(CustomerProduct)
+                    .values(
+                        id=deterministic_uuid("customer-product", customer_id, product["id"]),
+                        customer_id=customer_id,
+                        product_id=product["id"],
+                        status="ACTIVE",
+                        opened_on=START_DATE - timedelta(days=200),
+                        utilization_ratio=Decimal("0.55"),
+                        created_by="demo-data-generator",
+                    )
+                    .on_conflict_do_nothing(index_elements=[CustomerProduct.id])
+                )
+                count += 1
+    return {"products": len(rows), "ownerships": count}
+
+
 def seed(database_url: str, batch_size: int = 1000) -> dict:
     engine = create_engine(database_url, pool_pre_ping=True)
     rules = load_rule_set(Path(__file__).with_name("rules.yaml"))
@@ -257,25 +325,7 @@ def seed(database_url: str, batch_size: int = 1000) -> dict:
                 .values(**row)
                 .on_conflict_do_nothing(index_elements=[RelationshipManager.subject_id])
             )
-        product_rows = []
-        for code, name, category in PRODUCTS:
-            row = {
-                "id": deterministic_uuid("product", code),
-                "product_code": code,
-                "name": name,
-                "category": category,
-                "eligibility_rules_json": {},
-                "target_segments_json": ["SMALL", "MEDIUM"],
-                "currencies_json": ["MAD"],
-                "active": True,
-                "created_by": "demo-data-generator",
-            }
-            product_rows.append(row)
-            session.execute(
-                pg_insert(Product)
-                .values(**row)
-                .on_conflict_do_nothing(index_elements=[Product.product_code])
-            )
+        product_rows = seed_products(session)
         config_row = {
             "id": deterministic_uuid("config", rules.config_id, rules.rule_set_version),
             "config_id": rules.config_id,
@@ -366,27 +416,21 @@ def seed(database_url: str, batch_size: int = 1000) -> dict:
                 )
                 .on_conflict_do_nothing(index_elements=[Account.account_ref])
             )
-            for product in product_rows:
-                if int(
-                    hashlib.sha256(f"{ref}|{product['product_code']}".encode()).hexdigest(),
-                    16,
-                ) % 5 == 0 and not (
-                    scenario == "INTERNATIONAL_GROWTH"
-                    and product["product_code"] == "TRADE_FINANCE"
-                ):
-                    session.execute(
-                        pg_insert(CustomerProduct)
-                        .values(
-                            id=deterministic_uuid("customer-product", customer_id, product["id"]),
-                            customer_id=customer_id,
-                            product_id=product["id"],
-                            status="ACTIVE",
-                            opened_on=START_DATE - timedelta(days=200),
-                            utilization_ratio=Decimal("0.55"),
-                            created_by="demo-data-generator",
-                        )
-                        .on_conflict_do_nothing(index_elements=[CustomerProduct.id])
+            for code in demo_ownerships(ref, scenario):
+                product = product_rows[code]
+                session.execute(
+                    pg_insert(CustomerProduct)
+                    .values(
+                        id=deterministic_uuid("customer-product", customer_id, product["id"]),
+                        customer_id=customer_id,
+                        product_id=product["id"],
+                        status="ACTIVE",
+                        opened_on=START_DATE - timedelta(days=200),
+                        utilization_ratio=Decimal("0.55"),
+                        created_by="demo-data-generator",
                     )
+                    .on_conflict_do_nothing(index_elements=[CustomerProduct.id])
+                )
             for row in generate_transaction_rows(index, customer_id, account_id):
                 tx_buffer.append(row)
                 tx_count += 1
@@ -461,12 +505,20 @@ def main():
     parser.add_argument("--database-url")
     parser.add_argument("--manifest-only", action="store_true")
     parser.add_argument("--batch-size", type=int, default=1000)
+    parser.add_argument(
+        "--products-only",
+        action="store_true",
+        help="Recharge uniquement le catalogue produit et les détentions de démonstration.",
+    )
     args = parser.parse_args()
     if args.manifest_only:
         print(manifest())
         return
     if not args.database_url:
         parser.error("--database-url or --manifest-only is required")
+    if args.products_only:
+        print(seed_products_only(args.database_url))
+        return
     print(seed(args.database_url, args.batch_size))
 
 

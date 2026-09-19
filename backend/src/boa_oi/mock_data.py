@@ -7,6 +7,8 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID
 
+from boa_oi.catalog import PRODUCTS, PRODUCTS_BY_FAMILY  # noqa: F401
+
 START_DATE = date(2025, 10, 1)
 END_DATE = date(2026, 9, 30)
 SEED = "boa-sme-oi-2026-v1"
@@ -29,15 +31,6 @@ SCENARIOS = (
     "NORMAL_CUSTOMER",
     "FALSE_POSITIVE_SEASONAL",
     "FALSE_POSITIVE_ONE_OFF",
-)
-PRODUCTS = (
-    ("INVESTMENT_FINANCING", "Investment Financing", "FINANCING"),
-    ("WORKING_CAPITAL_FACILITY", "Working Capital Facility", "FINANCING"),
-    ("OVERDRAFT", "Overdraft", "FINANCING"),
-    ("TRADE_FINANCE", "Trade Finance", "TRADE"),
-    ("CASH_MANAGEMENT", "Cash Management", "CASH"),
-    ("TERM_DEPOSIT", "Term Deposit", "INVESTMENT"),
-    ("LIQUIDITY_INVESTMENT", "Liquidity Investment", "INVESTMENT"),
 )
 
 

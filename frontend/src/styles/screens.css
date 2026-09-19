@@ -1257,3 +1257,8 @@ body[data-demo-target="models"] [data-demo="models"] {
     display: none;
   }
 }
+
+/* Catalogue produit dans le bloc ALORS : regroupement par famille BOA */
+.product-family { display: grid; gap: 4px; }
+.product-family + .product-family { margin-top: 6px; }
+.product-family .eyebrow { font-size: 10px; }

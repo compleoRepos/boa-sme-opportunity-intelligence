@@ -28,3 +28,7 @@ Les règles Rule Studio de démonstration (`database/seed/rule-studio.json`) se 
 Consultez `architecture/architecture.md`, `docs/api.md`, `docs/ux-architecture.md`, `docs/demo-scenario.md`, `docs/ml-engine.md`, `docs/portfolio-scoping.md` et `docs/test-plan.md`.
 
 Toutes les données et identités de démonstration sont synthétiques.
+
+### Catalogue produit BANK OF AFRICA
+
+Le catalogue commercial (28 produits entreprises relevés sur bankofafrica.ma, regroupés en 7 familles) est décrit dans [`docs/catalogue-produits.md`](docs/catalogue-produits.md). Rechargement seul : `python database/seed/generate.py --database-url "$DATABASE_URL" --products-only`.

@@ -36,3 +36,17 @@ describe('Rule Studio — lecture et édition', () => {
     expect(screen.getAllByLabelText(/Valeur condition/)[0]).toHaveValue(30)
   })
 })
+
+describe('groupByFamily', () => {
+  it('regroupe les produits BOA par famille dans l’ordre du catalogue', async () => {
+    const { groupByFamily } = await import('./RuleBlocks')
+    const groups = groupByFamily([
+      { productId: 'BOA_OPCVM', name: 'OPCVM', family: 'LIQUIDITY_INVESTMENT' },
+      { productId: 'BOA_BAIL_ENTREPRISE', name: 'Bail Entreprise', family: 'INVESTMENT_FINANCING' },
+      { productId: 'BOA_CREDIT_MLTD_DIRECT', name: 'Crédit MLTD Direct', family: 'INVESTMENT_FINANCING' },
+      { productId: 'LEGACY', name: 'Ancien produit' },
+    ])
+    expect(groups.map(([family]) => family)).toEqual(['INVESTMENT_FINANCING', 'LIQUIDITY_INVESTMENT', 'LEGACY'])
+    expect(groups[0]?.[1].map((item) => item.name)).toEqual(['Bail Entreprise', 'Crédit MLTD Direct'])
+  })
+})

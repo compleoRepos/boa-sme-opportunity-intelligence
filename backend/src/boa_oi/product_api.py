@@ -35,6 +35,9 @@ class ProductIn(BaseModel):
     productId: str
     name: str
     category: str
+    family: str | None = None
+    description: str | None = None
+    sourceUrl: str | None = None
     eligibilityRules: dict[str, Any] = Field(default_factory=dict)
     targetSegment: list[str] = Field(default_factory=lambda: ["SMALL", "MEDIUM"])
     currency: list[str] = Field(default_factory=lambda: ["MAD"])
@@ -60,6 +63,9 @@ def serialize(product: Product) -> dict[str, Any]:
         "productId": product.product_code,
         "name": product.name,
         "category": product.category,
+        "family": product.family or product.product_code,
+        "description": product.description,
+        "sourceUrl": product.source_url,
         "eligibilityRules": product.eligibility_rules_json,
         "targetSegment": product.target_segments_json,
         "currency": product.currencies_json,
@@ -251,6 +257,9 @@ def import_products(
                 product_code=product_item.productId,
                 name=product_item.name,
                 category=product_item.category,
+                family=product_item.family,
+                description=product_item.description,
+                source_url=product_item.sourceUrl,
                 eligibility_rules_json=product_item.eligibilityRules,
                 target_segments_json=product_item.targetSegment,
                 currencies_json=product_item.currency,
@@ -262,6 +271,9 @@ def import_products(
                 set_={
                     "name": product_item.name,
                     "category": product_item.category,
+                    "family": product_item.family,
+                    "description": product_item.description,
+                    "source_url": product_item.sourceUrl,
                     "active": product_item.active,
                 },
             )

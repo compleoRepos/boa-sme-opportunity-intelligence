@@ -1,5 +1,22 @@
+export const PRODUCT_FAMILIES: Array<[string, string]> = [
+  ['INVESTMENT_FINANCING', 'Financement de l’investissement'],
+  ['WORKING_CAPITAL_FACILITY', 'Financement du cycle d’exploitation'],
+  ['OVERDRAFT', 'Avances et découverts'],
+  ['TRADE_FINANCE', 'Opérations à l’international'],
+  ['CASH_MANAGEMENT', 'Gestion des flux et de la trésorerie'],
+  ['TERM_DEPOSIT', 'Placements à taux garanti'],
+  ['LIQUIDITY_INVESTMENT', 'Placements en OPCVM'],
+]
+export const familyLabel = (family?: string | null) => PRODUCT_FAMILIES.find(([code]) => code === family)?.[1] ?? label(family)
+export const familyRank = (family?: string | null) => { const index = PRODUCT_FAMILIES.findIndex(([code]) => code === family); return index === -1 ? PRODUCT_FAMILIES.length : index }
+
 const labels: Record<string, string> = {
   INVESTMENT_FINANCING: "Financement d’investissement",
+  LEASING: 'Crédit-bail',
+  GUARANTEE: 'Garantie',
+  ACCOUNT: 'Compte',
+  PACKAGE: 'Forfait',
+  DIGITAL: 'Banque à distance',
   TRADE_FINANCE: 'Trade finance',
   CASH_INVESTMENT: 'Placement de trésorerie',
   FINANCIAL_STRESS_SIGNAL: 'Signal de tension financière',

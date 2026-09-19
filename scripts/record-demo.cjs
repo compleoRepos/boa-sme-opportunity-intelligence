@@ -230,7 +230,7 @@ async function acte5(browser) {
   const value2 = page.getByLabel('Valeur condition 2')
   await click(page, value2, 200); await page.keyboard.press('Control+A'); await page.keyboard.type('20', { delay: 120 }); await pause(700)
   await scrollTo(page, '.chip.product', 'center')
-  await click(page, page.locator('.chip.product', { hasText: 'Investment Financing' }), 1000)
+  await click(page, page.locator('.chip.product', { hasText: 'Crédit MLTD Direct' }), 1000)
   await say(page, 'Le bloc ALORS : type d’opportunité, horizon, produits recommandés du catalogue réel.', 1800)
   await click(page, page.getByRole('button', { name: /Enregistrer le brouillon/ }), 1800)
   await page.waitForURL(/\/back-office\/regles\/(?!nouvelle)[^/]+$/)

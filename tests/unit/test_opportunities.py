@@ -20,8 +20,9 @@ def test_br001_investment_financing(rule_set, valid_context_factory):
     assert len(result) == 1 and result[0].opportunity_type == "INVESTMENT_FINANCING"
     assert result[0].horizon == "1-3_MONTHS" and len(result[0].why) == 4
     assert result[0].recommended_products == (
-        "INVESTMENT_FINANCING",
-        "WORKING_CAPITAL_FACILITY",
+        "BOA_CREDIT_MLTD_DIRECT",
+        "BOA_BAIL_ENTREPRISE",
+        "BOA_ISTITMAR_MAROC_PME",
     )
 
 

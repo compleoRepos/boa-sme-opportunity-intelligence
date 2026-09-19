@@ -27,7 +27,7 @@ opportunity_rules:
     horizon: 1-3_MONTHS
     what: Besoin potentiel de financement d’investissement à qualifier avec le dirigeant.
     when: Contacter dans les 1 à 3 mois.
-    recommended_product_codes: [INVESTMENT_FINANCING, WORKING_CAPITAL_FACILITY]
+    recommended_product_codes: [BOA_CREDIT_MLTD_DIRECT, BOA_BAIL_ENTREPRISE, BOA_ISTITMAR_MAROC_PME]
     minimum_data_coverage: 0.83
     all_conditions:
       - {key: inflow_growth_rate, operator: gt, value: 0.25, label: Inflow growth}
@@ -41,7 +41,7 @@ opportunity_rules:
     horizon: 0-3_MONTHS
     what: Besoin potentiel de trade finance à qualifier avec le client.
     when: Contacter dans les 3 mois.
-    recommended_product_codes: [TRADE_FINANCE]
+    recommended_product_codes: [BOA_CREDIT_DOCUMENTAIRE, BOA_FINANCEMENT_IMPORTATIONS, BOA_PREFINANCEMENT_EXPORT]
     minimum_data_coverage: 0.83
     all_conditions:
       - {key: international_flow_growth_rate, operator: gt, value: 0.30, label: International flow growth}
@@ -55,7 +55,7 @@ opportunity_rules:
     horizon: 0-1_MONTH
     what: "Excédent de trésorerie récurrent : proposer un placement ou une solution de cash management."
     when: Contacter dans le mois.
-    recommended_product_codes: [CASH_MANAGEMENT, TERM_DEPOSIT, LIQUIDITY_INVESTMENT]
+    recommended_product_codes: [BOA_DEPOT_A_TERME, BOA_BON_DE_CAISSE, BOA_OPCVM]
     minimum_data_coverage: 0.83
     all_conditions:
       - {key: average_balance, operator: gt, value: 1000000, label: High average balance}
@@ -67,9 +67,9 @@ opportunity_rules:
   FINANCIAL_STRESS_SIGNAL:
     version: '1'
     horizon: 0-1_MONTH
-    what: Signal relationnel de tension financière à examiner avec le client, sans décision de crédit.
+    what: Signal relationnel de tension financière à examiner avec le client, dans une logique d’accompagnement.
     when: Prise de contact relationnelle dans le mois.
-    recommended_product_codes: [CASH_MANAGEMENT, WORKING_CAPITAL_FACILITY]
+    recommended_product_codes: [BOA_PACK_BUSINESS_PME, BOA_DAMANE_ATASSYIR]
     minimum_data_coverage: 0.83
     all_conditions:
       - {key: credit_utilization_change, operator: gt, value: 0.20, label: Increasing credit utilization}

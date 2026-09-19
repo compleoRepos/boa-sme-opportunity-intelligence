@@ -26,7 +26,7 @@ test('Rule Studio : création visuelle → validation → simulation → soumiss
   await expect(author.getByTestId('rule-condition')).toHaveCount(2)
   await author.getByLabel('Métrique condition 2').selectOption('SUPPLIER_PAYMENT_GROWTH')
   await author.getByLabel('Valeur condition 2').fill('20')
-  await author.locator('.chip.product', { hasText: 'Investment Financing' }).click()
+  await author.locator('.chip.product', { hasText: 'Crédit MLTD Direct' }).click()
   await author.getByRole('button', { name: /Enregistrer le brouillon/ }).click()
   await expect(author).toHaveURL(/\/back-office\/regles\/(?!nouvelle)[^/]+$/)
   const ruleUrl = author.url()
