@@ -1,53 +1,34 @@
-# Statut final — BOA SME Opportunity Intelligence
+# Statut courant — BOA SME Opportunity Intelligence
 
-**Date du constat documentaire :** 2026-09-18
+**Date :** 19 septembre 2026
 
-> Ce document est un gabarit factuel à finaliser après exécution de l’auto-validation. Il ne déclare pas une fonctionnalité comme réalisée sur la seule base d’un document ou de fichiers présents. Tout élément « à confirmer » doit recevoir une preuve de run, de test ou d’artefact.
+Le produit est un **POC d’intelligence commerciale PME** exécutable sur CPU avec Docker Compose. Il combine Analytics, Signal Service, Rule Studio, Feature Store, un modèle logistique de propension commerciale et Opportunity Service. Il ne prend aucune décision de crédit et ne dépend d’aucun LLM ou GPU.
 
-## IMPLEMENTED
+## Implémenté et validé
 
-| Élément | Preuve requise | Constat |
-|---|---|---|
-| Stack Python 3.12/FastAPI déclarée | `backend/pyproject.toml`, build et `/health` | À confirmer par exécution |
-| SQLAlchemy et Alembic | dépendances et migration sur base vide | À confirmer par exécution |
-| Frontend React/TypeScript et Gateway | build et smoke navigateur | À confirmer par exécution |
-| Seed sans opportunités préchargées | rapport de seed et comptage PostgreSQL | À confirmer par exécution |
-| Règles, preuves et audit | tests métier et inspection de persistance | À confirmer par exécution |
+| Capacité | Statut |
+|---|---|
+| Microservices FastAPI, PostgreSQL, Keycloak et Gateway | **PASS** |
+| Frontend React/TypeScript authentifié | **PASS** |
+| Rule Studio versionné avec simulation, séparation auteur/approbateur, activation, désactivation et rollback | **PASS** |
+| Feature Store `sales-features-v2` alimenté par Analytics, Signals et Rule Engine via HTTP | **PASS** |
+| ML Engine CPU avec score, contributions et versions persistées | **PASS — POC synthétique** |
+| Influence du score sur la priorité Opportunity, pondération POC 35 % ML / 65 % règles | **PASS** |
+| Dashboard CC limité à son portefeuille | **PASS** |
+| Dashboard responsable d’agence consolidé et limité à ses branches | **PASS** |
+| Fiche PME, opportunités, actions et outcomes | **PASS** |
+| Outcomes matérialisables comme futurs labels versionnés, sans auto-entraînement | **PASS** |
+| Quatre parcours Playwright authentifiés desktop/mobile | **PASS** |
+| Batch de 500 PME synthétiques | **PASS** |
 
-## PARTIALLY IMPLEMENTED
+Les preuves et limites détaillées sont disponibles dans [`ml-integration-status.md`](./ml-integration-status.md).
 
-À compléter lorsque le code existe mais que la preuve de bout en bout manque.
+## Non implémenté
 
-- Le dépôt contient un socle backend Python/FastAPI, des modèles et une migration initiale ; la séparation complète des services, les routes métier et le parcours complet doivent être prouvés par intégration.
-- La documentation fixe HTTP + outbox, mais la persistance, la reprise et l’idempotence de l’outbox doivent être vérifiées sur l’environnement cible.
-- L’interface et les contrats sont présents dans le dépôt ; leur branchement complet à des données recalculées et leur contrôle RBAC restent à mesurer.
+L’entraînement et la validation sur données BOA réelles, la calibration, le monitoring de drift opérationnel, le fallback automatique `RULES_ONLY`, la gouvernance juridique/DPO, le déploiement AWS, la haute disponibilité, les sauvegardes testées, les secrets de production et l’intégration aux SI bancaires réels ne sont pas implémentés.
 
-## NOT IMPLEMENTED
+Le LLM est **non implémenté par choix** : il reste une possibilité architecturale future, hors du score, de l’éligibilité et de la priorisation.
 
-À compléter après inventaire des exigences non couvertes. Ne pas inventer de résultat absent du dépôt ou des rapports.
+## Positionnement
 
-- Rule Studio complet avec simulation, approbation, publication et rollback : à confirmer.
-- Simulation historique avec taux de conversion réel : à confirmer ; aucune conversion ne doit être inventée.
-- Déploiement de production haute disponibilité, sauvegarde testée, rotation de secrets et intégration bancaire réelle : hors preuve fournie ici.
-
-## KNOWN LIMITATIONS
-
-Le dataset est synthétique. Docker Compose local n’est pas une cible de haute disponibilité. L’historique saisonnier est limité par la période disponible. Les paramètres non validés par BOA doivent rester marqués `DEMO_DEFAULT` ou `PENDING_APPROVAL`. Aucun ML, appel LLM ou décision de crédit ne fait partie du MVP.
-
-## TECHNICAL DEBT
-
-Le registre doit préciser propriétaire, priorité, risque et date cible. Les sujets attendus sont la séparation physique éventuelle des bases, les projections Customer 360, la reprise des jobs, les tests de permission par service, la mesure de performance, l’outillage de migration et le durcissement des secrets.
-
-## NEXT STEPS
-
-1. Exécuter l’auto-validation avec une base vide et conserver le rapport.
-2. Vérifier migrations, seed, pipeline HTTP, outboxes et idempotence.
-3. Exécuter BR-001 à BR-012, FP-001 à FP-007, contrats, sécurité et smoke E2E.
-4. Remplacer chaque « à confirmer » par `PASS`, `FAIL`, `SKIPPED_OPTIONAL` ou `NOT_APPLICABLE`, avec preuve.
-5. Faire valider les paramètres métier et la cartographie BIAN-inspired sans présenter celle-ci comme une certification.
-
-## Références
-
-[1]: ../docs/implementation-blueprint.md "Blueprint d’implémentation exécutable"
-[2]: ../docs/test-plan.md "Plan de tests"
-[3]: ../architecture/data-flow.md "Flux de données"
+Le modèle actif `sales-propensity-logit-poc-v1` utilise le dataset `synthetic-demo-20260918-v1` et le Feature Set `sales-features-v2` en mode `POC_ASSISTIVE`. Aucune performance prédictive ou commerciale de production n’est revendiquée. `FINANCIAL_STRESS_SIGNAL` reste un signal relationnel à examiner par le chargé de clientèle.

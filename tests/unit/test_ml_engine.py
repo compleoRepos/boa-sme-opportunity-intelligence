@@ -7,6 +7,7 @@ from typing import cast
 
 import pytest
 from boa_oi.api import application_for
+from boa_oi.feature_store_api import _analytics_snapshots
 from boa_oi.features import (
     FEATURE_ORDER,
     FEATURE_SET_VERSION,
@@ -14,7 +15,6 @@ from boa_oi.features import (
     CustomerProfile,
     FeatureBuilder,
 )
-from boa_oi.feature_store_api import _analytics_snapshots
 from boa_oi.ml import LogisticModel, LogisticScorer, stable_sigmoid
 from boa_oi.models.entities import (
     ActionOutcome,

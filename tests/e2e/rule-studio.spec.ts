@@ -136,7 +136,7 @@ test('Rule Studio couvre le cycle complet sur PostgreSQL réel et deux rôles s�
   await approvalPage.getByLabel(/Motif métier/i).fill('Retour à la version initiale E2E')
   await approvalPage.getByRole('button', { name: /Restaurer via API/i }).click()
   await expect(approvalPage.getByText('Brouillon', { exact: true }).first()).toBeVisible()
-  await expect(approvalPage.getByText('v3')).toBeVisible()
+  await expect(approvalPage.getByText('Version 3', { exact: true }).first()).toBeVisible()
   await approver.context.close()
 })
 
