@@ -157,10 +157,51 @@ def _principal_from_claims(claims: dict[str, Any]) -> Principal:
     )
 
 
+DEV_PRINCIPAL_HEADER = "X-Dev-Principal"
+
+
+def _dev_principal(raw: str | None) -> Principal | None:
+    """Persona de développement (uniquement lorsque BOA_AUTH_DISABLED=true).
+
+    Le header X-Dev-Principal transporte un JSON {subject, username, roles, branchIds,
+    relationshipManagerIds} afin de rejouer localement un périmètre CC ou agence sans Keycloak.
+    Il est ignoré dès que l'authentification OIDC est active.
+    """
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise Problem(400, "VALIDATION_ERROR", "X-Dev-Principal must be valid JSON.") from exc
+    if not isinstance(payload, dict) or not payload.get("subject"):
+        raise Problem(400, "VALIDATION_ERROR", "X-Dev-Principal requires a subject.")
+
+    def values(name: str) -> tuple[str, ...]:
+        raw_value = payload.get(name, [])
+        if isinstance(raw_value, str):
+            return (raw_value,)
+        return tuple(str(item) for item in raw_value or [])
+
+    return Principal(
+        subject=str(payload["subject"]),
+        username=str(payload.get("username") or payload["subject"]),
+        roles={str(role).upper() for role in payload.get("roles", [])},
+        scopes={"*"},
+        client_id="local-dev-persona",
+        branch_ids=values("branchIds"),
+        customer_scopes=values("customerScopes"),
+        relationship_manager_ids=values("relationshipManagerIds"),
+    )
+
+
 async def current_principal(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> Principal:
     if auth_disabled():
+        persona = _dev_principal(request.headers.get(DEV_PRINCIPAL_HEADER))
+        if persona is not None:
+            return persona
         return Principal(
             subject="local-test-user",
             username="local-test-user",

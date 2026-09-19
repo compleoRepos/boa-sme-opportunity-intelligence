@@ -33,9 +33,11 @@ export interface Customer {
   segment?: string
   country?: string
   branchId?: string
+  branchName?: string
   relationshipManagerId?: string
   relationshipManagerName?: string
   status?: string
+  incorporatedOn?: string
   createdAt?: string
   updatedAt?: string
 }
@@ -237,8 +239,14 @@ export interface DashboardOpportunitySummary {
   opportunityId: string
   opportunityType: string
   confidence: number
+  confidenceLevel?: string
+  priorityScore?: number
+  priorityLevel?: string
   horizon?: string
   status?: string
+  why?: string[]
+  recommendedProducts?: ProductReference[]
+  generatedAt?: string
 }
 
 export interface DashboardNextAction {
@@ -254,6 +262,12 @@ export interface PortfolioCustomerSummary {
   customerId: string
   customerName: string
   industry?: string
+  segment?: string
+  relationshipManagerId?: string
+  relationshipManagerName?: string
+  branchId?: string
+  branchName?: string
+  combinedPriorityScore?: number
   propensityScore: number
   priorityLevel: CustomerPriority
   priorityReason?: string
@@ -293,13 +307,99 @@ export interface RelationshipManagerPerformance {
   averagePropensity?: number
 }
 
+export interface BreakdownItem {
+  count: number
+  share?: number
+  opportunityType?: string
+  sector?: string
+  product?: string
+  priorityLevel?: string
+  relationshipManagerId?: string
+  relationshipManagerName?: string
+  actionType?: string
+  outcome?: string
+}
+
+export interface TimelinePoint {
+  date: string
+  count: number
+}
+
 export interface BranchDashboard {
   scope: DashboardScope
   kpis: CommercialDashboardKpis
   priorityDistribution: PriorityDistributionItem[]
   conversionFunnel: ConversionFunnelItem[]
   relationshipManagers: RelationshipManagerPerformance[]
+  opportunitiesByType?: BreakdownItem[]
+  opportunitiesBySector?: BreakdownItem[]
+  opportunitiesByProduct?: BreakdownItem[]
+  opportunitiesByPriority?: BreakdownItem[]
+  opportunitiesByRelationshipManager?: BreakdownItem[]
+  opportunityTimeline?: TimelinePoint[]
+  actionsByType?: BreakdownItem[]
+  outcomes?: BreakdownItem[]
+  actionTimeline?: TimelinePoint[]
   generatedAt?: string
+}
+
+export interface ActivityPoint {
+  period: string
+  inflow: number
+  outflow: number
+  net: number
+  transactionCount: number
+  supplierPayments: number
+  internationalAmount: number
+  internationalCount: number
+}
+
+export interface ActivitySeries {
+  customerId: string
+  granularity: 'DAY' | 'WEEK' | 'MONTH' | string
+  currency: string
+  fromDate?: string | null
+  toDate?: string | null
+  points: ActivityPoint[]
+  source?: string
+}
+
+export interface MlModel {
+  modelVersion: string
+  scoreType: string
+  algorithm: string
+  status: 'ACTIVE' | 'CANDIDATE' | 'RETIRED' | string
+  featureSetVersion: string
+  featureOrder: string[]
+  coefficients: Record<string, number>
+  intercept: number
+  threshold: number
+  validationMetrics: Record<string, number | string | Record<string, unknown>>
+  trainingDatasetVersion: string
+  trainingCodeVersion: string
+  deploymentMode: string
+  productionPerformanceClaim?: boolean
+  automaticTraining?: boolean
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface RuleSimulationHistoryEntry extends RuleSimulationResult {
+  ruleVersion?: number | string
+  population?: Record<string, unknown>
+  createdBy?: string
+}
+
+export interface DevPersona {
+  id: string
+  label: string
+  description: string
+  subject: string
+  username: string
+  displayName: string
+  roles: Role[]
+  branchIds?: string[]
+  relationshipManagerIds?: string[]
 }
 
 export type PropensityFactorDirection = 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | string

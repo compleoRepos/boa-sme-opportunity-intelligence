@@ -11,8 +11,13 @@ from sqlalchemy.orm import Session
 from boa_oi.features import FEATURE_SET_VERSION
 from boa_oi.features.service import materialize_customer
 from boa_oi.ml.service import active_model, score_materialization, serialize_model, serialize_score
-from boa_oi.models.entities import ActionOutcome, OpportunityAction, OutcomeLabelSnapshot
-from boa_oi.platform import Problem, READ_ROLES, create_service_app, get_session, require_roles
+from boa_oi.models.entities import (
+    ActionOutcome,
+    ModelRegistry,
+    OpportunityAction,
+    OutcomeLabelSnapshot,
+)
+from boa_oi.platform import READ_ROLES, Problem, create_service_app, get_session, require_roles
 from boa_oi.technical.ids import deterministic_uuid
 
 app = create_service_app(
@@ -86,8 +91,7 @@ def score_batch(
         modelVersion=payload.modelVersion,
     )
     data = [
-        _score_customer(session, customer_id, score_request)
-        for customer_id in payload.customerIds
+        _score_customer(session, customer_id, score_request) for customer_id in payload.customerIds
     ]
     return {
         "data": data,
@@ -97,6 +101,27 @@ def score_batch(
             "scoreType": "SALES_PROPENSITY",
         },
     }
+
+
+@app.get(
+    f"{PREFIX}/models",
+    dependencies=[Depends(require_roles(*READ_ROLES))],
+    tags=["Model Registry"],
+)
+def list_models(session: Session = Depends(get_session)) -> dict[str, Any]:
+    """Registre complet des modèles (actifs, candidats, retirés) pour l'écran de gouvernance ML."""
+    records = list(
+        session.scalars(select(ModelRegistry).order_by(ModelRegistry.model_version.desc()))
+    )
+    data = [
+        {
+            **serialize_model(record),
+            "createdAt": record.created_at.isoformat(),
+            "updatedAt": record.updated_at.isoformat(),
+        }
+        for record in records
+    ]
+    return {"data": data, "meta": {"totalCount": len(data), "scoreType": "SALES_PROPENSITY"}}
 
 
 @app.get(

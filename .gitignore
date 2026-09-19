@@ -38,3 +38,6 @@ blob-report/
 
 # GitHub workflows require a token with workflows permission
 .github/workflows/
+
+# Stack locale sans Docker
+.local-stack/

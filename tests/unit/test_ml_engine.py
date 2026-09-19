@@ -16,13 +16,13 @@ from boa_oi.features import (
 )
 from boa_oi.ml import LogisticModel, LogisticScorer, stable_sigmoid
 from boa_oi.models.entities import (
-    Customer,
     ActionOutcome,
+    Customer,
     FeatureMaterialization,
     MetricSnapshot,
     ModelRegistry,
-    OutcomeLabelSnapshot,
     OpportunityAction,
+    OutcomeLabelSnapshot,
     PropensityScoreRecord,
     Rule,
     RuleVersion,

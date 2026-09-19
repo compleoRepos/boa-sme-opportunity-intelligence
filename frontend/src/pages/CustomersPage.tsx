@@ -1,22 +1,25 @@
 import { ArrowRight, Building2, Search } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { getCustomerName, initials, label } from '../api/format'
 import { useCustomers } from '../api/hooks'
-import { getCustomerName, label } from '../api/format'
-import { Badge, CursorPagination, EmptyState, ErrorState, PageHeader, SkeletonRows, type CursorState } from '../components/UI'
+import { Badge, Button, ErrorState, NoResults, Panel, SkeletonStack } from '../ui'
 
 export function CustomersPage() {
-  const [draft, setDraft] = useState('')
-  const [q, setQ] = useState('')
-  const [pagination, setPagination] = useState<CursorState>({ cursors: [undefined], index: 0 })
-  const query = useCustomers({ q, pageSize: 25, cursor: pagination.cursors[pagination.index], sort: 'legalName' })
-  const submit = (event: FormEvent) => { event.preventDefault(); setQ(draft); setPagination({ cursors: [undefined], index: 0 }) }
-  const changePage = (next: CursorState) => {
-    if (next.index > pagination.index) setPagination({ cursors: [...pagination.cursors.slice(0, pagination.index + 1), query.data?.meta.nextCursor || undefined], index: next.index })
-    else setPagination(next)
-  }
-  return <div className="page"><PageHeader eyebrow="PORTEFEUILLE" title="Clients PME" description="Recherchez par raison sociale, identifiant client, compte ou industrie. Les résultats sont paginés par le Gateway." />
-    <form className="inline-search" onSubmit={submit}><Search /><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Rechercher un client…" aria-label="Rechercher un client" /><button className="button primary" type="submit">Rechercher</button></form>
-    {query.isPending ? <SkeletonRows /> : query.isError ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : !query.data.data.length ? <EmptyState title="Aucun client trouvé" /> : <><div className="customer-grid">{query.data.data.map((customer) => <article className="customer-card" key={customer.customerId}><div className="company-icon"><Building2 /></div><div><small>{customer.customerId}</small><h2>{getCustomerName(customer)}</h2><p>{label(customer.industry)} · {label(customer.segment)}</p><div className="customer-card-meta"><Badge value={customer.status} /><span>{customer.relationshipManagerName || customer.relationshipManagerId || 'RM non renseigné'}</span></div></div><Link className="button secondary" to={`/clients/${customer.customerId}`}>Vue 360 <ArrowRight size={16} /></Link></article>)}</div><CursorPagination state={pagination} hasMore={query.data.meta.hasMore} onChange={changePage} /></>}
-  </div>
+  const [params, setParams] = useSearchParams()
+  const navigate = useNavigate()
+  const q = params.get('q') || ''
+  const [draft, setDraft] = useState(q)
+  const [cursors, setCursors] = useState<Array<string | undefined>>([undefined])
+  const cursor = cursors[cursors.length - 1]
+  const query = useCustomers({ q, pageSize: 25, cursor, sort: 'legalName' })
+  const submit = (event: FormEvent) => { event.preventDefault(); setCursors([undefined]); setParams(draft ? { q: draft } : {}) }
+  return <>
+    <header className="page-head"><div><p className="eyebrow accent">Portefeuille</p><h1>Clients PME</h1><p className="subtitle">Recherche par raison sociale ou identifiant, paginée et filtrée par le Gateway selon votre périmètre.</p></div></header>
+    <Panel flush id="customers">
+      <form className="panel-head list-head" onSubmit={submit} role="search"><div className="search" style={{ flex: 1, maxWidth: 480 }}><Search size={14} /><input className="input" placeholder="Raison sociale, identifiant SME-…" aria-label="Rechercher un client" value={draft} onChange={(event) => setDraft(event.target.value)} /></div><Button type="submit" variant="primary" size="sm">Rechercher</Button></form>
+      {query.isPending ? <div className="panel-body"><SkeletonStack rows={5} /></div> : query.isError ? <ErrorState error={query.error} onRetry={() => void query.refetch()} /> : !query.data.data.length ? <NoResults message="Aucune PME ne correspond dans votre périmètre." /> : <div className="table-wrap"><table className="table hover clickable"><thead><tr><th>PME</th><th>Secteur</th><th>Segment</th><th>Agence</th><th>Chargé de clientèle</th><th>Statut</th><th /></tr></thead><tbody>{query.data.data.map((customer) => <tr key={customer.customerId} onClick={() => navigate(`/clients/${customer.customerId}`)} tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter') navigate(`/clients/${customer.customerId}`) }}><td><div className="row"><span className="avatar company">{initials(customer.legalName)}</span><span><strong>{getCustomerName(customer)}</strong><small className="mono">{customer.customerId}</small></span></div></td><td>{label(customer.industry)}</td><td>{label(customer.segment)}</td><td>{customer.branchName || customer.branchId || '—'}</td><td>{customer.relationshipManagerName || customer.relationshipManagerId || '—'}</td><td><Badge value={customer.status} /></td><td><Link to={`/clients/${customer.customerId}`} className="btn ghost sm" onClick={(event) => event.stopPropagation()}>Fiche <ArrowRight size={14} /></Link></td></tr>)}</tbody></table></div>}
+      {query.data && <div className="row between" style={{ padding: '10px 20px', borderTop: '1px solid var(--border)' }}><span className="muted" style={{ fontSize: 12 }}><Building2 size={12} /> Page {cursors.length}</span><div className="row" style={{ gap: 6 }}><Button size="sm" disabled={cursors.length === 1} onClick={() => setCursors((list) => list.slice(0, -1))}>Précédent</Button><Button size="sm" disabled={!query.data.meta.hasMore} onClick={() => setCursors((list) => [...list, query.data?.meta.nextCursor || undefined])}>Suivant</Button></div></div>}
+    </Panel>
+  </>
 }

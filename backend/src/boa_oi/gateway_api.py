@@ -63,6 +63,7 @@ async def authorize_customer_scope(request: Request, customer_id: str) -> None:
         f"{target('customer')}/internal/v1/customers/{customer_id}",
         correlation_id=correlation_id(request),
         incoming_authorization=request.headers.get("Authorization"),
+        dev_principal=request.headers.get("X-Dev-Principal"),
     )
 
 
@@ -72,6 +73,7 @@ async def authorize_opportunity_scope(request: Request, opportunity_id: str) -> 
         f"{target('opportunity')}/internal/v1/opportunities/{opportunity_id}",
         correlation_id=correlation_id(request),
         incoming_authorization=request.headers.get("Authorization"),
+        dev_principal=request.headers.get("X-Dev-Principal"),
     )
     await authorize_customer_scope(request, opportunity["customerId"])
 
@@ -99,6 +101,7 @@ async def proxy(
         json=body,
         idempotency_key=idempotency_key,
         incoming_authorization=request.headers.get("Authorization"),
+        dev_principal=request.headers.get("X-Dev-Principal"),
     )
     status_code = response_status or (
         201
@@ -128,6 +131,15 @@ GET_ROUTES = [
         "customers/{customer_id}/propensity",
         ("RELATIONSHIP_MANAGER", "BRANCH_MANAGER", "ADMIN"),
     ),
+    (
+        "/api/v1/customers/{customer_id}/activity",
+        "transaction",
+        "customers/{customer_id}/activity",
+        READ_ROLES,
+    ),
+    ("/api/v1/ml/models", "ml-engine", "ml/models", READ_ROLES),
+    ("/api/v1/ml/models/active", "ml-engine", "ml/models/active", READ_ROLES),
+    ("/api/v1/ml/models/{model_version}", "ml-engine", "ml/models/{model_version}", READ_ROLES),
     ("/api/v1/opportunities", "opportunity", "opportunities", READ_ROLES),
     (
         "/api/v1/opportunities/{opportunity_id}",
@@ -401,6 +413,7 @@ async def create_action(
         f"{target('opportunity')}/internal/v1/opportunities/{opportunity_id}",
         correlation_id=correlation_id(request),
         incoming_authorization=request.headers.get("Authorization"),
+        dev_principal=request.headers.get("X-Dev-Principal"),
     )
     body = {
         "opportunityId": opportunity_id,
@@ -451,6 +464,7 @@ async def pipeline(
 ) -> dict[str, Any]:
     corr = correlation_id(request)
     auth = request.headers.get("Authorization")
+    persona = request.headers.get("X-Dev-Principal")
     analytics = await service_request(
         "POST",
         f"{target('analytics')}/internal/v1/analytics/recompute",
@@ -458,6 +472,7 @@ async def pipeline(
         idempotency_key=f"{idempotency_key}-analytics",
         json=payload.model_dump(mode="json"),
         incoming_authorization=auth,
+        dev_principal=persona,
         timeout=120,
     )
     signals = await service_request(
@@ -467,6 +482,7 @@ async def pipeline(
         idempotency_key=f"{idempotency_key}-signals",
         json=payload.model_dump(mode="json"),
         incoming_authorization=auth,
+        dev_principal=persona,
         timeout=60,
     )
     opportunities = await service_request(
@@ -476,6 +492,7 @@ async def pipeline(
         idempotency_key=f"{idempotency_key}-opportunities",
         json={"customerIds": payload.customerIds, "asOf": payload.asOf.isoformat()},
         incoming_authorization=auth,
+        dev_principal=persona,
         timeout=60,
     )
     return {

@@ -28,7 +28,10 @@ def upgrade():
     from boa_oi.models import Base
 
     bind = op.get_bind()
-    Base.metadata.create_all(bind=bind, checkfirst=True)
+    # Seules les tables des schémas de cette révision : les schémas rule, feature_store,
+    # ml et portfolio sont créés par 0003 et 0004, sinon la chaîne échoue sur base vide.
+    owned = [table for table in Base.metadata.sorted_tables if table.schema in SCHEMAS]
+    Base.metadata.create_all(bind=bind, tables=owned, checkfirst=True)
 
 
 def downgrade():

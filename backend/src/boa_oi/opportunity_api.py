@@ -632,7 +632,8 @@ async def generate(
             confidence_components = [
                 {
                     "name": item.get("name", "component"),
-                    "points": round(float(item.get("weighted_value", 0)) * 100, 2),
+                    # Le moteur de confiance sérialise `points` (= weight * normalized_value).
+                    "points": round(float(item.get("points", item.get("weighted_value", 0))), 2),
                     "maxPoints": round(float(item.get("weight", 0)), 2),
                     "satisfied": float(item.get("normalized_value", 0)) > 0,
                     "value": item.get("raw_value"),

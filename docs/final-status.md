@@ -30,6 +30,24 @@
 - Simulation historique avec taux de conversion réel : à confirmer ; aucune conversion ne doit être inventée.
 - Déploiement de production haute disponibilité, sauvegarde testée, rotation de secrets et intégration bancaire réelle : hors preuve fournie ici.
 
+## AUDIT UI/UX PREMIUM (2026-09-19)
+
+Constats vérifiés par exécution sur une stack locale complète (PostgreSQL natif, seize services, pipeline, frontend) :
+
+| Constat | Traitement |
+|---|---|
+| La chaîne Alembic échouait sur base vide (`0001` créait toutes les tables, `0003`/`0004` doublonnaient) | Corrigé : `0001` se limite à ses schémas. `PASS` (migrations rejouées de zéro). |
+| Les composantes de confiance de l’explication étaient toutes à 0 (`weighted_value` lu au lieu de `points`) | Corrigé côté opportunity-service. |
+| Aucune série temporelle disponible (métriques à une seule date) | Ajout de `GET /customers/{id}/activity` (agrégation SQL des transactions). |
+| Registre ML non exposé par le Gateway | Ajout de `GET /api/v1/ml/models`, `/active`, `/{version}`. |
+| Dashboard agence sans répartitions | Ajout des agrégats par type, secteur, produit, priorité, CC, timeline, actions, outcomes. |
+| Noms synthétiques peu crédibles, agences sans libellé, portefeuilles uniformes | Seed déterministe réaliste (raisons sociales, CC, agences nommées, portefeuilles inégaux). |
+| Textes `what`/`when` des règles moteur en anglais | Traduits dans `database/seed/rules.yaml`. |
+| Filtres `q`, `sector`, `customerSegment`, `relationshipManagerId` acceptés mais ignorés par `GET /opportunities` | Non corrigé (hors périmètre UI) : l’interface s’appuie sur les dashboards scopés pour ces filtres. |
+| Rule Studio vide au démarrage | Règles de démonstration en brouillon (`database/seed/rule-studio.json`, `scripts/local-stack.sh rules`). |
+
+Preuves : 76 tests unitaires backend, 15 tests vitest, 5 parcours Playwright E2E sur stack réelle (cockpit CC avec action commerciale, drill-down agence, tablette, cycle Rule Studio complet avec approbateur distinct, registre ML), captures 1440 × 900 des écrans prioritaires.
+
 ## KNOWN LIMITATIONS
 
 Le dataset est synthétique. Docker Compose local n’est pas une cible de haute disponibilité. L’historique saisonnier est limité par la période disponible. Les paramètres non validés par BOA doivent rester marqués `DEMO_DEFAULT` ou `PENDING_APPROVAL`. Aucun ML, appel LLM ou décision de crédit ne fait partie du MVP.

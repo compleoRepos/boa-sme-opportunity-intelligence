@@ -1,0 +1,30 @@
+[
+  {
+    "ruleId": "SME_INVESTMENT_001",
+    "name": "PME — potentiel financement d’investissement",
+    "description": "Croissance simultanée des encaissements, des paiements fournisseurs et du volume transactionnel sur 90 jours, sans financement d’investissement récent. Réplique gouvernée de la règle moteur INVESTMENT_FINANCING.",
+    "scope": { "segment": ["SME"], "sectors": ["ALL"], "regions": ["ALL"] },
+    "logic": "AND",
+    "conditions": [
+      { "id": "c1", "type": "CONDITION", "metric": "INFLOW_GROWTH", "operator": "INCREASE_BY", "value": 25, "unit": "PERCENT", "period": "90D", "weight": 35 },
+      { "id": "c2", "type": "CONDITION", "metric": "SUPPLIER_PAYMENT_GROWTH", "operator": "INCREASE_BY", "value": 20, "unit": "PERCENT", "period": "90D", "weight": 25 },
+      { "id": "c3", "type": "CONDITION", "metric": "TRANSACTION_VOLUME_GROWTH", "operator": "INCREASE_BY", "value": 15, "unit": "PERCENT", "period": "90D", "weight": 20 }
+    ],
+    "recommendation": { "opportunityType": "INVESTMENT_FINANCING", "products": ["INVESTMENT_FINANCING", "WORKING_CAPITAL_FACILITY"], "horizon": "1-3_MONTHS" },
+    "confidence": { "baseScore": 20, "weights": { "INFLOW_GROWTH": 35, "SUPPLIER_PAYMENT_GROWTH": 25, "TRANSACTION_VOLUME_GROWTH": 20 }, "highThreshold": 80, "mediumThreshold": 60 },
+    "reason": "Initialisation Rule Studio à partir de la configuration moteur 2026-09-18-v1 (données de démonstration)."
+  },
+  {
+    "ruleId": "SME_TRADE_001",
+    "name": "PME — potentiel trade finance",
+    "description": "Croissance des flux internationaux sur 90 jours pour une PME sans produit Trade Finance ou sous-équipée.",
+    "scope": { "segment": ["SME"], "sectors": ["IMPORT_EXPORT", "INDUSTRIE", "DISTRIBUTION"], "regions": ["ALL"] },
+    "logic": "AND",
+    "conditions": [
+      { "id": "c1", "type": "CONDITION", "metric": "INTERNATIONAL_FLOW_GROWTH", "operator": "INCREASE_BY", "value": 30, "unit": "PERCENT", "period": "90D", "weight": 50 }
+    ],
+    "recommendation": { "opportunityType": "TRADE_FINANCE", "products": ["TRADE_FINANCE"], "horizon": "0-3_MONTHS" },
+    "confidence": { "baseScore": 30, "weights": { "INTERNATIONAL_FLOW_GROWTH": 50 }, "highThreshold": 80, "mediumThreshold": 60 },
+    "reason": "Initialisation Rule Studio (données de démonstration)."
+  }
+]

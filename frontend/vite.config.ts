@@ -7,6 +7,19 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    build: {
+      chunkSizeWarningLimit: 700,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            react: ['react', 'react-dom', 'react-router-dom'],
+            query: ['@tanstack/react-query'],
+            charts: ['recharts'],
+            auth: ['keycloak-js'],
+          },
+        },
+      },
+    },
     server: {
       port: 5173,
       host: '0.0.0.0',
