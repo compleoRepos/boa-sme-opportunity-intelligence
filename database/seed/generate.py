@@ -18,6 +18,7 @@ from boa_oi.models.entities import (
     Opportunity,
     OpportunityRule,
     OutboxMessage,
+    PortfolioAssignment,
     Product,
     RelationshipManager,
     RuleConfiguration,
@@ -351,6 +352,21 @@ def seed(database_url: str, batch_size: int = 1000) -> dict:
                 pg_insert(Customer)
                 .values(**customer)
                 .on_conflict_do_nothing(index_elements=[Customer.customer_ref])
+            )
+            manager = rms[relationship_manager_index(index, len(rms)) - 1]
+            session.execute(
+                pg_insert(PortfolioAssignment)
+                .values(
+                    id=deterministic_uuid("portfolio-assignment", customer_id, START_DATE),
+                    customer_id=customer_id,
+                    relationship_manager_id=manager["id"],
+                    branch_code=manager["branch_code"],
+                    valid_from=datetime.combine(START_DATE, time.min, tzinfo=timezone.utc),
+                    valid_to=None,
+                    actor="demo-data-generator",
+                    reason="Initial synthetic portfolio assignment",
+                )
+                .on_conflict_do_nothing(index_elements=[PortfolioAssignment.id])
             )
             session.execute(
                 pg_insert(Account)

@@ -8,7 +8,7 @@ from uuid import UUID
 
 from fastapi import Depends, Header, Query, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -16,10 +16,13 @@ from boa_oi.audit import DecisionAuditBuilder
 from boa_oi.http_clients import service_request
 from boa_oi.models.entities import (
     AuditLog,
+    Customer,
     DecisionAudit,
     Opportunity,
     OpportunityEvidence,
     OpportunityRule,
+    PortfolioAssignment,
+    RelationshipManager,
     ScoringPolicy,
 )
 from boa_oi.opportunities import OpportunityCandidate, OpportunityContext, OpportunityEngine
@@ -197,6 +200,34 @@ def list_for(
     params = request.query_params
     offset = decode_cursor(cursor)
     stmt = select(Opportunity)
+    sector = params.get("sector")
+    customer_segment = params.get("customerSegment")
+    relationship_manager_id = params.get("relationshipManagerId")
+    if sector or customer_segment or relationship_manager_id:
+        stmt = stmt.join(Customer, Opportunity.customer_id == Customer.id)
+    if sector:
+        stmt = stmt.where(Customer.sector_code == sector)
+    if customer_segment:
+        if customer_segment.upper() == "SME":
+            stmt = stmt.where(Customer.segment_code.in_(("SMALL", "MEDIUM")))
+        else:
+            stmt = stmt.where(Customer.segment_code == customer_segment)
+    if relationship_manager_id:
+        stmt = (
+            stmt.join(
+                PortfolioAssignment,
+                and_(
+                    PortfolioAssignment.customer_id == Customer.id,
+                    PortfolioAssignment.valid_from <= datetime.now(timezone.utc),
+                    PortfolioAssignment.valid_to.is_(None),
+                ),
+            )
+            .join(
+                RelationshipManager,
+                PortfolioAssignment.relationship_manager_id == RelationshipManager.id,
+            )
+            .where(RelationshipManager.subject_id == relationship_manager_id)
+        )
     target = customer_id or params.get("customerId")
     if target:
         stmt = stmt.where(Opportunity.customer_ref == target)

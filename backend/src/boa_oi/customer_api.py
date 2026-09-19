@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Any
 
 from fastapi import Depends, Header, Query, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, inspect, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, aliased
 
 from boa_oi.models.entities import (
     Customer,
     CustomerImportReceipt,
+    PortfolioAssignment,
     RelationshipManager,
     Sector,
 )
@@ -40,7 +41,45 @@ app = create_service_app(
 PREFIX = "/internal/v1"
 
 
-def scoped_customer_statement(stmt: Any, rm: Any, principal: Principal) -> Any:
+def _assignment_table_available(session: Session) -> bool:
+    bind = session.get_bind()
+    if bind.dialect.name != "sqlite":
+        return True
+    return inspect(bind).has_table(PortfolioAssignment.__tablename__, schema="customer")
+
+
+def _customer_statement(session: Session) -> tuple[Any, Any, Any]:
+    rm = aliased(RelationshipManager)
+    if _assignment_table_available(session):
+        assignment = aliased(PortfolioAssignment)
+        active_assignment = and_(
+            Customer.id == assignment.customer_id,
+            assignment.valid_from <= datetime.now(timezone.utc),
+            assignment.valid_to.is_(None),
+        )
+        if session.get_bind().dialect.name == "sqlite":
+            manager_id = func.coalesce(assignment.relationship_manager_id, Customer.rm_id)
+            branch_code: Any = func.coalesce(assignment.branch_code, rm.branch_code)
+            stmt = (
+                select(Customer, rm, branch_code)
+                .outerjoin(assignment, active_assignment)
+                .join(rm, manager_id == rm.id)
+            )
+        else:
+            branch_code = assignment.branch_code
+            stmt = (
+                select(Customer, rm, branch_code)
+                .join(assignment, active_assignment)
+                .join(rm, assignment.relationship_manager_id == rm.id)
+            )
+        return stmt, rm, branch_code
+    stmt = select(Customer, rm, rm.branch_code).join(rm, Customer.rm_id == rm.id)
+    return stmt, rm, rm.branch_code
+
+
+def scoped_customer_statement(
+    stmt: Any, rm: Any, principal: Principal, *, branch_code: Any | None = None
+) -> Any:
     if {"ADMIN", "SERVICE"} & principal.roles:
         return stmt
     if "RELATIONSHIP_MANAGER" in principal.roles:
@@ -54,7 +93,7 @@ def scoped_customer_statement(stmt: Any, rm: Any, principal: Principal) -> Any:
         allowed = principal.branch_ids
         if not allowed:
             raise Problem(403, "PORTFOLIO_SCOPE_MISSING", "No branch scope is assigned.")
-        stmt = stmt.where(rm.branch_code.in_(allowed))
+        stmt = stmt.where((branch_code if branch_code is not None else rm.branch_code).in_(allowed))
     return stmt
 
 
@@ -77,7 +116,16 @@ class CustomerImportBatch(BaseModel):
     customers: list[CustomerImport] = Field(max_length=10_000)
 
 
-def serialize(customer: Customer, rm: RelationshipManager | None = None) -> dict[str, Any]:
+def serialize(
+    customer: Customer,
+    rm: RelationshipManager | None = None,
+    assignment_branch_code: str | None = None,
+) -> dict[str, Any]:
+    branch_code = (
+        assignment_branch_code
+        if assignment_branch_code is not None
+        else (rm.branch_code if rm else None)
+    )
     return {
         "customerId": customer.customer_ref,
         "legalName": customer.legal_name,
@@ -86,8 +134,8 @@ def serialize(customer: Customer, rm: RelationshipManager | None = None) -> dict
         "sector": customer.sector_code,
         "segment": customer.segment_code,
         "country": "MA",
-        "branchId": rm.branch_code if rm else None,
-        "branchName": branch_label(rm.branch_code) if rm else None,
+        "branchId": branch_code,
+        "branchName": branch_label(branch_code),
         "relationshipManagerId": rm.subject_id if rm else None,
         "relationshipManagerName": rm.display_name if rm else None,
         "status": customer.status,
@@ -135,9 +183,8 @@ def list_customers(
         },
     )
     offset = decode_cursor(cursor)
-    rm = aliased(RelationshipManager)
-    stmt = select(Customer, rm).join(rm, Customer.rm_id == rm.id)
-    stmt = scoped_customer_statement(stmt, rm, principal)
+    stmt, rm, branch_code = _customer_statement(session)
+    stmt = scoped_customer_statement(stmt, rm, principal, branch_code=branch_code)
     if q:
         pattern = f"%{q}%"
         stmt = stmt.where(
@@ -180,7 +227,7 @@ def list_customers(
     rows = session.execute(stmt).all()
     return page_response(
         request,
-        [serialize(customer, manager) for customer, manager in rows],
+        [serialize(customer, manager, branch) for customer, manager, branch in rows],
         page_size=page_size,
         offset=offset,
         total_count=total,
@@ -197,17 +244,17 @@ def get_customer(
     principal: Principal = Depends(current_principal),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
+    stmt, rm, branch_code = _customer_statement(session)
     stmt = scoped_customer_statement(
-        select(Customer, RelationshipManager)
-        .join(RelationshipManager, Customer.rm_id == RelationshipManager.id)
-        .where(Customer.customer_ref == customer_id),
-        RelationshipManager,
+        stmt.where(Customer.customer_ref == customer_id),
+        rm,
         principal,
+        branch_code=branch_code,
     )
     row = session.execute(stmt).first()
     if row is None:
         raise not_found("Customer")
-    return serialize(row[0], row[1])
+    return serialize(row[0], row[1], row[2])
 
 
 @app.get(
@@ -274,8 +321,10 @@ def import_customers(
             "imported": existing.row_count,
         }
     imported = 0
+    assignment_table_available = _assignment_table_available(session)
     for item in batch.customers:
         rm_id = deterministic_uuid("rm", item.relationshipManagerId)
+        customer_uuid = deterministic_uuid("customer", item.customerId)
         session.execute(
             pg_insert(RelationshipManager)
             .values(
@@ -301,7 +350,7 @@ def import_customers(
         session.execute(
             pg_insert(Customer)
             .values(
-                id=deterministic_uuid("customer", item.customerId),
+                id=customer_uuid,
                 customer_ref=item.customerId,
                 legal_name=item.legalName,
                 sector_code=item.sector,
@@ -323,6 +372,41 @@ def import_customers(
                 },
             )
         )
+        if assignment_table_available:
+            current_assignment = session.scalar(
+                select(PortfolioAssignment).where(
+                    PortfolioAssignment.customer_id == customer_uuid,
+                    PortfolioAssignment.valid_to.is_(None),
+                )
+            )
+            assignment_time = datetime.now(timezone.utc)
+            if current_assignment is not None and (
+                current_assignment.relationship_manager_id != rm_id
+                or current_assignment.branch_code != item.branchId
+            ):
+                if current_assignment.valid_from >= assignment_time:
+                    assignment_time = current_assignment.valid_from + timedelta(microseconds=1)
+                session.execute(
+                    update(PortfolioAssignment)
+                    .where(PortfolioAssignment.id == current_assignment.id)
+                    .values(valid_to=assignment_time)
+                )
+                current_assignment = None
+            if current_assignment is None:
+                session.add(
+                    PortfolioAssignment(
+                        id=deterministic_uuid(
+                            "portfolio-assignment", customer_uuid, assignment_time.isoformat()
+                        ),
+                        customer_id=customer_uuid,
+                        relationship_manager_id=rm_id,
+                        branch_code=item.branchId,
+                        valid_from=assignment_time,
+                        valid_to=None,
+                        actor=batch.sourceSystem,
+                        reason=f"Customer import {batch.externalBatchId}",
+                    )
+                )
         imported += 1
     record = CustomerImportReceipt(
         id=deterministic_uuid("import", "CUSTOMERS", idempotency_key),

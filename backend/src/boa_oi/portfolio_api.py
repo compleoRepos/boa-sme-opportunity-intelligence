@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import Depends, Request
-from sqlalchemy import Select, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import Select, and_, func, inspect, select
+from sqlalchemy.orm import Session, aliased
 
 from boa_oi.models.entities import (
     Customer,
     Opportunity,
     OpportunityAction,
+    PortfolioAssignment,
     PropensityScoreRecord,
     RelationshipManager,
 )
@@ -64,21 +66,51 @@ def _customer_scope(principal: Principal) -> tuple[tuple[str, ...] | None, tuple
 
 
 def _scoped_customers(
+    session: Session,
     principal: Principal,
     *,
     relationship_manager_id: str | None = None,
-) -> Select[tuple[Customer, RelationshipManager]]:
+) -> Select[tuple[Customer, RelationshipManager, str]]:
     rm_ids, branch_ids = _customer_scope(principal)
-    stmt = select(Customer, RelationshipManager).join(
-        RelationshipManager,
-        Customer.rm_id == RelationshipManager.id,
+    bind = session.get_bind()
+    assignment_table_available = bind.dialect.name != "sqlite" or inspect(bind).has_table(
+        PortfolioAssignment.__tablename__, schema="customer"
     )
+    manager = aliased(RelationshipManager)
+    if assignment_table_available:
+        assignment = aliased(PortfolioAssignment)
+        active_assignment = and_(
+            Customer.id == assignment.customer_id,
+            assignment.valid_from <= datetime.now(timezone.utc),
+            assignment.valid_to.is_(None),
+        )
+        if bind.dialect.name == "sqlite":
+            manager_id = func.coalesce(assignment.relationship_manager_id, Customer.rm_id)
+            branch_code: Any = func.coalesce(assignment.branch_code, manager.branch_code)
+            stmt = (
+                select(Customer, manager, branch_code)
+                .outerjoin(assignment, active_assignment)
+                .join(manager, manager_id == manager.id)
+            )
+        else:
+            branch_code = assignment.branch_code
+            stmt = (
+                select(Customer, manager, branch_code)
+                .join(assignment, active_assignment)
+                .join(manager, assignment.relationship_manager_id == manager.id)
+            )
+    else:
+        stmt = select(Customer, manager, manager.branch_code).join(
+            manager,
+            Customer.rm_id == manager.id,
+        )
+        branch_code = manager.branch_code
     if rm_ids:
-        stmt = stmt.where(RelationshipManager.subject_id.in_(rm_ids))
+        stmt = stmt.where(manager.subject_id.in_(rm_ids))
     if branch_ids:
-        stmt = stmt.where(RelationshipManager.branch_code.in_(branch_ids))
+        stmt = stmt.where(branch_code.in_(branch_ids))
     if relationship_manager_id:
-        stmt = stmt.where(RelationshipManager.subject_id == relationship_manager_id)
+        stmt = stmt.where(manager.subject_id == relationship_manager_id)
     return stmt.where(Customer.status == "ACTIVE").order_by(Customer.customer_ref)
 
 
@@ -87,10 +119,11 @@ def _rows(
     principal: Principal,
     *,
     relationship_manager_id: str | None = None,
-) -> list[tuple[Customer, RelationshipManager]]:
+) -> list[tuple[Customer, RelationshipManager, str]]:
     return list(
         session.execute(
             _scoped_customers(
+                session,
                 principal,
                 relationship_manager_id=relationship_manager_id,
             )
@@ -192,9 +225,9 @@ def _factor_label(feature: str) -> str:
 
 def _portfolio_payload(
     session: Session,
-    rows: list[tuple[Customer, RelationshipManager]],
+    rows: list[tuple[Customer, RelationshipManager, str]],
 ) -> dict[str, Any]:
-    customer_ids = [customer.id for customer, _manager in rows]
+    customer_ids = [customer.id for customer, _manager, _branch_code in rows]
     scores = _latest_scores(session, customer_ids)
     opportunities = _opportunities(session, customer_ids)
     actions = _actions(session, customer_ids)
@@ -206,7 +239,7 @@ def _portfolio_payload(
     contacted = 0
     all_open_opportunities = 0
     due_actions = 0
-    for customer, manager in rows:
+    for customer, manager, branch_code in rows:
         score_record = scores.get(customer.id)
         propensity = float(score_record.score) if score_record else 0.0
         customer_opportunities = opportunities.get(customer.id, [])
@@ -241,8 +274,8 @@ def _portfolio_payload(
                 "segment": customer.segment_code,
                 "relationshipManagerId": manager.subject_id,
                 "relationshipManagerName": manager.display_name,
-                "branchId": manager.branch_code,
-                "branchName": branch_label(manager.branch_code),
+                "branchId": branch_code,
+                "branchName": branch_label(branch_code),
                 "propensityScore": propensity,
                 "combinedPriorityScore": combined,
                 "priorityLevel": priority_level,
@@ -324,6 +357,7 @@ def relationship_manager_dashboard(
     rows = _rows(session, principal)
     payload = _portfolio_payload(session, rows)
     manager = rows[0][1] if rows else None
+    branch_code = rows[0][2] if rows else None
     payload.update(
         scope={
             "type": "RELATIONSHIP_MANAGER",
@@ -331,8 +365,8 @@ def relationship_manager_dashboard(
                 manager.subject_id if manager else principal.relationship_manager_ids[0]
             ),
             "relationshipManagerName": manager.display_name if manager else principal.username,
-            "branchId": manager.branch_code if manager else None,
-            "branchName": branch_label(manager.branch_code) if manager else None,
+            "branchId": branch_code,
+            "branchName": branch_label(branch_code),
         },
         generatedAt=datetime.now(timezone.utc).isoformat(),
     )
@@ -349,13 +383,15 @@ def _counter_payload(counter: Counter[str], key: str) -> list[dict[str, Any]]:
 
 def _branch_breakdowns(
     session: Session,
-    rows: list[tuple[Customer, RelationshipManager]],
+    rows: Sequence[
+        tuple[Customer, RelationshipManager] | tuple[Customer, RelationshipManager, str]
+    ],
     all_actions: list[OpportunityAction],
 ) -> dict[str, Any]:
     """Agrégats agence calculés sur les opportunités ouvertes et les actions du périmètre."""
-    customer_ids = [customer.id for customer, _manager in rows]
-    sector_by_customer = {customer.id: customer.sector_code for customer, _manager in rows}
-    manager_by_customer = {customer.id: manager for customer, manager in rows}
+    customer_ids = [item[0].id for item in rows]
+    sector_by_customer = {item[0].id: item[0].sector_code for item in rows}
+    manager_by_customer = {item[0].id: item[1] for item in rows}
     opportunities = [
         item for records in _opportunities(session, customer_ids).values() for item in records
     ]
@@ -423,7 +459,7 @@ def branch_dashboard(
     rows = _rows(session, principal)
     payload = _portfolio_payload(session, rows)
     managers: list[dict[str, Any]] = []
-    for manager_id in sorted({manager.subject_id for _customer, manager in rows}):
+    for manager_id in sorted({manager.subject_id for _customer, manager, _branch_code in rows}):
         manager_rows = [item for item in rows if item[1].subject_id == manager_id]
         manager_payload = _portfolio_payload(session, manager_rows)
         manager = manager_rows[0][1]
@@ -437,7 +473,7 @@ def branch_dashboard(
                 "averagePropensity": sum(scores) / len(scores) if scores else 0.0,
             }
         )
-    actions = _actions(session, [customer.id for customer, _manager in rows])
+    actions = _actions(session, [customer.id for customer, _manager, _branch_code in rows])
     all_actions = [action for customer_actions in actions.values() for action in customer_actions]
     contacted = sum(
         1
@@ -460,7 +496,7 @@ def branch_dashboard(
         ),
         ("CONVERTED", sum(1 for item in all_actions if item.outcome_type == "CONVERTED")),
     ]
-    branch_id = rows[0][1].branch_code if rows else principal.branch_ids[0]
+    branch_id = rows[0][2] if rows else principal.branch_ids[0]
     payload.pop("portfolio", None)
     payload.update(
         scope={"type": "BRANCH", "branchId": branch_id, "branchName": branch_label(branch_id)},
@@ -515,11 +551,11 @@ def customer_propensity(
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     row = session.execute(
-        _scoped_customers(principal).where(Customer.customer_ref == customer_id)
+        _scoped_customers(session, principal).where(Customer.customer_ref == customer_id)
     ).first()
     if row is None:
         raise not_found("Customer")
-    customer, _manager = row
+    customer, _manager, _branch_code = row
     score_record = _latest_scores(session, [customer.id]).get(customer.id)
     if score_record is None:
         raise Problem(

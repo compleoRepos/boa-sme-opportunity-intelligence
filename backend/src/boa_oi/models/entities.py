@@ -20,6 +20,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -66,6 +67,45 @@ class Customer(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     rm_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("customer.relationship_managers.id")
     )
+
+
+class PortfolioAssignment(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "portfolio_assignments"
+    __table_args__ = (
+        CheckConstraint("valid_to IS NULL OR valid_to > valid_from", name="validity"),
+        Index(
+            "uq_portfolio_assignments_active_customer",
+            "customer_id",
+            unique=True,
+            postgresql_where=text("valid_to IS NULL"),
+            sqlite_where=text("valid_to IS NULL"),
+        ),
+        Index(
+            "ix_portfolio_assignments_rm_validity",
+            "relationship_manager_id",
+            "valid_from",
+            "valid_to",
+        ),
+        Index(
+            "ix_portfolio_assignments_branch_validity",
+            "branch_code",
+            "valid_from",
+            "valid_to",
+        ),
+        {"schema": "customer"},
+    )
+    customer_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("customer.customers.id", ondelete="CASCADE")
+    )
+    relationship_manager_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("customer.relationship_managers.id", ondelete="RESTRICT"),
+    )
+    branch_code: Mapped[str] = mapped_column(String(30))
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    actor: Mapped[str] = mapped_column(String(120))
+    reason: Mapped[str] = mapped_column(Text)
 
 
 class Account(Base, UUIDPrimaryKeyMixin, TimestampMixin):

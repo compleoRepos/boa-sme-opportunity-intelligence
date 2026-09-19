@@ -755,17 +755,31 @@ paths:
       operationId: recalculateCustomerMetrics
       security: [{ serviceOAuth2: [analytics:write] }]
       parameters: [CustomerId, CorrelationId, IdempotencyKey]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RecomputeRequest' } } } }
       responses:
-        '202': { description: Recalcul accepté }
+        '202': { description: Recalcul terminé avec compteurs processed/skipped }
+  /analytics/recompute:
+    post:
+      operationId: recomputeAnalytics
+      security: [{ serviceOAuth2: [analytics:write] }]
+      parameters: [CorrelationId, IdempotencyKey]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RecomputeRequest' } } } }
+      responses:
+        '202': { description: Recalcul incrémental ou reprise historique terminé }
   /health/data-freshness:
     get:
       operationId: getDataFreshness
       security: [{ serviceOAuth2: [analytics:read] }]
       responses:
         '200': { description: Fraîcheur et qualité des données }
+components:
+  schemas:
+    RecomputeRequest: { type: object, required: [customerIds, asOf], properties: { customerIds: { type: array, minItems: 1, maxItems: 1000, items: { type: string } }, asOf: { type: string, format: date }, periods: { type: array, items: { type: string, enum: [7D, 30D, 90D, 180D, 365D] } }, mode: { type: string, enum: [INCREMENTAL, HISTORICAL], default: INCREMENTAL }, checkpointScope: { type: string, enum: [CUSTOMER, BATCH], default: CUSTOMER }, checkpointKey: { type: string, maxLength: 200 } } }
 ```
 
 Les indicateurs couvrent `MONTHLY_INFLOW`, `MONTHLY_OUTFLOW`, `AVERAGE_BALANCE`, `MINIMUM_BALANCE`, `MAXIMUM_BALANCE`, `TRANSACTION_COUNT`, `SUPPLIER_PAYMENT_GROWTH`, `INTERNATIONAL_FLOW_GROWTH`, `CASH_BALANCE_GROWTH` et `CREDIT_LINE_UTILIZATION`, sur `7D`, `30D`, `90D`, `180D` et `365D`. La comparaison utilise la période précédente et une baseline historique lorsque suffisamment de données existent.
+
+Le mode `INCREMENTAL` réutilise un checkpoint persistant, par client ou par lot, et ignore les entrées dont le hash de contenu n'a pas changé. La réponse expose `processed`, `skipped` et `lastEvaluatedAt`. Le mode `HISTORICAL` reste explicite pour les reprises et force le recalcul sans consulter ni modifier le checkpoint incrémental.
 
 ### 10.6 Signal Service
 

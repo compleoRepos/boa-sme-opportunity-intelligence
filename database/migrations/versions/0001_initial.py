@@ -31,6 +31,7 @@ def upgrade():
     # Seules les tables des schémas de cette révision : les schémas rule, feature_store,
     # ml et portfolio sont créés par 0003 et 0004, sinon la chaîne échoue sur base vide.
     future_governance_tables = {
+        "portfolio_assignments",
         "scoring_policies",
         "scoring_policy_versions",
         "scoring_policy_audit_logs",

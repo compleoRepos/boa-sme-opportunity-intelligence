@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from collections import defaultdict
-from datetime import date, timedelta
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import Depends, Header, Query, Request, status
 from pydantic import BaseModel, Field
@@ -15,6 +18,7 @@ from sqlalchemy.orm import Session
 from boa_oi.analytics.domain import BalanceFact, MetricSnapshot, TransactionFact
 from boa_oi.analytics.service import SUPPORTED_WINDOWS, AnalyticsEngine
 from boa_oi.http_clients import service_request
+from boa_oi.models.entities import ImportBatch
 from boa_oi.models.entities import MetricSnapshot as MetricSnapshotRecord
 from boa_oi.platform import (
     ANALYTICS_ROLES,
@@ -35,12 +39,35 @@ app = create_service_app(
 )
 PREFIX = "/internal/v1"
 CALCULATION_VERSION = "analytics-0.1.0"
+CHECKPOINT_SOURCE = "ANALYTICS_CHECKPOINT"
+
+
+@dataclass(frozen=True)
+class AnalyticsInputs:
+    transactions: tuple[TransactionFact, ...]
+    balances: tuple[BalanceFact, ...]
 
 
 class RecomputeRequest(BaseModel):
     customerIds: list[str] = Field(min_length=1, max_length=1_000)
     asOf: date
     periods: list[str] = Field(default_factory=lambda: ["7D", "30D", "90D", "180D", "365D"])
+    mode: Literal["INCREMENTAL", "HISTORICAL"] = "INCREMENTAL"
+    checkpointScope: Literal["CUSTOMER", "BATCH"] = "CUSTOMER"
+    checkpointKey: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class RecomputeResponse(BaseModel):
+    jobId: str
+    status: Literal["COMPLETED"]
+    customers: int
+    processed: int
+    skipped: int
+    metrics: int
+    asOf: date
+    mode: Literal["INCREMENTAL", "HISTORICAL"]
+    checkpointScope: Literal["CUSTOMER", "BATCH"]
+    lastEvaluatedAt: datetime
 
 
 def dependency_url(name: str) -> str:
@@ -52,6 +79,112 @@ def dependency_url(name: str) -> str:
             f"{name.upper()}_SERVICE_URL is not configured.",
         )
     return value.rstrip("/")
+
+
+def _canonical_hash(value: Any) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def analytics_input_hash(inputs: AnalyticsInputs, *, as_of: date, periods: list[str]) -> str:
+    transactions = sorted(
+        (
+            {
+                "transactionRef": item.transaction_ref,
+                "customerId": item.customer_id,
+                "accountId": item.account_id,
+                "valueDate": item.value_date.isoformat(),
+                "direction": item.direction,
+                "amount": str(item.amount),
+                "category": item.category,
+                "international": item.is_international,
+                "status": item.status,
+                "internalTransfer": item.is_internal_transfer,
+            }
+            for item in inputs.transactions
+        ),
+        key=lambda item: json.dumps(item, sort_keys=True),
+    )
+    balances = sorted(
+        (
+            {
+                "accountId": item.account_id,
+                "asOf": item.as_of_date.isoformat(),
+                "closingBalance": str(item.closing_balance),
+                "creditLimit": str(item.credit_limit),
+                "creditUsed": str(item.credit_used),
+            }
+            for item in inputs.balances
+        ),
+        key=lambda item: json.dumps(item, sort_keys=True),
+    )
+    return _canonical_hash(
+        {
+            "asOf": as_of.isoformat(),
+            "calculationVersion": CALCULATION_VERSION,
+            "periods": sorted(periods),
+            "transactions": transactions,
+            "balances": balances,
+        }
+    )
+
+
+def checkpoint_ref(
+    scope: Literal["CUSTOMER", "BATCH"],
+    *,
+    customer_ids: list[str],
+    checkpoint_key: str | None,
+) -> str:
+    identity: dict[str, Any] = {"scope": scope}
+    if checkpoint_key:
+        identity["key"] = checkpoint_key
+    if scope == "CUSTOMER":
+        identity["customerId"] = customer_ids[0]
+    else:
+        identity["customerIds"] = sorted(customer_ids)
+    return f"analytics-{scope.lower()}-{_canonical_hash(identity)[:64]}"
+
+
+def find_checkpoint(session: Session, batch_ref: str) -> ImportBatch | None:
+    return session.scalar(
+        select(ImportBatch).where(
+            ImportBatch.source_system == CHECKPOINT_SOURCE,
+            ImportBatch.batch_ref == batch_ref,
+        )
+    )
+
+
+def save_checkpoint(
+    session: Session,
+    *,
+    batch_ref: str,
+    input_hash: str,
+    row_count: int,
+    request: Request,
+    evaluated_at: datetime,
+    existing: ImportBatch | None,
+) -> ImportBatch:
+    if existing is None:
+        existing = ImportBatch(
+            id=deterministic_uuid("analytics-checkpoint", batch_ref),
+            source_system=CHECKPOINT_SOURCE,
+            batch_ref=batch_ref,
+            started_at=evaluated_at,
+            completed_at=evaluated_at,
+            input_hash=input_hash,
+            row_count=row_count,
+            status="COMPLETED",
+            correlation_id=correlation_id(request),
+        )
+        session.add(existing)
+        return existing
+    existing.started_at = evaluated_at
+    existing.completed_at = evaluated_at
+    existing.input_hash = input_hash
+    existing.row_count = row_count
+    existing.status = "COMPLETED"
+    existing.correlation_id = correlation_id(request)
+    return existing
 
 
 def metric_rows(snapshot: MetricSnapshot) -> list[dict[str, Any]]:
@@ -200,13 +333,23 @@ def customer_metrics(
     )
 
 
-async def recompute_one(
+def validate_periods(periods: list[str]) -> None:
+    for period in periods:
+        try:
+            days = int(period.removesuffix("D"))
+        except ValueError as exc:
+            raise Problem(
+                422, "VALIDATION_ERROR", f"Unsupported analytics period: {period}"
+            ) from exc
+        if not period.endswith("D") or days not in SUPPORTED_WINDOWS:
+            raise Problem(422, "VALIDATION_ERROR", f"Unsupported analytics period: {period}")
+
+
+async def load_analytics_inputs(
     customer_id: str,
     as_of: date,
-    periods: list[str],
     request: Request,
-    session: Session,
-) -> int:
+) -> AnalyticsInputs:
     corr = correlation_id(request)
     auth = request.headers.get("Authorization")
     transaction_rows: list[dict[str, Any]] = []
@@ -238,7 +381,7 @@ async def recompute_one(
         params={"pageSize": 100},
         incoming_authorization=auth,
     )
-    transactions = [
+    transactions = tuple(
         TransactionFact(
             transaction_ref=row["transactionId"],
             customer_id=customer_id,
@@ -252,7 +395,7 @@ async def recompute_one(
             is_internal_transfer=False,
         )
         for row in transaction_rows
-    ]
+    )
     balances: list[BalanceFact] = []
     for account in account_page["data"]:
         balance_page = await service_request(
@@ -276,29 +419,43 @@ async def recompute_one(
             )
             for row in balance_page["data"]
         )
+    return AnalyticsInputs(transactions=transactions, balances=tuple(balances))
+
+
+def persist_analytics_metrics(
+    customer_id: str,
+    as_of: date,
+    periods: list[str],
+    inputs: AnalyticsInputs,
+    input_hash: str,
+    session: Session,
+) -> int:
     engine = AnalyticsEngine()
     count = 0
     for period in periods:
         days = int(period.removesuffix("D"))
-        if days not in SUPPORTED_WINDOWS:
-            raise Problem(422, "VALIDATION_ERROR", f"Unsupported analytics period: {period}")
         history: dict[str, list[Decimal]] = defaultdict(list)
         available_days = max(
             0,
-            (as_of - min((item.value_date for item in transactions), default=as_of)).days + 1,
+            (as_of - min((item.value_date for item in inputs.transactions), default=as_of)).days
+            + 1,
         )
         historical_windows = min(11, max(0, available_days // days - 1))
         for window_index in range(1, historical_windows + 1):
             historical_as_of = as_of - timedelta(days=days * window_index)
             historical_snapshot = engine.calculate(
-                customer_id, transactions, balances, historical_as_of, days
+                customer_id,
+                list(inputs.transactions),
+                list(inputs.balances),
+                historical_as_of,
+                days,
             )
             for code, metric in historical_snapshot.metrics.items():
                 history[code].append(metric.current_value)
         snapshot = engine.calculate(
             customer_id,
-            transactions,
-            balances,
+            list(inputs.transactions),
+            list(inputs.balances),
             as_of,
             days,
             historical_values=dict(history),
@@ -315,7 +472,7 @@ async def recompute_one(
                 window_days=days,
                 calculation_version=CALCULATION_VERSION,
                 values_json=values,
-                input_watermark=f"{len(transactions)}tx/{len(balances)}balances",
+                input_watermark=input_hash,
                 created_by="analytics-service",
             )
             .on_conflict_do_update(
@@ -327,7 +484,7 @@ async def recompute_one(
                 ],
                 set_={
                     "values_json": values,
-                    "input_watermark": f"{len(transactions)}tx/{len(balances)}balances",
+                    "input_watermark": input_hash,
                 },
             )
         )
@@ -335,9 +492,126 @@ async def recompute_one(
     return count
 
 
+async def recompute_one(
+    customer_id: str,
+    as_of: date,
+    periods: list[str],
+    request: Request,
+    session: Session,
+) -> int:
+    validate_periods(periods)
+    inputs = await load_analytics_inputs(customer_id, as_of, request)
+    input_hash = analytics_input_hash(inputs, as_of=as_of, periods=periods)
+    return persist_analytics_metrics(customer_id, as_of, periods, inputs, input_hash, session)
+
+
+async def incremental_by_customer(
+    payload: RecomputeRequest,
+    request: Request,
+    session: Session,
+) -> tuple[int, int, int, datetime]:
+    processed = 0
+    skipped = 0
+    calculated = 0
+    evaluated_at = datetime.now(timezone.utc)
+    for customer_id in payload.customerIds:
+        inputs = await load_analytics_inputs(customer_id, payload.asOf, request)
+        input_hash = analytics_input_hash(inputs, as_of=payload.asOf, periods=payload.periods)
+        ref = checkpoint_ref(
+            "CUSTOMER",
+            customer_ids=[customer_id],
+            checkpoint_key=payload.checkpointKey,
+        )
+        existing = find_checkpoint(session, ref)
+        if existing is not None and existing.input_hash == input_hash:
+            skipped += 1
+            row_count = existing.row_count
+        else:
+            row_count = persist_analytics_metrics(
+                customer_id,
+                payload.asOf,
+                payload.periods,
+                inputs,
+                input_hash,
+                session,
+            )
+            calculated += row_count
+            processed += 1
+        save_checkpoint(
+            session,
+            batch_ref=ref,
+            input_hash=input_hash,
+            row_count=row_count,
+            request=request,
+            evaluated_at=evaluated_at,
+            existing=existing,
+        )
+    return processed, skipped, calculated, evaluated_at
+
+
+async def incremental_by_batch(
+    payload: RecomputeRequest,
+    request: Request,
+    session: Session,
+) -> tuple[int, int, int, datetime]:
+    evaluated_at = datetime.now(timezone.utc)
+    inputs_by_customer = {
+        customer_id: await load_analytics_inputs(customer_id, payload.asOf, request)
+        for customer_id in payload.customerIds
+    }
+    hashes = {
+        customer_id: analytics_input_hash(
+            inputs,
+            as_of=payload.asOf,
+            periods=payload.periods,
+        )
+        for customer_id, inputs in inputs_by_customer.items()
+    }
+    input_hash = _canonical_hash(hashes)
+    ref = checkpoint_ref(
+        "BATCH",
+        customer_ids=payload.customerIds,
+        checkpoint_key=payload.checkpointKey,
+    )
+    existing = find_checkpoint(session, ref)
+    if existing is not None and existing.input_hash == input_hash:
+        save_checkpoint(
+            session,
+            batch_ref=ref,
+            input_hash=input_hash,
+            row_count=existing.row_count,
+            request=request,
+            evaluated_at=evaluated_at,
+            existing=existing,
+        )
+        return 0, len(payload.customerIds), 0, evaluated_at
+    calculated = sum(
+        persist_analytics_metrics(
+            customer_id,
+            payload.asOf,
+            payload.periods,
+            inputs_by_customer[customer_id],
+            hashes[customer_id],
+            session,
+        )
+        for customer_id in payload.customerIds
+    )
+    save_checkpoint(
+        session,
+        batch_ref=ref,
+        input_hash=input_hash,
+        row_count=calculated,
+        request=request,
+        evaluated_at=evaluated_at,
+        existing=existing,
+    )
+    return len(payload.customerIds), 0, calculated, evaluated_at
+
+
 @app.post(
     f"{PREFIX}/analytics/recompute",
     status_code=status.HTTP_202_ACCEPTED,
+    response_model=RecomputeResponse,
     dependencies=[Depends(require_roles(*ANALYTICS_ROLES))],
     tags=["Analytics"],
 )
@@ -347,23 +621,42 @@ async def recompute(
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=200)],
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    calculated = 0
-    for customer_id in payload.customerIds:
-        calculated += await recompute_one(
-            customer_id, payload.asOf, payload.periods, request, session
+    validate_periods(payload.periods)
+    if payload.mode == "HISTORICAL":
+        calculated = 0
+        evaluated_at = datetime.now(timezone.utc)
+        for customer_id in payload.customerIds:
+            calculated += await recompute_one(
+                customer_id, payload.asOf, payload.periods, request, session
+            )
+        processed = len(payload.customerIds)
+        skipped = 0
+    elif payload.checkpointScope == "BATCH":
+        processed, skipped, calculated, evaluated_at = await incremental_by_batch(
+            payload, request, session
+        )
+    else:
+        processed, skipped, calculated, evaluated_at = await incremental_by_customer(
+            payload, request, session
         )
     return {
         "jobId": str(deterministic_uuid("analytics-job", idempotency_key)),
         "status": "COMPLETED",
         "customers": len(payload.customerIds),
+        "processed": processed,
+        "skipped": skipped,
         "metrics": calculated,
         "asOf": payload.asOf.isoformat(),
+        "mode": payload.mode,
+        "checkpointScope": payload.checkpointScope,
+        "lastEvaluatedAt": evaluated_at.isoformat(),
     }
 
 
 @app.post(
     f"{PREFIX}/customers/{{customer_id}}/metrics/recalculate",
     status_code=status.HTTP_202_ACCEPTED,
+    response_model=RecomputeResponse,
     dependencies=[Depends(require_roles(*ANALYTICS_ROLES))],
     tags=["Analytics"],
 )
