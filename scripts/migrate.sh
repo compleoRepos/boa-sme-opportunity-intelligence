@@ -16,12 +16,14 @@ RULE_MANAGEMENT_DB_PASSWORD=${RULE_MANAGEMENT_DB_PASSWORD:-DevOnly-RuleManagemen
 FEATURE_STORE_DB_PASSWORD=${FEATURE_STORE_DB_PASSWORD:-DevOnly-FeatureStoreDb-ChangeMe!}
 ML_ENGINE_DB_PASSWORD=${ML_ENGINE_DB_PASSWORD:-DevOnly-MlEngineDb-ChangeMe!}
 PORTFOLIO_DB_PASSWORD=${PORTFOLIO_DB_PASSWORD:-DevOnly-PortfolioDb-ChangeMe!}
+NOTIFICATION_DB_PASSWORD=${NOTIFICATION_DB_PASSWORD:-DevOnly-NotificationDb-ChangeMe!}
 
 for role_spec in \
   "rule_management_service:$RULE_MANAGEMENT_DB_PASSWORD:rule" \
   "feature_store_service:$FEATURE_STORE_DB_PASSWORD:feature_store" \
   "ml_engine_service:$ML_ENGINE_DB_PASSWORD:ml" \
-  "portfolio_service:$PORTFOLIO_DB_PASSWORD:portfolio"; do
+  "portfolio_service:$PORTFOLIO_DB_PASSWORD:portfolio" \
+  "notification_service:$NOTIFICATION_DB_PASSWORD:notification"; do
   IFS=: read -r role password schema <<<"$role_spec"
   compose exec -T postgres psql --set=ON_ERROR_STOP=1 --username "$POSTGRES_ADMIN_USER" --dbname "$POSTGRES_DB" \
     --set=role_name="$role" --set=role_password="$password" --set=schema_name="$schema" <<'SQL'
@@ -43,6 +45,7 @@ declare -A schema_roles=(
   [integration]=integration_service [analytics]=analytics_service [signal]=signal_service
   [opportunity]=opportunity_service [product]=product_service [action]=action_service
   [rule]=rule_management_service [feature_store]=feature_store_service [ml]=ml_engine_service
+  [notification]=notification_service
 )
 for schema in "${!schema_roles[@]}"; do
   role=${schema_roles[$schema]}
@@ -54,6 +57,11 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA "$schema" GRANT SELECT, INSERT, UPDATE, DELET
 ALTER DEFAULT PRIVILEGES IN SCHEMA "$schema" GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO "$role";
 SQL
 done
+
+compose exec -T postgres psql --set=ON_ERROR_STOP=1 --username "$POSTGRES_ADMIN_USER" --dbname "$POSTGRES_DB" \
+  --set=admin_role="$POSTGRES_ADMIN_USER" <<'SQL'
+SELECT format('ALTER SCHEMA notification OWNER TO %I', :'admin_role') \gexec
+SQL
 
 compose exec -T postgres psql --set=ON_ERROR_STOP=1 --username "$POSTGRES_ADMIN_USER" --dbname "$POSTGRES_DB" <<'SQL'
 GRANT USAGE ON SCHEMA customer, analytics TO rule_management_service;
@@ -73,12 +81,51 @@ GRANT USAGE ON SCHEMA audit TO opportunity_service;
 GRANT SELECT, INSERT ON audit.audit_logs TO opportunity_service;
 GRANT USAGE ON SCHEMA audit TO action_service;
 GRANT SELECT, INSERT ON audit.audit_logs TO action_service;
+GRANT USAGE ON SCHEMA integration TO action_service;
+GRANT SELECT, INSERT ON integration.outbox_messages TO action_service;
+GRANT UPDATE (processing_status, processing_error)
+  ON integration.outbox_messages TO action_service;
 GRANT USAGE ON SCHEMA audit TO customer_service;
 GRANT SELECT, INSERT ON audit.audit_logs TO customer_service;
 GRANT USAGE ON SCHEMA audit TO portfolio_service;
 GRANT SELECT, INSERT ON audit.audit_logs TO portfolio_service;
 GRANT USAGE ON SCHEMA integration TO customer_service;
 GRANT SELECT, INSERT ON integration.outbox_messages TO customer_service;
+GRANT USAGE ON SCHEMA integration TO notification_service;
+REVOKE ALL PRIVILEGES ON integration.outbox_messages FROM notification_service;
+GRANT SELECT ON integration.outbox_messages TO notification_service;
+GRANT UPDATE (published_at, attempt_count, processing_status, processing_error)
+  ON integration.outbox_messages TO notification_service;
+ALTER TABLE integration.outbox_messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS outbox_integration_owner ON integration.outbox_messages;
+CREATE POLICY outbox_integration_owner ON integration.outbox_messages
+  FOR ALL TO integration_service USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS outbox_action_producer ON integration.outbox_messages;
+CREATE POLICY outbox_action_producer ON integration.outbox_messages
+  FOR INSERT TO action_service WITH CHECK (event_type = 'ACTION_NOTIFICATION_REQUESTED');
+DROP POLICY IF EXISTS outbox_action_reader ON integration.outbox_messages;
+CREATE POLICY outbox_action_reader ON integration.outbox_messages
+  FOR SELECT TO action_service USING (event_type = 'ACTION_NOTIFICATION_REQUESTED');
+DROP POLICY IF EXISTS outbox_action_updater ON integration.outbox_messages;
+CREATE POLICY outbox_action_updater ON integration.outbox_messages
+  FOR UPDATE TO action_service
+  USING (event_type = 'ACTION_NOTIFICATION_REQUESTED')
+  WITH CHECK (event_type = 'ACTION_NOTIFICATION_REQUESTED');
+DROP POLICY IF EXISTS outbox_customer_producer ON integration.outbox_messages;
+CREATE POLICY outbox_customer_producer ON integration.outbox_messages
+  FOR INSERT TO customer_service WITH CHECK (event_type = 'PORTFOLIO_ASSIGNMENT_CHANGED');
+DROP POLICY IF EXISTS outbox_notification_consumer ON integration.outbox_messages;
+CREATE POLICY outbox_notification_consumer ON integration.outbox_messages
+  FOR ALL TO notification_service
+  USING (event_type = 'ACTION_NOTIFICATION_REQUESTED')
+  WITH CHECK (event_type = 'ACTION_NOTIFICATION_REQUESTED');
+REVOKE CREATE ON SCHEMA notification FROM notification_service;
+GRANT USAGE ON SCHEMA notification TO notification_service;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA notification FROM notification_service;
+ALTER DEFAULT PRIVILEGES IN SCHEMA notification REVOKE ALL ON TABLES FROM notification_service;
+GRANT SELECT, INSERT, UPDATE ON notification.notification_messages TO notification_service;
+GRANT SELECT, INSERT, UPDATE ON notification.notification_digest_subscriptions TO notification_service;
+GRANT SELECT, INSERT ON notification.notification_delivery_attempts TO notification_service;
 GRANT USAGE ON SCHEMA customer TO opportunity_service;
 GRANT SELECT ON customer.customers, customer.relationship_managers, customer.portfolio_assignments TO opportunity_service;
 GRANT USAGE ON SCHEMA integration TO analytics_service;

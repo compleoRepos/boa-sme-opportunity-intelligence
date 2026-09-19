@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import os
 from collections import Counter
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
-from fastapi import Depends, Query, Request, Response
+from fastapi import Depends, Header, Query, Request, Response
 from sqlalchemy import Select, and_, func, inspect, or_, select
 from sqlalchemy.orm import Session, aliased
 
@@ -601,7 +604,7 @@ def branch_dashboard(
 
 @app.get(
     f"{PREFIX}/dashboards/relationship-managers/{{relationship_manager_id}}",
-    dependencies=[Depends(require_roles(*BRANCH_ROLES))],
+    dependencies=[Depends(require_roles(*BRANCH_ROLES, "ADMIN"))],
     tags=["Commercial dashboards"],
 )
 def relationship_manager_portfolio(
@@ -625,6 +628,45 @@ def relationship_manager_portfolio(
         generatedAt=datetime.now(timezone.utc).isoformat(),
     )
     return payload
+
+
+@app.get(
+    f"{PREFIX}/notification-digests/{{relationship_manager_id}}",
+    dependencies=[Depends(require_roles("NOTIFICATION_DIGEST_READER"))],
+    tags=["Commercial dashboards"],
+)
+def notification_digest_kpis(
+    relationship_manager_id: str,
+    signature: str = Header(alias="X-BOA-Digest-Signature"),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    secret = os.getenv("NOTIFICATION_SCOPE_SIGNING_SECRET")
+    if not secret:
+        raise Problem(503, "NOTIFICATION_SCOPE_NOT_CONFIGURED", "Digest scope is unavailable.")
+    expected = hmac.new(
+        secret.encode(), relationship_manager_id.encode(), hashlib.sha256
+    ).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        raise Problem(403, "FORBIDDEN", "Digest scope signature is invalid.")
+    system_principal = Principal(subject="notification-digest", roles={"ADMIN"})
+    rows = _rows(
+        session,
+        system_principal,
+        relationship_manager_id=relationship_manager_id,
+    )
+    if not rows:
+        raise not_found("Relationship-manager portfolio")
+    payload = _portfolio_payload(session, rows)
+    manager = rows[0][1]
+    return {
+        "scope": {
+            "type": "RELATIONSHIP_MANAGER",
+            "relationshipManagerId": manager.subject_id,
+            "relationshipManagerName": manager.display_name,
+        },
+        "kpis": payload["kpis"],
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 @app.get(

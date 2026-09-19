@@ -37,5 +37,6 @@ replace_literal 'DevOnly-RuleSimulationClient-ChangeMe!' "${RULE_SIMULATION_CLIE
 replace_literal 'DevOnly-FeatureStoreClient-ChangeMe!' "${FEATURE_STORE_CLIENT_SECRET:-DevOnly-FeatureStoreClient-ChangeMe!}"
 replace_literal 'DevOnly-MlEngineClient-ChangeMe!' "${ML_ENGINE_CLIENT_SECRET:-DevOnly-MlEngineClient-ChangeMe!}"
 replace_literal 'DevOnly-PortfolioClient-ChangeMe!' "${PORTFOLIO_CLIENT_SECRET:-DevOnly-PortfolioClient-ChangeMe!}"
+replace_literal 'DevOnly-NotificationClient-ChangeMe!' "${NOTIFICATION_CLIENT_SECRET:-DevOnly-NotificationClient-ChangeMe!}"
 
 exec /opt/keycloak/bin/kc.sh "$@"

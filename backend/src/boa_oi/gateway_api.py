@@ -43,6 +43,7 @@ SERVICES = {
     "feature-store": "FEATURE_STORE_SERVICE_URL",
     "ml-engine": "ML_ENGINE_SERVICE_URL",
     "portfolio": "PORTFOLIO_SERVICE_URL",
+    "notification": "NOTIFICATION_SERVICE_URL",
 }
 GLOBAL_ANALYTICS_ROLES = ("DATA_ANALYST", "ADMIN", "SERVICE")
 
@@ -368,6 +369,69 @@ async def update_label_catalog(
         "rule-management",
         f"labels/{namespace}/{code}",
         body=await json_body(request),
+    )
+
+
+@app.get("/api/v1/admin/notifications", tags=["Notifications"])
+async def notifications(
+    request: Request,
+    _principal: Principal = Depends(require_roles("ADMIN")),
+) -> JSONResponse:
+    return await proxy(request, "notification", "notifications")
+
+
+@app.get("/api/v1/admin/notifications/digest-subscriptions", tags=["Notifications"])
+async def digest_subscriptions(
+    request: Request,
+    _principal: Principal = Depends(require_roles("ADMIN")),
+) -> JSONResponse:
+    return await proxy(request, "notification", "notifications/digest-subscriptions")
+
+
+@app.put(
+    "/api/v1/admin/notifications/digest-subscriptions/{relationship_manager_id}",
+    tags=["Notifications"],
+)
+async def update_digest_subscription(
+    relationship_manager_id: str,
+    request: Request,
+    _principal: Principal = Depends(require_roles("ADMIN")),
+) -> JSONResponse:
+    body = await request.json()
+    return await proxy(
+        request,
+        "notification",
+        f"notifications/digest-subscriptions/{relationship_manager_id}",
+        body=body,
+    )
+
+
+@app.post("/api/v1/admin/notifications/digests/generate", tags=["Notifications"])
+async def generate_notification_digests(
+    request: Request,
+    _principal: Principal = Depends(require_roles("ADMIN")),
+) -> JSONResponse:
+    return await proxy(request, "notification", "notifications/digests/generate")
+
+
+@app.post("/api/v1/admin/notifications/dispatch", tags=["Notifications"])
+async def dispatch_notifications(
+    request: Request,
+    _principal: Principal = Depends(require_roles("ADMIN")),
+) -> JSONResponse:
+    return await proxy(request, "notification", "notifications/dispatch")
+
+
+@app.post("/api/v1/admin/notifications/{notification_id}/retry", tags=["Notifications"])
+async def retry_notification(
+    notification_id: str,
+    request: Request,
+    _principal: Principal = Depends(require_roles("ADMIN")),
+) -> JSONResponse:
+    return await proxy(
+        request,
+        "notification",
+        f"notifications/{notification_id}/retry",
     )
 
 

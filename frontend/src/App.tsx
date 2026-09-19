@@ -6,7 +6,7 @@ import { setRuntimeLabels } from './api/format'
 import { useLabelCatalog } from './api/hooks'
 import { AuthProvider, useAuth } from './auth/AuthProvider'
 import { ProtectedRoute, RoleRoute, RuleStudioRoute } from './auth/ProtectedRoute'
-import { AuditPage, BackOfficeHomePage, EngineThresholdsPage, LabelsPage, ModelsPage, SimulationsPage } from './features/backoffice/BackOfficePages'
+import { AuditPage, BackOfficeHomePage, EngineThresholdsPage, LabelsPage, ModelsPage, NotificationsPage, SimulationsPage } from './features/backoffice/BackOfficePages'
 import { BranchDashboardPage } from './features/branch/BranchDashboardPage'
 import { RmPortfolioPage } from './features/branch/RmPortfolioPage'
 import { CustomerSheetPage } from './features/customer/CustomerSheetPage'
@@ -88,6 +88,7 @@ function ApplicationRoutes() {
         <Route path="back-office/modeles" element={<RuleStudioRoute><ModelsPage /></RuleStudioRoute>} />
         <Route path="back-office/audit" element={<RuleStudioRoute><AuditPage /></RuleStudioRoute>} />
         <Route path="back-office/libelles" element={<RoleRoute roles={['ADMIN']}><LabelsPage /></RoleRoute>} />
+        <Route path="back-office/notifications" element={<RoleRoute roles={['ADMIN']}><NotificationsPage /></RoleRoute>} />
         <Route path="rule-studio/*" element={<Navigate to="/back-office/regles" replace />} />
         <Route path="administration" element={<Navigate to="/back-office/seuils" replace />} />
         <Route path="*" element={<NotFoundPage />} />

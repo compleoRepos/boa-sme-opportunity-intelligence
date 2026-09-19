@@ -1,7 +1,7 @@
 # Contrats API-first — BOA SME Opportunity Intelligence
 
 **Statut :** contrat cible du MVP  
-**Version du contrat :** `1.5.0`
+**Version du contrat :** `1.6.0`
 **Préfixe public :** `/api/v1`  
 **Préfixe interne :** `/internal/v1`  
 **Format :** REST/JSON et XLSX, OpenAPI 3.0
@@ -1335,3 +1335,28 @@ La page `/back-office/libelles` est réservée à l’administrateur. Elle affic
 ## Référence du catalogue de libellés
 
 [12]: ./lots/LOT-05-LIBELLES-ADMINISTRABLES.md "Rapport de validation du lot 5 — libellés administrables"
+
+
+## 21. Contrats implémentés — notifications email
+
+### 21.1 Rappels liés aux actions
+
+Lorsqu’un CC crée une action planifiée `CONTACT_CUSTOMER`, `CREATE_FOLLOW_UP` ou `SCHEDULE_MEETING` avec une adresse email issue de son jeton OIDC vérifié, Action Service écrit `ACTION_NOTIFICATION_REQUESTED` dans `integration.outbox_messages` au sein de la transaction métier. Le worker Notification matérialise cet événement une seule fois, puis le livre via le relais SMTP configuré. Une action sans adresse vérifiée reste créée, mais ne produit pas d’email.
+
+Le corps du rappel contient le type d’action, l’échéance et la référence de l’opportunité. Il n’embarque ni donnée transactionnelle détaillée, ni score financier, ni recommandation de crédit. Le texte rappelle que l’opportunité est une aide commerciale et ne constitue aucune décision de crédit.
+
+### 21.2 Synthèse quotidienne par CC
+
+`PUT /api/v1/admin/notifications/digest-subscriptions/{relationshipManagerId}` exige `ADMIN` et configure `recipientEmail`, un fuseau IANA, une heure locale de livraison entre 0 et 23, et l’état actif. `GET /api/v1/admin/notifications/digest-subscriptions` retourne le paramétrage courant. La page `/back-office/notifications` expose ces opérations sans accès direct à la base.
+
+À chaque cycle, le worker sélectionne les abonnements dus, obtient par OAuth2 `client_credentials` les seuls KPI agrégés du portefeuille autorisé auprès de Portfolio Service, puis produit au plus une synthèse par `(CC, date locale)`. Son jeton ne porte que `NOTIFICATION_DIGEST_READER`, et chaque demande est en plus liée au CC par une signature HMAC avec un secret distinct du secret OAuth. Ce secret est obligatoire au démarrage et ne possède aucune valeur par défaut. Le rôle générique `SERVICE` ne peut pas appeler cette route. La synthèse contient le nombre de clients, les priorités P1, les opportunités ouvertes et les actions à échéance sous sept jours. Aucun nom de PME ni détail de compte n’est inclus. `POST /api/v1/admin/notifications/digests/generate?force=true` permet une exécution contrôlée et auditée par l’administrateur ; la déduplication quotidienne reste active et seuls les administrateurs peuvent appeler ce déclenchement ou le dispatch manuel.
+
+### 21.3 Livraison et résilience
+
+`GET /api/v1/admin/notifications` expose les statuts `PENDING`, `SENDING`, `RETRY`, `SENT`, `DELIVERY_UNCERTAIN` et `DEAD_LETTER`, le compteur de tentatives, la prochaine tentative, le Message-ID du fournisseur et une erreur expurgée. Un envoi resté `SENDING` après interruption passe à `DELIVERY_UNCERTAIN` et n’est jamais réexpédié automatiquement ; l’administrateur doit d’abord rapprocher son Message-ID stable avec le relais. `POST /api/v1/admin/notifications/dispatch` force un cycle de livraison et `POST /api/v1/admin/notifications/{notificationId}/retry` réarme explicitement une dead-letter ou une issue incertaine réconciliée.
+
+Le connecteur est configuré par `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_STARTTLS`, `SMTP_SSL` et `SMTP_FROM`. Une authentification SMTP sans `STARTTLS` ou TLS implicite est refusée sans exception. Seul Mailpit local, anonyme et isolé, utilise un transport non chiffré ; aucun email n’est envoyé à Internet. En cas d’échec certain, le worker applique un délai exponentiel borné et abandonne après cinq tentatives par défaut. Chaque tentative est ajoutée à `notification.notification_delivery_attempts`; les triggers PostgreSQL refusent `UPDATE`, `DELETE` et `TRUNCATE` de cet historique. La migration `0014_email_notifications` crée les tables, index, contraintes et champs de quarantaine d’outbox. Le rôle runtime n’est pas propriétaire du schéma, ne peut ni y créer ni supprimer de table, et ne reçoit que `SELECT`/`INSERT`/`UPDATE` selon les besoins de chaque table. Sur `integration.outbox_messages`, PostgreSQL limite en plus l’accès aux seules lignes `ACTION_NOTIFICATION_REQUESTED` et l’écriture aux quatre colonnes de consommation ; le payload, le type et l’agrégat restent non modifiables.
+
+## Référence des notifications
+
+[13]: ./lots/LOT-06-NOTIFICATIONS-EMAIL.md "Rapport de validation du lot 6 — notifications email"

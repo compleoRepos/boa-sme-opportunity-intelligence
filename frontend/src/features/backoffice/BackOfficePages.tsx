@@ -1,10 +1,10 @@
-import { Activity, BriefcaseBusiness, Cpu, Database, FlaskConical, GitBranch, History, Languages, PackageSearch, RotateCcw, Settings2, ShieldCheck, SlidersHorizontal } from 'lucide-react'
+import { Activity, BriefcaseBusiness, Cpu, Database, FlaskConical, GitBranch, History, Languages, Mail, PackageSearch, RotateCcw, Send, Settings2, ShieldCheck, SlidersHorizontal } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { formatDate, formatNumber, formatPercent, label, safeJson } from '../../api/format'
-import { useActions, useActiveModel, useDashboard, useEngine, useLabelCatalog, useMlModels, useProducts, useRules, useUpdateLabel, useUpdateRule } from '../../api/hooks'
+import { useActions, useActiveModel, useDashboard, useEngine, useGenerateDigests, useLabelCatalog, useMlModels, useNotifications, useNotificationSubscriptions, useProducts, useRules, useUpdateDigestSubscription, useUpdateLabel, useUpdateRule } from '../../api/hooks'
 import { useRuleAudit, useRuleSimulations, useStudioRules } from '../../api/ruleStudioHooks'
-import type { LabelCatalogEntry, MlModel, RuleConfig, RuleLifecyclePolicy, RuleParameter } from '../../api/types'
+import type { LabelCatalogEntry, MlModel, NotificationDigestSubscription, RuleConfig, RuleLifecyclePolicy, RuleParameter } from '../../api/types'
 import { BreakdownBars } from '../../charts/BreakdownBars'
 import { CHART, OPPORTUNITY_COLORS, PRIORITY_COLORS } from '../../charts/theme'
 import { Badge, Button, EmptyState, ErrorState, Kpi, Modal, Panel, SkeletonStack, Tabs, useToast } from '../../ui'
@@ -37,6 +37,7 @@ export function BackOfficeHomePage() {
         { to: '/back-office/simulations', icon: FlaskConical, title: 'Simulations', text: 'Historique des simulations et impacts estimés.' },
         { to: '/back-office/audit', icon: ShieldCheck, title: 'Audit', text: 'Journal des règles et des actions commerciales.' },
         { to: '/back-office/libelles', icon: Languages, title: 'Libellés', text: 'Terminologie française versionnée sans modifier les codes métier.' },
+        { to: '/back-office/notifications', icon: Mail, title: 'Notifications', text: 'Synthèses quotidiennes, SMTP, retries et suivi de livraison.' },
       ].map((card) => <Link key={card.to} to={card.to} className="panel interactive bo-card"><span className="kpi-icon"><card.icon size={20} /></span><div><strong>{card.title}</strong><span className="muted">{card.text}</span></div></Link>)}
     </section>
     <section className="grid cols-2">
@@ -193,6 +194,59 @@ function LabelEditor({ entry, onClose }: { entry: LabelCatalogEntry; onClose: ()
       <label className="field">Libellé français<input className="input" required maxLength={180} value={value} onChange={(event) => setValue(event.target.value)} /></label>
       <label className="checkbox"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Libellé actif</label>
       <label className="field">Justification<textarea className="textarea" required minLength={8} maxLength={1000} rows={3} value={justification} onChange={(event) => setJustification(event.target.value)} placeholder="Motif métier auditable" /></label>
+    </form>
+  </Modal>
+}
+
+
+/* ------------------------------------------------------------------ Notifications */
+export function NotificationsPage() {
+  const subscriptions = useNotificationSubscriptions()
+  const deliveries = useNotifications()
+  const generate = useGenerateDigests()
+  const toast = useToast()
+  const [editing, setEditing] = useState<NotificationDigestSubscription>()
+  const run = () => generate.mutate(undefined, {
+    onSuccess: (result) => toast.push('success', 'Synthèses traitées', `${result.created} créée(s) · ${result.sent} envoyée(s) · ${result.skipped} ignorée(s)`),
+    onError: (error) => toast.push('error', 'Génération refusée', error.message),
+  })
+  return <>
+    <header className="page-head"><div><p className="eyebrow accent">Communication commerciale</p><h1>Notifications email</h1><p className="subtitle">Une synthèse quotidienne agrégée par CC, livrée via un relais SMTP configurable. Aucun détail financier ni décision de crédit n’est envoyé par email.</p></div><Button variant="primary" icon={<Send size={15} />} loading={generate.isPending} onClick={run}>Générer maintenant</Button></header>
+    <div className="grid cols-2">
+      <Panel eyebrow="Planification" title="Synthèses quotidiennes" id="digest-subscriptions" flush>
+        {subscriptions.isPending ? <SkeletonStack rows={3} /> : subscriptions.isError ? <ErrorState error={subscriptions.error} onRetry={() => void subscriptions.refetch()} /> : !subscriptions.data?.data.length ? <EmptyState compact title="Aucun abonnement" message="Créez un abonnement par CC pour activer la synthèse quotidienne." /> : <div className="table-wrap"><table className="table hover"><thead><tr><th>CC</th><th>Destinataire</th><th>Heure</th><th>État</th><th /></tr></thead><tbody>{subscriptions.data.data.map((item) => <tr key={item.relationshipManagerId}><td className="mono">{item.relationshipManagerId}</td><td>{item.recipientEmail}<small>{item.timezone}</small></td><td className="num">{String(item.deliveryHour).padStart(2, '0')}:00</td><td><Badge value={item.enabled ? 'ACTIVE' : 'INACTIVE'} /></td><td><Button size="sm" onClick={() => setEditing(item)}>Modifier</Button></td></tr>)}</tbody></table></div>}
+        <div style={{ padding: 16 }}><Button onClick={() => setEditing({ relationshipManagerId: '', recipientEmail: '', timezone: 'Africa/Abidjan', deliveryHour: 7, enabled: true, updatedAt: '' })}>Ajouter un CC</Button></div>
+      </Panel>
+      <Panel eyebrow="Traçabilité" title="Dernières livraisons" id="notification-deliveries" flush>
+        {deliveries.isPending ? <SkeletonStack rows={4} /> : deliveries.isError ? <ErrorState error={deliveries.error} onRetry={() => void deliveries.refetch()} /> : !deliveries.data?.data.length ? <EmptyState compact title="Aucun email" message="Les livraisons et retries apparaîtront ici." /> : <div className="table-wrap"><table className="table hover"><thead><tr><th>Type</th><th>Destinataire</th><th>État</th><th>Tentatives</th><th>Date</th></tr></thead><tbody>{deliveries.data.data.map((item) => <tr key={item.notificationId}><td>{item.type === 'PORTFOLIO_DAILY_DIGEST' ? 'Synthèse quotidienne' : 'Rappel d’action'}</td><td>{item.recipient}</td><td><Badge value={item.status} /></td><td className="num">{item.attemptCount}/{item.maxAttempts}</td><td className="muted">{formatDate(item.sentAt || item.createdAt, true)}</td></tr>)}</tbody></table></div>}
+      </Panel>
+    </div>
+    <div className="notice neutral"><ShieldCheck size={16} /><div><strong>Garde-fous</strong>Déduplication par CC et date, Message-ID stable, retry exponentiel, dead-letter après cinq échecs et historique de livraison append-only.</div></div>
+    {editing && <DigestSubscriptionEditor entry={editing} onClose={() => setEditing(undefined)} />}
+  </>
+}
+
+function DigestSubscriptionEditor({ entry, onClose }: { entry: NotificationDigestSubscription; onClose: () => void }) {
+  const toast = useToast()
+  const [relationshipManagerId, setRelationshipManagerId] = useState(entry.relationshipManagerId)
+  const [recipientEmail, setRecipientEmail] = useState(entry.recipientEmail)
+  const [timezone, setTimezone] = useState(entry.timezone)
+  const [deliveryHour, setDeliveryHour] = useState(entry.deliveryHour)
+  const [enabled, setEnabled] = useState(entry.enabled)
+  const mutation = useUpdateDigestSubscription(relationshipManagerId)
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    mutation.mutate({ recipientEmail, timezone, deliveryHour, enabled }, {
+      onSuccess: () => { toast.push('success', 'Abonnement enregistré', relationshipManagerId); onClose() },
+      onError: (error) => toast.push('error', 'Abonnement refusé', error.message),
+    })
+  }
+  return <Modal title="Synthèse quotidienne d’un CC" onClose={onClose} footer={<><Button onClick={onClose}>Annuler</Button><Button variant="primary" type="submit" form="digest-subscription-form" loading={mutation.isPending}>Enregistrer</Button></>}>
+    <form id="digest-subscription-form" className="stack" onSubmit={submit}>
+      <label className="field">Identifiant CC<input className="input" required pattern="[A-Za-z0-9._-]+" value={relationshipManagerId} disabled={Boolean(entry.relationshipManagerId)} onChange={(event) => setRelationshipManagerId(event.target.value)} placeholder="rm-01" /></label>
+      <label className="field">Adresse email<input className="input" type="email" required value={recipientEmail} onChange={(event) => setRecipientEmail(event.target.value)} placeholder="cc@banque.example" /></label>
+      <div className="grid cols-2"><label className="field">Fuseau IANA<input className="input" required value={timezone} onChange={(event) => setTimezone(event.target.value)} /></label><label className="field">Heure locale<input className="input" type="number" min={0} max={23} required value={deliveryHour} onChange={(event) => setDeliveryHour(Number(event.target.value))} /></label></div>
+      <label className="checkbox"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /> Envoi quotidien actif</label>
     </form>
   </Modal>
 }

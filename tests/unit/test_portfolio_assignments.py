@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 from typing import cast
@@ -309,3 +311,34 @@ def test_portfolio_export_rejects_volume_before_building_payload(monkeypatch):
 
     assert response.status_code == 413
     assert response.json()["code"] == "EXPORT_LIMIT_EXCEEDED"
+
+
+def test_notification_digest_route_requires_dedicated_role_and_valid_signature(monkeypatch):
+    monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
+    secret = "digest-test-secret"
+    monkeypatch.setenv("NOTIFICATION_SCOPE_SIGNING_SECRET", secret)
+    session_factory = factory()
+    seed_reassigned_customer(session_factory)
+    digest_principal = principal("NOTIFICATION_DIGEST_READER")
+    client = client_for("portfolio-service", session_factory, digest_principal)
+
+    invalid = client.get(
+        "/internal/v1/notification-digests/rm-new",
+        headers={"X-BOA-Digest-Signature": "invalid"},
+    )
+    signature = hmac.new(secret.encode(), b"rm-new", hashlib.sha256).hexdigest()
+    valid = client.get(
+        "/internal/v1/notification-digests/rm-new",
+        headers={"X-BOA-Digest-Signature": signature},
+    )
+    generic_service = client_for("portfolio-service", session_factory, principal("SERVICE")).get(
+        "/internal/v1/notification-digests/rm-new",
+        headers={"X-BOA-Digest-Signature": signature},
+    )
+
+    assert invalid.status_code == 403
+    assert valid.status_code == 200
+    assert generic_service.status_code == 403
+    assert valid.json()["scope"]["relationshipManagerId"] == "rm-new"
+    assert "kpis" in valid.json()
+    assert "portfolio" not in valid.json()

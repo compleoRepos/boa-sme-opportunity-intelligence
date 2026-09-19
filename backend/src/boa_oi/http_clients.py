@@ -94,29 +94,36 @@ async def service_request(
     timeout: float = 15.0,
     incoming_authorization: str | None = None,
     dev_principal: str | None = None,
+    headers: dict[str, str] | None = None,
 ) -> Any:
-    headers = {"X-Correlation-ID": correlation_id, "Accept": "application/json"}
+    request_headers = {"X-Correlation-ID": correlation_id, "Accept": "application/json"}
+    for name, value in (headers or {}).items():
+        if name != "X-BOA-Digest-Signature":
+            raise ValueError(f"Unsupported service header: {name}")
+        request_headers[name] = value
     if idempotency_key:
-        headers["Idempotency-Key"] = idempotency_key
+        request_headers["Idempotency-Key"] = idempotency_key
     if dev_principal and auth_disabled():
-        headers["X-Dev-Principal"] = dev_principal
+        request_headers["X-Dev-Principal"] = dev_principal
     token = None if incoming_authorization else await _token_provider.token()
     if incoming_authorization:
-        headers["Authorization"] = incoming_authorization
+        request_headers["Authorization"] = incoming_authorization
     elif token:
-        headers["Authorization"] = f"Bearer {token}"
+        request_headers["Authorization"] = f"Bearer {token}"
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.request(method, url, headers=headers, json=json, params=params)
+            response = await client.request(
+                method, url, headers=request_headers, json=json, params=params
+            )
             if response.status_code == 401 and incoming_authorization is None and token:
                 _token_provider.invalidate(token)
                 token = await _token_provider.token()
                 if token:
-                    headers["Authorization"] = f"Bearer {token}"
+                    request_headers["Authorization"] = f"Bearer {token}"
                 response = await client.request(
                     method,
                     url,
-                    headers=headers,
+                    headers=request_headers,
                     json=json,
                     params=params,
                 )

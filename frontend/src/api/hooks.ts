@@ -16,6 +16,8 @@ import type {
   LabelCatalogResponse,
   ListQuery,
   MlModel,
+  NotificationDelivery,
+  NotificationDigestSubscription,
   Opportunity,
   OpportunityAction,
   Product,
@@ -195,5 +197,36 @@ export function useUpdateRule(ruleId: string) {
       void queryClient.invalidateQueries({ queryKey: ['admin', 'rules'] })
       void queryClient.invalidateQueries({ queryKey: ['admin', 'engine'] })
     },
+  })
+}
+
+
+export const useNotificationSubscriptions = () => useQuery({
+  queryKey: ['notifications', 'digest-subscriptions'],
+  queryFn: () => apiRequest<{ data: NotificationDigestSubscription[] }>('/api/v1/admin/notifications/digest-subscriptions'),
+})
+
+export const useNotifications = () => useQuery({
+  queryKey: ['notifications', 'deliveries'],
+  queryFn: () => apiRequest<ApiPage<NotificationDelivery>>('/api/v1/admin/notifications?pageSize=100'),
+  refetchInterval: 15_000,
+})
+
+export const useUpdateDigestSubscription = (relationshipManagerId: string) => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: { recipientEmail: string; timezone: string; deliveryHour: number; enabled: boolean }) => apiRequest<NotificationDigestSubscription>(`/api/v1/admin/notifications/digest-subscriptions/${encodeURIComponent(relationshipManagerId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  })
+}
+
+export const useGenerateDigests = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => apiRequest<{ created: number; skipped: number; failed: number; sent: number }>('/api/v1/admin/notifications/digests/generate?force=true', { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   })
 }

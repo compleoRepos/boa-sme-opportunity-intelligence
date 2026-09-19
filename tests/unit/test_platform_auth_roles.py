@@ -34,3 +34,20 @@ def test_admin_role_from_unrelated_resource_access_is_ignored(monkeypatch):
     )
 
     assert principal.roles == set()
+
+
+def test_oidc_email_is_exposed_only_when_verified(monkeypatch):
+    monkeypatch.setenv("OAUTH_AUDIENCE", "boa-sme-api")
+    base = {
+        "sub": "user-email",
+        "azp": "boa-sme-spa",
+        "email": "rm@bank.example",
+    }
+
+    unverified = _principal_from_claims({**base, "email_verified": False})
+    verified = _principal_from_claims({**base, "email_verified": True})
+
+    assert unverified.email is None
+    assert unverified.email_verified is False
+    assert verified.email == "rm@bank.example"
+    assert verified.email_verified is True

@@ -46,6 +46,8 @@ class Problem(Exception):
 class Principal(BaseModel):
     subject: str
     username: str | None = None
+    email: str | None = None
+    email_verified: bool = False
     roles: set[str] = Field(default_factory=set)
     scopes: set[str] = Field(default_factory=set)
     client_id: str | None = None
@@ -149,6 +151,8 @@ def _principal_from_claims(claims: dict[str, Any]) -> Principal:
     return Principal(
         subject=str(claims.get("sub")),
         username=claims.get("preferred_username"),
+        email=claims.get("email") if claims.get("email_verified") is True else None,
+        email_verified=claims.get("email_verified") is True,
         roles={str(role).upper() for role in [*realm_roles, *client_roles]},
         scopes=set(scopes),
         client_id=claims.get("azp") or claims.get("client_id"),
@@ -186,6 +190,8 @@ def _dev_principal(raw: str | None) -> Principal | None:
     return Principal(
         subject=str(payload["subject"]),
         username=str(payload.get("username") or payload["subject"]),
+        email=str(payload["email"]) if payload.get("email") else None,
+        email_verified=bool(payload.get("email")),
         roles={str(role).upper() for role in payload.get("roles", [])},
         scopes={"*"},
         client_id="local-dev-persona",

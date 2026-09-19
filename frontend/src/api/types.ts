@@ -731,3 +731,30 @@ export interface LabelCatalogVersion {
   createdBy: string
   justification: string
 }
+
+
+export interface NotificationDigestSubscription {
+  relationshipManagerId: string
+  recipientEmail: string
+  timezone: string
+  deliveryHour: number
+  enabled: boolean
+  lastDigestDate?: string | null
+  updatedAt: string
+}
+
+export interface NotificationDelivery {
+  notificationId: string
+  type: 'ACTION_DUE_REMINDER' | 'PORTFOLIO_DAILY_DIGEST'
+  recipient: string
+  subject: string
+  status: 'PENDING' | 'SENDING' | 'RETRY' | 'SENT' | 'DELIVERY_UNCERTAIN' | 'DEAD_LETTER'
+  attemptCount: number
+  maxAttempts: number
+  nextAttemptAt: string
+  sentAt?: string | null
+  providerMessageId?: string | null
+  lastError?: string | null
+  correlationId: string
+  createdAt: string
+}

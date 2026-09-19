@@ -926,6 +926,79 @@ class OutboxMessage(Base, UUIDPrimaryKeyMixin):
     )
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    processing_status: Mapped[str | None] = mapped_column(String(20))
+    processing_error: Mapped[str | None] = mapped_column(String(100))
+
+
+class NotificationMessage(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "notification_messages"
+    __table_args__ = (
+        UniqueConstraint("deduplication_key"),
+        CheckConstraint(
+            "status IN ('PENDING','SENDING','RETRY','SENT','DELIVERY_UNCERTAIN','DEAD_LETTER')",
+            name="status",
+        ),
+        CheckConstraint("attempt_count >= 0", name="attempt_count_non_negative"),
+        CheckConstraint("max_attempts BETWEEN 1 AND 20", name="max_attempts_range"),
+        Index("ix_notification_due", "status", "next_attempt_at", "created_at"),
+        {"schema": "notification"},
+    )
+    deduplication_key: Mapped[str] = mapped_column(String(180))
+    event_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    notification_type: Mapped[str] = mapped_column(String(80))
+    recipient_email: Mapped[str] = mapped_column(String(254))
+    recipient_name: Mapped[str | None] = mapped_column(String(160))
+    subject: Mapped[str] = mapped_column(String(200))
+    text_body: Mapped[str] = mapped_column(Text)
+    html_body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="PENDING")
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=5)
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    provider_message_id: Mapped[str | None] = mapped_column(String(255))
+    last_error: Mapped[str | None] = mapped_column(String(500))
+    correlation_id: Mapped[str] = mapped_column(String(100))
+
+
+class NotificationDigestSubscription(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "notification_digest_subscriptions"
+    __table_args__ = (
+        UniqueConstraint("relationship_manager_id"),
+        CheckConstraint("delivery_hour BETWEEN 0 AND 23", name="delivery_hour_range"),
+        {"schema": "notification"},
+    )
+    relationship_manager_id: Mapped[str] = mapped_column(String(120))
+    recipient_email: Mapped[str] = mapped_column(String(254))
+    timezone_name: Mapped[str] = mapped_column(String(80), default="Africa/Abidjan")
+    delivery_hour: Mapped[int] = mapped_column(Integer, default=7)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_digest_date: Mapped[date | None] = mapped_column(Date)
+    last_notification_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+
+
+class NotificationDeliveryAttempt(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "notification_delivery_attempts"
+    __table_args__ = (
+        UniqueConstraint("notification_id", "attempt_number"),
+        CheckConstraint("outcome IN ('SENT','FAILED','UNCERTAIN')", name="outcome"),
+        Index("ix_notification_attempt_created", "notification_id", "attempted_at"),
+        {"schema": "notification"},
+    )
+    notification_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("notification.notification_messages.id", ondelete="RESTRICT"),
+    )
+    attempt_number: Mapped[int] = mapped_column(Integer)
+    outcome: Mapped[str] = mapped_column(String(20))
+    provider_message_id: Mapped[str | None] = mapped_column(String(255))
+    error_redacted: Mapped[str | None] = mapped_column(String(500))
+    attempted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class FeatureMaterialization(Base, UUIDPrimaryKeyMixin, TimestampMixin):

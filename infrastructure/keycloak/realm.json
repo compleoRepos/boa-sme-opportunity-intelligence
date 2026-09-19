@@ -37,6 +37,10 @@
         "description": "Technical role for authenticated service-to-service calls"
       },
       {
+        "name": "NOTIFICATION_DIGEST_READER",
+        "description": "Read aggregate KPI for one signed notification digest request"
+      },
+      {
         "name": "BUSINESS_ANALYST",
         "description": "Create, edit, validate, simulate and submit rules"
       },
@@ -672,6 +676,36 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "notification-service",
+      "name": "notification-service service account",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "DevOnly-NotificationClient-ChangeMe!",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "roles",
+        "profile"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
     }
   ],
   "users": [
@@ -745,6 +779,14 @@
       "serviceAccountClientId": "action-service",
       "realmRoles": [
         "SERVICE"
+      ]
+    },
+    {
+      "username": "service-account-notification-service",
+      "enabled": true,
+      "serviceAccountClientId": "notification-service",
+      "realmRoles": [
+        "NOTIFICATION_DIGEST_READER"
       ]
     },
     {
@@ -959,6 +1001,7 @@
         "ADMIN",
         "DATA_ANALYST",
         "SERVICE",
+        "NOTIFICATION_DIGEST_READER",
         "BUSINESS_ANALYST",
         "RULE_APPROVER"
       ]

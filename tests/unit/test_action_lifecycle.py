@@ -7,7 +7,7 @@ from typing import Any, cast
 import pytest
 from boa_oi import action_api
 from boa_oi.api import application_for
-from boa_oi.models.entities import ActionOutcome, AuditLog, OpportunityAction
+from boa_oi.models.entities import ActionOutcome, AuditLog, OpportunityAction, OutboxMessage
 from boa_oi.platform import Principal, current_principal
 from boa_oi.technical.ids import deterministic_uuid
 from fastapi.testclient import TestClient
@@ -25,12 +25,13 @@ def action_context(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[TestClient
         poolclass=StaticPool,
     )
     with engine.connect() as connection:
-        for schema in ("action", "audit"):
+        for schema in ("action", "audit", "integration"):
             connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS '{schema}'")
         for table in (
             OpportunityAction.__mapper__.local_table,
             ActionOutcome.__mapper__.local_table,
             AuditLog.__mapper__.local_table,
+            OutboxMessage.__mapper__.local_table,
         ):
             cast(Table, table).create(connection)
 
@@ -38,6 +39,8 @@ def action_context(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[TestClient
     principal = Principal(
         subject="rm-action-test",
         username="rm.action.test",
+        email="rm.action.test@synthetic.invalid",
+        email_verified=True,
         roles={"RELATIONSHIP_MANAGER"},
         scopes=set(),
         client_id="boa-sme-spa",
@@ -357,3 +360,121 @@ def test_update_and_filtered_list_require_remote_object_scope(action_context, mo
         )
         assert unchanged is not None
         assert unchanged.status == "OPEN"
+
+
+def test_scheduled_action_emits_one_transactional_notification_event(action_context):
+    client, factory = action_context
+    body = {
+        "opportunityId": "OPP-001",
+        "customerId": "SME-00001",
+        "actionType": "CONTACT_CUSTOMER",
+        "dueAt": "2030-10-30T09:00:00Z",
+        "note": "Rappel de suivi",
+    }
+
+    created = client.post(
+        "/internal/v1/actions",
+        headers={"Idempotency-Key": "scheduled-email-001"},
+        json=body,
+    )
+    replay = client.post(
+        "/internal/v1/actions",
+        headers={"Idempotency-Key": "scheduled-email-001"},
+        json=body,
+    )
+
+    assert created.status_code == 201
+    assert replay.status_code == 201
+    with factory() as session:
+        events = list(
+            session.scalars(
+                select(OutboxMessage).where(
+                    OutboxMessage.event_type == "ACTION_NOTIFICATION_REQUESTED"
+                )
+            )
+        )
+        assert len(events) == 1
+        assert events[0].payload_json["recipientEmail"] == "rm.action.test@synthetic.invalid"
+        assert events[0].payload_json["dueAt"] == "2030-10-30T09:00:00+00:00"
+
+
+def test_unverified_oidc_email_does_not_emit_notification(action_context):
+    client, factory = action_context
+    principal = cast(Principal, client.app.dependency_overrides[current_principal]())
+    client.app.dependency_overrides[current_principal] = lambda: principal.model_copy(
+        update={"email_verified": False}
+    )
+
+    response = client.post(
+        "/internal/v1/actions",
+        headers={"Idempotency-Key": "unverified-email-001"},
+        json={
+            "opportunityId": "OPP-001",
+            "customerId": "SME-00001",
+            "actionType": "CONTACT_CUSTOMER",
+            "dueAt": "2030-10-30T09:00:00Z",
+        },
+    )
+
+    assert response.status_code == 201
+    with factory() as session:
+        assert session.scalar(select(func.count()).select_from(OutboxMessage)) == 0
+
+
+def test_notification_outbox_failure_leaves_transition_saga_resumable(
+    action_context, monkeypatch: pytest.MonkeyPatch
+):
+    client, factory = action_context
+    original = action_api._queue_action_notification
+
+    def fail_outbox(*args, **kwargs):
+        if kwargs.get("ready", True):
+            raise RuntimeError("simulated outbox failure")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(action_api, "_queue_action_notification", fail_outbox)
+    with pytest.raises(RuntimeError, match="simulated outbox failure"):
+        client.post(
+            "/internal/v1/actions",
+            headers={"Idempotency-Key": "defer-outbox-failure-001"},
+            json={
+                "opportunityId": "OPP-001",
+                "customerId": "SME-00001",
+                "actionType": "DEFER_OPPORTUNITY",
+                "dueAt": "2030-10-30T09:00:00Z",
+            },
+        )
+
+    with factory() as session:
+        item = session.scalar(
+            select(OpportunityAction).where(
+                OpportunityAction.idempotency_key == "defer-outbox-failure-001"
+            )
+        )
+        assert item is not None
+        assert item.transition_status == "PENDING"
+        assert item.status == "IN_PROGRESS"
+        event = session.scalar(select(OutboxMessage))
+        assert event is not None and event.processing_status == "BLOCKED"
+
+    monkeypatch.setattr(action_api, "_queue_action_notification", original)
+    resumed = client.post(
+        "/internal/v1/actions",
+        headers={"Idempotency-Key": "defer-outbox-failure-001"},
+        json={
+            "opportunityId": "OPP-001",
+            "customerId": "SME-00001",
+            "actionType": "DEFER_OPPORTUNITY",
+            "dueAt": "2030-10-30T09:00:00Z",
+        },
+    )
+    assert resumed.status_code == 201
+    with factory() as session:
+        item = session.scalar(
+            select(OpportunityAction).where(
+                OpportunityAction.idempotency_key == "defer-outbox-failure-001"
+            )
+        )
+        assert item is not None and item.transition_status == "APPLIED"
+        event = session.scalar(select(OutboxMessage))
+        assert event is not None and event.processing_status == "READY"

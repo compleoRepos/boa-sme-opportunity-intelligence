@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from boa_oi.http_clients import service_request
-from boa_oi.models.entities import ActionOutcome, AuditLog, OpportunityAction
+from boa_oi.models.entities import ActionOutcome, AuditLog, OpportunityAction, OutboxMessage
 from boa_oi.platform import (
     COMMERCIAL_ROLES,
     READ_ROLES,
@@ -77,6 +77,7 @@ OUTCOME_BY_TERMINAL_ACTION = {
     "DEFER_OPPORTUNITY": "REVIEW_LATER",
     "MARK_CONVERTED": "CONVERTED",
 }
+NOTIFIABLE_ACTION_TYPES = {"CONTACT_CUSTOMER", "SCHEDULE_MEETING", "DEFER_OPPORTUNITY"}
 
 
 class CreateAction(BaseModel):
@@ -185,6 +186,51 @@ def _audit_action(
             correlation_id=correlation_id(request),
             result="SUCCESS",
             metadata_json={"before": before, "after": after},
+        )
+    )
+
+
+def _queue_action_notification(
+    session: Session,
+    *,
+    item: OpportunityAction,
+    principal: Principal,
+    request: Request,
+    ready: bool = True,
+) -> None:
+    if (
+        item.action_type not in NOTIFIABLE_ACTION_TYPES
+        or item.due_at is None
+        or not principal.email
+        or not principal.email_verified
+    ):
+        return
+    event_id = deterministic_uuid("action-notification", item.action_ref)
+    existing = session.get(OutboxMessage, event_id)
+    if existing is not None:
+        if ready:
+            existing.processing_status = "READY"
+            existing.processing_error = None
+        return
+    session.add(
+        OutboxMessage(
+            id=event_id,
+            event_type="ACTION_NOTIFICATION_REQUESTED",
+            aggregate_type="OPPORTUNITY_ACTION",
+            aggregate_id=item.action_ref,
+            payload_json={
+                "actionId": item.action_ref,
+                "actionType": item.action_type,
+                "opportunityId": item.opportunity_ref,
+                "customerId": item.customer_ref,
+                "dueAt": item.due_at.isoformat(),
+                "recipientEmail": principal.email,
+                "recipientName": principal.username or principal.subject,
+            },
+            correlation_id=correlation_id(request),
+            causation_id=item.idempotency_key,
+            occurred_at=datetime.now(timezone.utc),
+            processing_status="READY" if ready else "BLOCKED",
         )
     )
 
@@ -327,6 +373,12 @@ def _finalize_transition(
         event="OPPORTUNITY_TRANSITION_APPLIED",
         before=before,
         after=serialize(item),
+    )
+    _queue_action_notification(
+        session,
+        item=item,
+        principal=principal,
+        request=request,
     )
 
 
@@ -568,6 +620,12 @@ async def create_action(
                 principal=principal,
                 request=request,
             )
+        _queue_action_notification(
+            session,
+            item=existing,
+            principal=principal,
+            request=request,
+        )
         return serialize(existing)
     corr = correlation_id(request)
     opportunity = await service_request(
@@ -673,7 +731,21 @@ async def create_action(
         after=serialize(item),
     )
     if target_opportunity_status is not None:
+        _queue_action_notification(
+            session,
+            item=item,
+            principal=principal,
+            request=request,
+            ready=False,
+        )
         await _run_transition_command(
+            session,
+            item=item,
+            principal=principal,
+            request=request,
+        )
+    else:
+        _queue_action_notification(
             session,
             item=item,
             principal=principal,

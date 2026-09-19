@@ -7,6 +7,7 @@ required=(
   OPPORTUNITY_DB_PASSWORD PRODUCT_DB_PASSWORD ACTION_DB_PASSWORD
   RULE_MANAGEMENT_DB_PASSWORD KEYCLOAK_DB_PASSWORD
   FEATURE_STORE_DB_PASSWORD ML_ENGINE_DB_PASSWORD PORTFOLIO_DB_PASSWORD
+  NOTIFICATION_DB_PASSWORD
 )
 for variable in "${required[@]}"; do
   if [[ -z "${!variable:-}" ]]; then
@@ -41,6 +42,7 @@ bootstrap_role_schema rule_management_service rule_management "$RULE_MANAGEMENT_
 bootstrap_role_schema feature_store_service feature_store "$FEATURE_STORE_DB_PASSWORD"
 bootstrap_role_schema ml_engine_service ml "$ML_ENGINE_DB_PASSWORD"
 bootstrap_role_schema portfolio_service portfolio "$PORTFOLIO_DB_PASSWORD"
+bootstrap_role_schema notification_service notification "$NOTIFICATION_DB_PASSWORD"
 bootstrap_role_schema keycloak_service keycloak "$KEYCLOAK_DB_PASSWORD"
 
 psql --set=ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<'SQL'
