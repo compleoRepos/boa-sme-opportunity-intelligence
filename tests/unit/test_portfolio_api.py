@@ -156,6 +156,10 @@ def test_cc_cannot_escape_own_portfolio_with_query_parameters(monkeypatch):
     )
     assert malicious_list.status_code == 200
     assert malicious_list.json()["data"] == []
+    own_search = customer_client.get("/internal/v1/customers?q=SME-000&pageSize=1")
+    assert own_search.status_code == 200
+    assert own_search.json()["meta"]["totalCount"] is None
+    assert [item["customerId"] for item in own_search.json()["data"]] == ["SME-00001"]
     forbidden_detail = customer_client.get("/internal/v1/customers/SME-00002")
     assert forbidden_detail.status_code == 404
 

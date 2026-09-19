@@ -264,7 +264,6 @@ def list_customers(
     if key not in columns:
         raise Problem(400, "VALIDATION_ERROR", "Unsupported customer sort field.")
     column = columns[key]
-    total = session.scalar(select(func.count()).select_from(stmt.subquery()))
     stmt = (
         stmt.order_by(column.desc() if descending else column.asc(), Customer.id)
         .offset(offset)
@@ -276,7 +275,7 @@ def list_customers(
         [serialize(customer, manager, branch) for customer, manager, branch in rows],
         page_size=page_size,
         offset=offset,
-        total_count=total,
+        total_count=None,
     )
 
 

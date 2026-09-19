@@ -1,0 +1,416 @@
+{
+  "schemaVersion": "1.1",
+  "runId": "load-50k-20260919T224716Z",
+  "generatedAt": "2026-09-19T22:47:16.518110+00:00",
+  "gitCommit": "3e3a9cf5356c3d78414c7da22629e7785c0918f8",
+  "scope": {
+    "customers": 50000,
+    "portfolioAssignments": 50000,
+    "opportunities": 50000,
+    "relationshipManagers": 25,
+    "branches": 5,
+    "dataKind": "DETERMINISTIC_SYNTHETIC_LOAD_FIXTURE",
+    "notMeasured": [
+      "historical banking transactions for all 50,000 customers",
+      "full analytics/rules/ML batch generation for 50,000 customers",
+      "AWS infrastructure",
+      "production capacity or production SLO certification"
+    ]
+  },
+  "environment": {
+    "platform": "Linux-6.18.38+-x86_64-with-glibc2.36",
+    "python": "3.12.7",
+    "runnerCpuCount": 6,
+    "runnerMemoryLimitBytes": null,
+    "serviceLimits": {
+      "customer": {
+        "cpu": 0.35,
+        "memoryBytes": 335544320
+      },
+      "opportunity": {
+        "cpu": 0.75,
+        "memoryBytes": 536870912
+      },
+      "portfolio": {
+        "cpu": 0.35,
+        "memoryBytes": 335544320
+      },
+      "postgres": {
+        "cpu": 1.25,
+        "memoryBytes": 1468006400
+      }
+    }
+  },
+  "thresholdSource": "docs/test-plan.md section 14",
+  "scenarios": [
+    {
+      "name": "health-customer",
+      "url": "http://load-customer:8080/health",
+      "concurrency": 5,
+      "requests": 50,
+      "statusCounts": {
+        "200": 50
+      },
+      "errorRate": 0.0,
+      "throughputRequestsPerSecond": 579.481,
+      "latencyMs": {
+        "min": 4.242,
+        "p50": 6.434,
+        "p95": 14.258,
+        "p99": 64.998,
+        "max": 64.998
+      },
+      "responseBytes": {
+        "min": 67,
+        "median": 67,
+        "max": 67
+      },
+      "target": {
+        "latencyPercentile": "p99",
+        "latencyMs": 500,
+        "maxErrorRate": 0.01
+      },
+      "status": "PASS"
+    },
+    {
+      "name": "health-opportunity",
+      "url": "http://load-opportunity:8080/health",
+      "concurrency": 5,
+      "requests": 50,
+      "statusCounts": {
+        "200": 50
+      },
+      "errorRate": 0.0,
+      "throughputRequestsPerSecond": 564.634,
+      "latencyMs": {
+        "min": 4.239,
+        "p50": 7.224,
+        "p95": 14.142,
+        "p99": 16.394,
+        "max": 16.394
+      },
+      "responseBytes": {
+        "min": 70,
+        "median": 70,
+        "max": 70
+      },
+      "target": {
+        "latencyPercentile": "p99",
+        "latencyMs": 500,
+        "maxErrorRate": 0.01
+      },
+      "status": "PASS"
+    },
+    {
+      "name": "opportunities-admin-page-25",
+      "url": "http://load-opportunity:8080/internal/v1/opportunities?pageSize=25&status=OPEN&priorityLevel=P1",
+      "concurrency": 10,
+      "requests": 200,
+      "statusCounts": {
+        "200": 200
+      },
+      "errorRate": 0.0,
+      "throughputRequestsPerSecond": 84.521,
+      "latencyMs": {
+        "min": 40.577,
+        "p50": 104.949,
+        "p95": 234.921,
+        "p99": 292.078,
+        "max": 314.491
+      },
+      "responseBytes": {
+        "min": 24225,
+        "median": 24225,
+        "max": 24225
+      },
+      "target": {
+        "latencyPercentile": "p95",
+        "latencyMs": 1500,
+        "maxErrorRate": 0.01
+      },
+      "status": "PASS"
+    },
+    {
+      "name": "opportunities-cc-scoped-page-25",
+      "url": "http://load-opportunity:8080/internal/v1/opportunities?pageSize=25&status=OPEN",
+      "concurrency": 10,
+      "requests": 200,
+      "statusCounts": {
+        "200": 200
+      },
+      "errorRate": 0.0,
+      "throughputRequestsPerSecond": 56.521,
+      "latencyMs": {
+        "min": 45.98,
+        "p50": 157.121,
+        "p95": 326.387,
+        "p99": 350.483,
+        "max": 394.258
+      },
+      "responseBytes": {
+        "min": 24050,
+        "median": 24050,
+        "max": 24050
+      },
+      "target": {
+        "latencyPercentile": "p95",
+        "latencyMs": 1500,
+        "maxErrorRate": 0.01
+      },
+      "status": "PASS"
+    },
+    {
+      "name": "customer-search-cc",
+      "url": "http://load-customer:8080/internal/v1/customers?pageSize=25&q=LOAD-0001",
+      "concurrency": 10,
+      "requests": 200,
+      "statusCounts": {
+        "200": 200
+      },
+      "errorRate": 0.0,
+      "throughputRequestsPerSecond": 14.722,
+      "latencyMs": {
+        "min": 91.244,
+        "p50": 700.113,
+        "p95": 1296.913,
+        "p99": 1422.207,
+        "max": 1686.018
+      },
+      "responseBytes": {
+        "min": 2141,
+        "median": 2141,
+        "max": 2141
+      },
+      "target": {
+        "latencyPercentile": "p95",
+        "latencyMs": 1500,
+        "maxErrorRate": 0.01
+      },
+      "status": "PASS"
+    },
+    {
+      "name": "customer-detail-cc",
+      "url": "http://load-customer:8080/internal/v1/customers/LOAD-000001",
+      "concurrency": 5,
+      "requests": 100,
+      "statusCounts": {
+        "200": 100
+      },
+      "errorRate": 0.0,
+      "throughputRequestsPerSecond": 35.589,
+      "latencyMs": {
+        "min": 16.187,
+        "p50": 102.565,
+        "p95": 282.434,
+        "p99": 681.665,
+        "max": 798.265
+      },
+      "responseBytes": {
+        "min": 487,
+        "median": 487,
+        "max": 487
+      },
+      "target": {
+        "latencyPercentile": "p95",
+        "latencyMs": 2000,
+        "maxErrorRate": 0.01
+      },
+      "status": "PASS"
+    },
+    {
+      "name": "opportunity-detail-cc",
+      "url": "http://load-opportunity:8080/internal/v1/opportunities/LOAD-OPP-000001",
+      "concurrency": 5,
+      "requests": 100,
+      "statusCounts": {
+        "200": 100
+      },
+      "errorRate": 0.0,
+      "throughputRequestsPerSecond": 93.346,
+      "latencyMs": {
+        "min": 19.344,
+        "p50": 53.827,
+        "p95": 83.8,
+        "p99": 102.053,
+        "max": 112.059
+      },
+      "responseBytes": {
+        "min": 952,
+        "median": 952,
+        "max": 952
+      },
+      "target": {
+        "latencyPercentile": "p95",
+        "latencyMs": 2000,
+        "maxErrorRate": 0.01
+      },
+      "status": "PASS"
+    },
+    {
+      "name": "opportunity-explanation-cc",
+      "url": "http://load-opportunity:8080/internal/v1/opportunities/LOAD-OPP-000001/explanation",
+      "concurrency": 5,
+      "requests": 100,
+      "statusCounts": {
+        "200": 100
+      },
+      "errorRate": 0.0,
+      "throughputRequestsPerSecond": 80.92,
+      "latencyMs": {
+        "min": 15.123,
+        "p50": 50.377,
+        "p95": 92.557,
+        "p99": 233.91,
+        "max": 335.995
+      },
+      "responseBytes": {
+        "min": 93,
+        "median": 93,
+        "max": 93
+      },
+      "target": {
+        "latencyPercentile": "p95",
+        "latencyMs": 2000,
+        "maxErrorRate": 0.01
+      },
+      "status": "PASS"
+    },
+    {
+      "name": "dashboard-cc-2000-customers",
+      "url": "http://load-portfolio:8080/internal/v1/dashboards/me",
+      "concurrency": 2,
+      "requests": 20,
+      "statusCounts": {
+        "200": 20
+      },
+      "errorRate": 0.0,
+      "throughputRequestsPerSecond": 0.68,
+      "latencyMs": {
+        "min": 2382.929,
+        "p50": 2912.809,
+        "p95": 3203.483,
+        "p99": 3295.593,
+        "max": 3295.593
+      },
+      "responseBytes": {
+        "min": 1696550,
+        "median": 1696550,
+        "max": 1696550
+      },
+      "target": {
+        "latencyPercentile": "p95",
+        "latencyMs": null,
+        "maxErrorRate": 0.01
+      },
+      "status": "PASS"
+    },
+    {
+      "name": "dashboard-branch-10000-customers",
+      "url": "http://load-portfolio:8080/internal/v1/dashboards/branch",
+      "concurrency": 1,
+      "requests": 5,
+      "statusCounts": {
+        "200": 5
+      },
+      "errorRate": 0.0,
+      "throughputRequestsPerSecond": 0.055,
+      "latencyMs": {
+        "min": 17496.542,
+        "p50": 17774.534,
+        "p95": 18906.396,
+        "p99": 18906.396,
+        "max": 18906.396
+      },
+      "responseBytes": {
+        "min": 4943,
+        "median": 4943,
+        "max": 4943
+      },
+      "target": {
+        "latencyPercentile": "p95",
+        "latencyMs": null,
+        "maxErrorRate": 0.01
+      },
+      "status": "PASS"
+    }
+  ],
+  "database": {
+    "configuration": {
+      "version": "16.4",
+      "shared_buffers": "128MB",
+      "max_connections": "100",
+      "size_bytes": 126693859
+    },
+    "statistics": {
+      "numbackends": 14,
+      "xact_commit": 2064,
+      "xact_rollback": 9,
+      "blks_read": 789,
+      "blks_hit": 7104583,
+      "temp_files": 18,
+      "temp_bytes": 72859648,
+      "deadlocks": 0
+    },
+    "queryPlans": {
+      "opportunityPriorityPage": {
+        "planningTimeMs": 0.445,
+        "executionTimeMs": 5.702,
+        "actualRows": 26,
+        "sharedHitBlocks": 854,
+        "sharedReadBlocks": 0,
+        "nodeTypes": {
+          "Limit": 1,
+          "Incremental Sort": 1,
+          "Index Scan": 1
+        },
+        "indexes": [
+          "ix_opportunities_active_priority"
+        ]
+      },
+      "customerSearch": {
+        "planningTimeMs": 1.778,
+        "executionTimeMs": 6.815,
+        "actualRows": 26,
+        "sharedHitBlocks": 712,
+        "sharedReadBlocks": 22,
+        "nodeTypes": {
+          "Limit": 1,
+          "Sort": 1,
+          "Nested Loop": 2,
+          "Bitmap Heap Scan": 1,
+          "BitmapOr": 1,
+          "Bitmap Index Scan": 3,
+          "Index Scan": 1,
+          "Index Only Scan": 1
+        },
+        "indexes": [
+          "ex_portfolio_assignments_no_overlap",
+          "ix_customers_customer_ref_trgm",
+          "ix_customers_legal_name_trgm",
+          "ix_customers_sector_code_trgm",
+          "pk_relationship_managers"
+        ]
+      },
+      "relationshipManagerScope": {
+        "planningTimeMs": 0.398,
+        "executionTimeMs": 11.157,
+        "actualRows": 2000,
+        "sharedHitBlocks": 5618,
+        "sharedReadBlocks": 0,
+        "nodeTypes": {
+          "Nested Loop": 2,
+          "Seq Scan": 1,
+          "Bitmap Heap Scan": 1,
+          "Bitmap Index Scan": 1,
+          "Index Only Scan": 1
+        },
+        "indexes": [
+          "ix_portfolio_assignments_rm_validity",
+          "pk_customers"
+        ]
+      }
+    }
+  },
+  "status": "PASS",
+  "disclaimer": "Engineering load evidence on deterministic synthetic data. No ML production-performance claim and no credit decision are inferred."
+}
