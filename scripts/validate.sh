@@ -13,7 +13,11 @@ done
 python3 -m json.tool "$PROJECT_ROOT/infrastructure/keycloak/realm.json" >/dev/null
 compose config --quiet
 mapfile -t actual_services < <(compose config --services | sort)
-required_services=(postgres keycloak frontend api-gateway customer account transaction banking-integration mock-bank analytics signal opportunity product action rule-management rule-engine rule-simulation)
+required_services=(
+  postgres keycloak frontend api-gateway customer account transaction
+  banking-integration mock-bank analytics signal opportunity product action
+  rule-management rule-engine rule-simulation feature-store ml-engine portfolio
+)
 for service in "${required_services[@]}"; do
   if ! printf '%s\n' "${actual_services[@]}" | grep -Fxq "$service"; then
     echo "Compose service missing: $service" >&2

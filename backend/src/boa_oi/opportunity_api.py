@@ -15,10 +15,12 @@ from sqlalchemy.orm import Session
 from boa_oi.audit import DecisionAuditBuilder
 from boa_oi.http_clients import service_request
 from boa_oi.models.entities import (
+    AuditLog,
     DecisionAudit,
     Opportunity,
     OpportunityEvidence,
     OpportunityRule,
+    ScoringPolicy,
 )
 from boa_oi.opportunities import OpportunityCandidate, OpportunityContext, OpportunityEngine
 from boa_oi.opportunities.domain import ConditionEvidence
@@ -35,6 +37,9 @@ from boa_oi.platform import (
     reject_unknown_filters,
     require_roles,
 )
+from boa_oi.resilience import FallbackMode, MLScoreResult, ResilientMLClient
+from boa_oi.scoring_policy.routes import router as scoring_policy_router
+from boa_oi.scoring_policy.service import active_policy
 from boa_oi.technical.config import (
     OpportunityRuleConfig,
     RuleSetConfig,
@@ -46,9 +51,13 @@ app = create_service_app(
     "opportunity-service",
     "Deterministic, versioned, explainable and audited SME opportunities.",
 )
+app.include_router(scoring_policy_router)
 PREFIX = "/internal/v1"
-ML_PRIORITY_WEIGHT = float(os.getenv("ML_PRIORITY_WEIGHT", "0.35"))
-RULES_PRIORITY_WEIGHT = float(os.getenv("RULES_PRIORITY_WEIGHT", "0.65"))
+ML_TIMEOUT_SECONDS = float(os.getenv("ML_TIMEOUT_SECONDS", "2.0"))
+ML_MAX_RETRIES = int(os.getenv("ML_MAX_RETRIES", "1"))
+ML_CIRCUIT_FAILURE_THRESHOLD = int(os.getenv("ML_CIRCUIT_FAILURE_THRESHOLD", "3"))
+ML_CIRCUIT_RECOVERY_SECONDS = float(os.getenv("ML_CIRCUIT_RECOVERY_SECONDS", "30"))
+ML_MAX_SCORE_AGE_SECONDS = float(os.getenv("ML_MAX_SCORE_AGE_SECONDS", "300"))
 
 
 class GenerationRequest(BaseModel):
@@ -67,6 +76,57 @@ def url_for(name: str) -> str:
             f"{name.upper()}_SERVICE_URL is not configured.",
         )
     return value.rstrip("/")
+
+
+async def _ml_transport(payload: dict[str, Any]) -> dict[str, Any]:
+    return await service_request(
+        "POST",
+        f"{url_for('ml_engine')}/internal/v1/ml/customers/{payload['customerId']}/score",
+        correlation_id=str(payload["correlationId"]),
+        json={"asOf": payload["asOf"]},
+        incoming_authorization=payload.get("authorization"),
+        timeout=ML_TIMEOUT_SECONDS,
+    )
+
+
+_ml_client = ResilientMLClient(
+    _ml_transport,
+    timeout=ML_TIMEOUT_SECONDS,
+    max_retries=ML_MAX_RETRIES,
+    failure_threshold=ML_CIRCUIT_FAILURE_THRESHOLD,
+    recovery_timeout=ML_CIRCUIT_RECOVERY_SECONDS,
+    max_score_age=ML_MAX_SCORE_AGE_SECONDS,
+)
+
+
+def persist_ml_audit(
+    session: Session,
+    *,
+    customer_id: str,
+    result: MLScoreResult,
+    request: Request,
+) -> None:
+    trace_id = correlation_id(request)
+    event = result.audit_event.as_dict()
+    session.execute(
+        pg_insert(AuditLog)
+        .values(
+            id=deterministic_uuid("ml-resilience-audit", trace_id, customer_id, result.mode.value),
+            actor_subject_id="opportunity-service",
+            service_name="opportunity-service",
+            action=(
+                "ML_SCORE_ACCEPTED"
+                if result.mode is FallbackMode.HYBRID_ML
+                else "ML_FALLBACK_APPLIED"
+            ),
+            resource_type="OPPORTUNITY_GENERATION",
+            resource_id=customer_id,
+            correlation_id=trace_id,
+            result=result.mode.value,
+            metadata_json=event,
+        )
+        .on_conflict_do_nothing(index_elements=[AuditLog.id])
+    )
 
 
 def serialize(item: Opportunity) -> dict[str, Any]:
@@ -90,6 +150,9 @@ def serialize(item: Opportunity) -> dict[str, Any]:
         "generatedAt": item.generated_at.isoformat(),
         "engineVersion": item.engine_version,
         "ruleVersion": item.rule_version,
+        "scoringPolicyId": item.scoring_policy_id,
+        "scoringPolicyVersion": item.scoring_policy_version,
+        "fallbackMode": item.fallback_mode,
         "lastActionAt": None,
     }
 
@@ -366,13 +429,16 @@ def rule_engine_candidates(
 def rerank_with_propensity(
     candidate: OpportunityCandidate,
     propensity: dict[str, Any],
+    *,
+    rules_weight: float,
+    ml_weight: float,
 ) -> OpportunityCandidate:
     raw_rules_score = float(candidate.priority_score)
     rules_score = raw_rules_score / 100 if raw_rules_score > 1 else raw_rules_score
     ml_score = min(1.0, max(0.0, float(propensity["propensity"])))
-    denominator = ML_PRIORITY_WEIGHT + RULES_PRIORITY_WEIGHT
+    denominator = ml_weight + rules_weight
     combined = (
-        (ML_PRIORITY_WEIGHT * ml_score + RULES_PRIORITY_WEIGHT * rules_score) / denominator
+        (ml_weight * ml_score + rules_weight * rules_score) / denominator
         if denominator > 0
         else rules_score
     )
@@ -383,8 +449,8 @@ def rerank_with_propensity(
         "name": "sales_propensity_ml",
         "raw_value": ml_score,
         "normalized_value": ml_score,
-        "weighted_value": ML_PRIORITY_WEIGHT * ml_score,
-        "weight": ML_PRIORITY_WEIGHT,
+        "weighted_value": ml_weight * ml_score,
+        "weight": ml_weight,
         "model_version": propensity["modelVersion"],
         "feature_version": propensity["featureVersion"],
         "training_dataset_version": propensity["trainingDatasetVersion"],
@@ -398,9 +464,40 @@ def rerank_with_propensity(
             "priority_components": (*candidate.priority_components, ml_component),
             "why": (
                 *candidate.why,
-                f"Propension commerciale ML {ml_score:.2f} intégrée à la priorité de démonstration.",
+                f"Propension commerciale ML {ml_score:.2f} "
+                "intégrée à la priorité de démonstration.",
             ),
             "engine_version": f"{candidate.engine_version}+ml-rerank-poc-v1",
+        }
+    )
+
+
+def rules_only_candidate(candidate: OpportunityCandidate) -> OpportunityCandidate:
+    rules_score = float(candidate.priority_score)
+    normalized = rules_score / 100 if rules_score > 1 else rules_score
+    priority_level: Literal["P1", "P2", "P3", "P4"] = (
+        "P1"
+        if normalized >= 0.8
+        else "P2"
+        if normalized >= 0.6
+        else "P3"
+        if normalized >= 0.4
+        else "P4"
+    )
+    return candidate.model_copy(
+        update={
+            "priority_score": round(normalized * 100, 4),
+            "priority_level": priority_level,
+            "priority_components": (
+                *candidate.priority_components,
+                {
+                    "name": "ml_fallback_rules_only",
+                    "weighted_value": 0.0,
+                    "weight": 0.0,
+                },
+            ),
+            "why": (*candidate.why, "Priorité calculée en mode RULES_ONLY explicite."),
+            "engine_version": f"{candidate.engine_version}+rules-only",
         }
     )
 
@@ -545,19 +642,41 @@ async def generate(
 ) -> dict[str, Any]:
     config = configured_rules(session)
     engine = OpportunityEngine(config)
+    policy_version = active_policy(session)
+    if policy_version is None:
+        raise Problem(
+            503,
+            "ACTIVE_SCORING_POLICY_UNAVAILABLE",
+            "No effective ACTIVE scoring policy is available.",
+        )
+    policy = session.get(ScoringPolicy, policy_version.policy_id)
+    if policy is None:
+        raise Problem(503, "SCORING_POLICY_NOT_FOUND", "Active scoring policy is invalid.")
+    rules_weight = float(policy_version.rules_weight)
+    ml_weight = float(policy_version.ml_weight)
     generated = 0
+    hybrid_customers = 0
+    rules_only_customers = 0
     audit_builder = DecisionAuditBuilder()
     for customer_id in payload.customerIds:
         context, metrics, signals, catalog, customer = await context_for(
             customer_id, payload.asOf, request
         )
-        propensity = await service_request(
-            "POST",
-            f"{url_for('ml_engine')}/internal/v1/ml/customers/{customer_id}/score",
-            correlation_id=correlation_id(request),
-            json={"asOf": payload.asOf.isoformat()},
-            incoming_authorization=request.headers.get("Authorization"),
+        ml_result = await _ml_client.score(
+            {
+                "customerId": customer_id,
+                "asOf": payload.asOf.isoformat(),
+                "correlationId": correlation_id(request),
+                "authorization": request.headers.get("Authorization"),
+            },
+            as_of=payload.asOf,
         )
+        persist_ml_audit(session, customer_id=customer_id, result=ml_result, request=request)
+        propensity = dict(ml_result.response) if ml_result.response is not None else None
+        if ml_result.mode is FallbackMode.HYBRID_ML:
+            hybrid_customers += 1
+        else:
+            rules_only_customers += 1
         published_response = await service_request(
             "POST",
             f"{url_for('rule_engine')}/internal/v1/rules/evaluate",
@@ -565,13 +684,23 @@ async def generate(
             json={"customerId": customer_id, "metrics": rule_engine_metrics(metrics)},
             incoming_authorization=request.headers.get("Authorization"),
         )
-        candidates = [
-            rerank_with_propensity(candidate, propensity)
-            for candidate in [
-                *engine.evaluate(context),
-                *rule_engine_candidates(customer_id, payload.asOf, published_response),
-            ]
+        base_candidates = [
+            *engine.evaluate(context),
+            *rule_engine_candidates(customer_id, payload.asOf, published_response),
         ]
+        candidates = (
+            [
+                rerank_with_propensity(
+                    candidate,
+                    propensity,
+                    rules_weight=rules_weight,
+                    ml_weight=ml_weight,
+                )
+                for candidate in base_candidates
+            ]
+            if propensity is not None
+            else [rules_only_candidate(candidate) for candidate in base_candidates]
+        )
         for candidate in candidates:
             rule = session.scalar(
                 select(OpportunityRule)
@@ -632,7 +761,8 @@ async def generate(
             confidence_components = [
                 {
                     "name": item.get("name", "component"),
-                    "points": round(float(item.get("weighted_value", 0)) * 100, 2),
+                    # Le moteur de confiance sérialise `points` (= weight * normalized_value).
+                    "points": round(float(item.get("points", item.get("weighted_value", 0))), 2),
                     "maxPoints": round(float(item.get("weight", 0)), 2),
                     "satisfied": float(item.get("normalized_value", 0)) > 0,
                     "value": item.get("raw_value"),
@@ -669,9 +799,14 @@ async def generate(
                 },
                 "propensity": propensity,
                 "combination": {
-                    "method": "HYBRID_ML_RULES",
-                    "mlWeight": ML_PRIORITY_WEIGHT,
-                    "rulesWeight": RULES_PRIORITY_WEIGHT,
+                    "method": ml_result.mode.value,
+                    "policyId": policy.policy_id,
+                    "policyVersion": policy_version.version,
+                    "mlWeight": ml_weight if propensity is not None else 0.0,
+                    "rulesWeight": rules_weight if propensity is not None else 1.0,
+                    "configuredMlWeight": ml_weight,
+                    "configuredRulesWeight": rules_weight,
+                    "fallbackCause": ml_result.cause.as_dict() if ml_result.cause else None,
                     "commercialUseOnly": True,
                 },
             }
@@ -698,6 +833,12 @@ async def generate(
                 "generated_at": datetime.combine(payload.asOf, time.min, tzinfo=timezone.utc),
                 "engine_version": candidate.engine_version,
                 "rule_version": candidate.rule_version,
+                "scoring_policy_id": policy.policy_id,
+                "scoring_policy_version": policy_version.version,
+                "rules_weight": Decimal(str(rules_weight)),
+                "ml_weight": Decimal(str(ml_weight)),
+                "fallback_mode": ml_result.mode.value,
+                "fallback_cause_json": (ml_result.cause.as_dict() if ml_result.cause else None),
                 "rule_id": rule.id,
                 "deduplication_key": (
                     f"{customer_id}:{candidate.opportunity_type}:"
@@ -765,7 +906,16 @@ async def generate(
                     "type": candidate.opportunity_type,
                     "what": candidate.what,
                 },
-                inputs={"metrics": metrics, "signals": signals, "propensity": propensity},
+                inputs={
+                    "metrics": metrics,
+                    "signals": signals,
+                    "propensity": propensity,
+                    "scoringPolicy": {
+                        "policyId": policy.policy_id,
+                        "version": policy_version.version,
+                    },
+                    "fallback": ml_result.audit_event.as_dict(),
+                },
                 config_id=config.config_id,
                 config_checksum=config.checksum(),
                 correlation_id=correlation_id(request),
@@ -784,6 +934,10 @@ async def generate(
                     metric_snapshots_json=metrics,
                     confidence_components_json=list(candidate.confidence_components),
                     priority_components_json=list(candidate.priority_components),
+                    scoring_policy_id=policy.policy_id,
+                    scoring_policy_version=policy_version.version,
+                    fallback_mode=ml_result.mode.value,
+                    fallback_cause_json=(ml_result.cause.as_dict() if ml_result.cause else None),
                     decision_hash=audit["decision_hash"],
                 )
                 .on_conflict_do_nothing(index_elements=[DecisionAudit.decision_hash])
@@ -796,6 +950,16 @@ async def generate(
         "customers": len(payload.customerIds),
         "asOf": payload.asOf.isoformat(),
         "ruleSetVersion": config.rule_set_version,
+        "scoringPolicy": {
+            "policyId": policy.policy_id,
+            "version": policy_version.version,
+            "rulesWeight": rules_weight,
+            "mlWeight": ml_weight,
+        },
+        "executionModes": {
+            "HYBRID_ML": hybrid_customers,
+            "RULES_ONLY": rules_only_customers,
+        },
     }
 
 

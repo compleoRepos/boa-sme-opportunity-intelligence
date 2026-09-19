@@ -49,12 +49,14 @@ def feature_checksum(
     feature_set_version: str,
     values: Mapping[str, float],
     sources: Sequence[Mapping[str, Any]],
+    lineage: Sequence[Mapping[str, Any]] = (),
 ) -> str:
     """Hash the complete, ordered feature lineage using a canonical JSON representation."""
     payload = {
         "asOf": as_of.isoformat(),
         "customerId": customer_id,
         "featureSetVersion": feature_set_version,
+        "lineage": list(lineage),
         "sources": list(sources),
         "values": {name: values[name] for name in FEATURE_ORDER},
     }
@@ -95,6 +97,7 @@ class FeatureVector:
     feature_set_version: str
     values: dict[str, float]
     sources: tuple[dict[str, Any], ...]
+    lineage: tuple[dict[str, Any], ...]
     checksum: str
 
     def __post_init__(self) -> None:
@@ -170,9 +173,7 @@ class FeatureBuilder:
             "activity_density_90d": _bounded(
                 math.log1p(max(0.0, activity)) / math.log1p(2_000.0), 0.0, 1.5
             ),
-            "analytics_coverage_90d": _bounded(
-                sum(coverage_items) / len(coverage_items), 0.0, 1.0
-            ),
+            "analytics_coverage_90d": _bounded(sum(coverage_items) / len(coverage_items), 0.0, 1.0),
             "customer_tenure_ratio": _bounded(tenure_years / 15.0, 0.0, 2.0),
             "segment_medium": float(profile.segment_code.upper() == "MEDIUM"),
             "confirmed_signal_ratio": _bounded(
@@ -220,12 +221,50 @@ class FeatureBuilder:
                 ),
             },
         )
+        analytics_features = FEATURE_ORDER[:6]
+        customer_features = FEATURE_ORDER[6:8]
+        intelligence_features = FEATURE_ORDER[8:]
+        lineage = (
+            tuple(
+                {
+                    "featureName": name,
+                    "featureTimestamp": snapshot.as_of.isoformat(),
+                    "observationAsOf": as_of.isoformat(),
+                    "sourcePeriod": "90D",
+                    "sourceType": "ANALYTICS_SNAPSHOT",
+                }
+                for name in analytics_features
+            )
+            + tuple(
+                {
+                    "featureName": name,
+                    "featureTimestamp": as_of.isoformat(),
+                    "observationAsOf": as_of.isoformat(),
+                    "sourcePeriod": "PROFILE_AS_OF",
+                    "sourceType": "CUSTOMER_PROFILE",
+                }
+                for name in customer_features
+            )
+            + tuple(
+                {
+                    "featureName": name,
+                    "featureTimestamp": as_of.isoformat(),
+                    "observationAsOf": as_of.isoformat(),
+                    "sourcePeriod": "AS_OF",
+                    "sourceType": (
+                        "SIGNAL_SERVICE" if name == "confirmed_signal_ratio" else "RULE_STUDIO"
+                    ),
+                }
+                for name in intelligence_features
+            )
+        )
         checksum = feature_checksum(
             customer_id=profile.customer_id,
             as_of=as_of,
             feature_set_version=self.feature_set_version,
             values=rounded,
             sources=sources,
+            lineage=lineage,
         )
         return FeatureVector(
             customer_id=profile.customer_id,
@@ -233,6 +272,7 @@ class FeatureBuilder:
             feature_set_version=self.feature_set_version,
             values=rounded,
             sources=sources,
+            lineage=lineage,
             checksum=checksum,
         )
 

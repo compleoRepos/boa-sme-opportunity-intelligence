@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import os
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import Depends, Request
-from sqlalchemy import Select, and_, func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from boa_oi.models.entities import (
@@ -25,6 +24,7 @@ from boa_oi.platform import (
     not_found,
     require_roles,
 )
+from boa_oi.technical.reference import branch_label
 
 app = create_service_app(
     "portfolio-service",
@@ -34,15 +34,13 @@ PREFIX = "/internal/v1"
 RM_ROLES = ("RELATIONSHIP_MANAGER",)
 BRANCH_ROLES = ("BRANCH_MANAGER",)
 COMMERCIAL_READ_ROLES = ("RELATIONSHIP_MANAGER", "BRANCH_MANAGER", "ADMIN", "SERVICE")
-ML_WEIGHT = float(os.getenv("ML_PRIORITY_WEIGHT", "0.35"))
-RULES_WEIGHT = float(os.getenv("RULES_PRIORITY_WEIGHT", "0.65"))
 
 FEATURE_LABELS = {
     "cash_inflow_growth_90d": "Croissance des encaissements sur 90 jours",
     "supplier_payment_growth_90d": "Dynamique des paiements fournisseurs sur 90 jours",
-    "international_activity_ratio_90d": "Part de l’activité internationale sur 90 jours",
+    "international_activity_ratio_90d": "Part de l'activite internationale sur 90 jours",
     "balance_strength_90d": "Solidité de la trésorerie observée sur 90 jours",
-    "activity_density_90d": "Densité d’activité transactionnelle sur 90 jours",
+    "activity_density_90d": "Densite d'activite transactionnelle sur 90 jours",
     "analytics_coverage_90d": "Couverture des données analytiques",
     "customer_tenure_ratio": "Ancienneté de la relation PME",
     "segment_medium": "Appartenance au segment PME intermédiaire",
@@ -54,7 +52,9 @@ def _customer_scope(principal: Principal) -> tuple[tuple[str, ...] | None, tuple
         return None, None
     if "RELATIONSHIP_MANAGER" in principal.roles:
         if not principal.relationship_manager_ids:
-            raise Problem(403, "PORTFOLIO_SCOPE_MISSING", "No relationship-manager scope is assigned.")
+            raise Problem(
+                403, "PORTFOLIO_SCOPE_MISSING", "No relationship-manager scope is assigned."
+            )
         return principal.relationship_manager_ids, None
     if "BRANCH_MANAGER" in principal.roles:
         if not principal.branch_ids:
@@ -166,13 +166,15 @@ def _normalized_rules_score(opportunities: list[Opportunity]) -> float:
     return min(1.0, max(0.0, value / 100 if value > 1 else value))
 
 
-def _combined_priority(propensity: float, rules_score: float) -> tuple[float, str]:
-    denominator = ML_WEIGHT + RULES_WEIGHT
-    combined = (
-        (ML_WEIGHT * propensity + RULES_WEIGHT * rules_score) / denominator
-        if denominator > 0
-        else propensity
-    )
+def _persisted_priority(
+    propensity: float, opportunities: list[Opportunity]
+) -> tuple[float, str, Opportunity | None]:
+    if opportunities:
+        selected = max(opportunities, key=lambda item: float(item.priority_score))
+        combined = float(selected.priority_score)
+        combined = combined / 100 if combined > 1 else combined
+        return combined, selected.priority_level, selected
+    combined = propensity
     if combined >= 0.80:
         level = "P1"
     elif combined >= 0.60:
@@ -181,7 +183,7 @@ def _combined_priority(propensity: float, rules_score: float) -> tuple[float, st
         level = "P3"
     else:
         level = "P4"
-    return combined, level
+    return combined, level, None
 
 
 def _factor_label(feature: str) -> str:
@@ -209,10 +211,13 @@ def _portfolio_payload(
         propensity = float(score_record.score) if score_record else 0.0
         customer_opportunities = opportunities.get(customer.id, [])
         customer_actions = actions.get(customer.id, [])
-        rules_score = _normalized_rules_score(customer_opportunities)
-        combined, priority_level = _combined_priority(propensity, rules_score)
+        combined, priority_level, _selected = _persisted_priority(
+            propensity, customer_opportunities
+        )
         distribution[priority_level] += 1
-        open_actions = [item for item in customer_actions if item.status not in {"DONE", "CANCELLED"}]
+        open_actions = [
+            item for item in customer_actions if item.status not in {"DONE", "CANCELLED"}
+        ]
         due_actions += sum(
             1 for item in open_actions if item.due_at is not None and item.due_at <= due_limit
         )
@@ -223,20 +228,27 @@ def _portfolio_payload(
             if item.outcome_type in {"CONTACTED", "MEETING_SCHEDULED", "OFFER_CREATED", "CONVERTED"}
         )
         all_open_opportunities += len(customer_opportunities)
-        top_factor = (score_record.top_factors_json[0] if score_record and score_record.top_factors_json else None)
+        top_factor = (
+            score_record.top_factors_json[0]
+            if score_record and score_record.top_factors_json
+            else None
+        )
         portfolio.append(
             {
                 "customerId": customer.customer_ref,
                 "customerName": customer.legal_name,
                 "industry": customer.sector_code,
+                "segment": customer.segment_code,
                 "relationshipManagerId": manager.subject_id,
                 "relationshipManagerName": manager.display_name,
                 "branchId": manager.branch_code,
+                "branchName": branch_label(manager.branch_code),
                 "propensityScore": propensity,
                 "combinedPriorityScore": combined,
                 "priorityLevel": priority_level,
                 "priorityReason": (
-                    f"{_factor_label(str(top_factor['feature']))} est le principal facteur du score."
+                    f"{_factor_label(str(top_factor['feature']))} est le principal "
+                    "facteur du score."
                     if top_factor
                     else "Aucun score de propension matérialisé pour cette date."
                 ),
@@ -245,8 +257,14 @@ def _portfolio_payload(
                         "opportunityId": item.opportunity_ref,
                         "opportunityType": item.opportunity_type,
                         "confidence": float(item.confidence_score),
+                        "confidenceLevel": item.confidence_level,
+                        "priorityScore": float(item.priority_score),
+                        "priorityLevel": item.priority_level,
                         "horizon": item.horizon,
                         "status": item.status,
+                        "why": list(item.why_json or [])[:3],
+                        "recommendedProducts": list(item.recommended_products_json or [])[:2],
+                        "generatedAt": item.generated_at.isoformat(),
                     }
                     for item in customer_opportunities[:3]
                 ],
@@ -314,11 +332,83 @@ def relationship_manager_dashboard(
             ),
             "relationshipManagerName": manager.display_name if manager else principal.username,
             "branchId": manager.branch_code if manager else None,
-            "branchName": manager.branch_code if manager else None,
+            "branchName": branch_label(manager.branch_code) if manager else None,
         },
         generatedAt=datetime.now(timezone.utc).isoformat(),
     )
     return payload
+
+
+def _counter_payload(counter: Counter[str], key: str) -> list[dict[str, Any]]:
+    total = sum(counter.values())
+    return [
+        {key: name, "count": count, "share": count / total if total else 0.0}
+        for name, count in sorted(counter.items(), key=lambda item: (-item[1], item[0]))
+    ]
+
+
+def _branch_breakdowns(
+    session: Session,
+    rows: list[tuple[Customer, RelationshipManager]],
+    all_actions: list[OpportunityAction],
+) -> dict[str, Any]:
+    """Agrégats agence calculés sur les opportunités ouvertes et les actions du périmètre."""
+    customer_ids = [customer.id for customer, _manager in rows]
+    sector_by_customer = {customer.id: customer.sector_code for customer, _manager in rows}
+    manager_by_customer = {customer.id: manager for customer, manager in rows}
+    opportunities = [
+        item for records in _opportunities(session, customer_ids).values() for item in records
+    ]
+    by_type: Counter[str] = Counter()
+    by_sector: Counter[str] = Counter()
+    by_manager: Counter[str] = Counter()
+    by_product: Counter[str] = Counter()
+    by_priority: Counter[str] = Counter()
+    timeline: Counter[str] = Counter()
+    manager_names: dict[str, str] = {}
+    for item in opportunities:
+        by_type[item.opportunity_type] += 1
+        by_sector[sector_by_customer.get(item.customer_id, "UNKNOWN")] += 1
+        manager = manager_by_customer.get(item.customer_id)
+        if manager is not None:
+            by_manager[manager.subject_id] += 1
+            manager_names[manager.subject_id] = manager.display_name
+        by_priority[item.priority_level] += 1
+        timeline[item.generated_at.date().isoformat()] += 1
+        for product in item.recommended_products_json or []:
+            name = product.get("name") if isinstance(product, dict) else str(product)
+            if name:
+                by_product[name] += 1
+    actions_by_type: Counter[str] = Counter(action.action_type for action in all_actions)
+    outcomes: Counter[str] = Counter(
+        action.outcome_type for action in all_actions if action.outcome_type
+    )
+    action_timeline: Counter[str] = Counter(
+        action.created_at.date().isoformat() for action in all_actions if action.created_at
+    )
+    return {
+        "opportunitiesByType": _counter_payload(by_type, "opportunityType"),
+        "opportunitiesBySector": _counter_payload(by_sector, "sector"),
+        "opportunitiesByProduct": _counter_payload(by_product, "product"),
+        "opportunitiesByPriority": _counter_payload(by_priority, "priorityLevel"),
+        "opportunitiesByRelationshipManager": [
+            {
+                **entry,
+                "relationshipManagerName": manager_names.get(
+                    entry["relationshipManagerId"], entry["relationshipManagerId"]
+                ),
+            }
+            for entry in _counter_payload(by_manager, "relationshipManagerId")
+        ],
+        "opportunityTimeline": [
+            {"date": day, "count": count} for day, count in sorted(timeline.items())
+        ],
+        "actionsByType": _counter_payload(actions_by_type, "actionType"),
+        "outcomes": _counter_payload(outcomes, "outcome"),
+        "actionTimeline": [
+            {"date": day, "count": count} for day, count in sorted(action_timeline.items())
+        ],
+    }
 
 
 @app.get(
@@ -356,15 +446,26 @@ def branch_dashboard(
     )
     stages = [
         ("CONTACTED", contacted),
-        ("MEETING_SCHEDULED", sum(1 for item in all_actions if item.outcome_type in {"MEETING_SCHEDULED", "OFFER_CREATED", "CONVERTED"})),
-        ("OFFER_CREATED", sum(1 for item in all_actions if item.outcome_type in {"OFFER_CREATED", "CONVERTED"})),
+        (
+            "MEETING_SCHEDULED",
+            sum(
+                1
+                for item in all_actions
+                if item.outcome_type in {"MEETING_SCHEDULED", "OFFER_CREATED", "CONVERTED"}
+            ),
+        ),
+        (
+            "OFFER_CREATED",
+            sum(1 for item in all_actions if item.outcome_type in {"OFFER_CREATED", "CONVERTED"}),
+        ),
         ("CONVERTED", sum(1 for item in all_actions if item.outcome_type == "CONVERTED")),
     ]
     branch_id = rows[0][1].branch_code if rows else principal.branch_ids[0]
     payload.pop("portfolio", None)
     payload.update(
-        scope={"type": "BRANCH", "branchId": branch_id, "branchName": branch_id},
+        scope={"type": "BRANCH", "branchId": branch_id, "branchName": branch_label(branch_id)},
         relationshipManagers=managers,
+        **_branch_breakdowns(session, rows, all_actions),
         conversionFunnel=[
             {"stage": stage, "count": count, "rate": count / contacted if contacted else 0.0}
             for stage, count in stages
@@ -395,7 +496,7 @@ def relationship_manager_portfolio(
             "relationshipManagerId": manager.subject_id,
             "relationshipManagerName": manager.display_name,
             "branchId": manager.branch_code,
-            "branchName": manager.branch_code,
+            "branchName": branch_label(manager.branch_code),
         },
         generatedAt=datetime.now(timezone.utc).isoformat(),
     )
@@ -421,11 +522,13 @@ def customer_propensity(
     customer, _manager = row
     score_record = _latest_scores(session, [customer.id]).get(customer.id)
     if score_record is None:
-        raise Problem(404, "PROPENSITY_NOT_SCORED", "No propensity score is available for this SME.")
+        raise Problem(
+            404, "PROPENSITY_NOT_SCORED", "No propensity score is available for this SME."
+        )
     opportunities = _opportunities(session, [customer.id]).get(customer.id, [])
     rules_score = _normalized_rules_score(opportunities)
     propensity = float(score_record.score)
-    combined, priority_level = _combined_priority(propensity, rules_score)
+    combined, priority_level, selected = _persisted_priority(propensity, opportunities)
     factors = [
         {
             "feature": item["feature"],
@@ -434,7 +537,8 @@ def customer_propensity(
             "direction": item.get("direction", "NEUTRAL"),
             "contribution": item.get("contribution"),
             "explanation": (
-                f"Contribution {item.get('direction', 'NEUTRAL').lower()} au score de propension commerciale."
+                f"Contribution {item.get('direction', 'NEUTRAL').lower()} "
+                "au score de propension commerciale."
             ),
             "source": "Feature Store / Analytics",
         }
@@ -452,18 +556,25 @@ def customer_propensity(
             "scoredAt": score_record.created_at.isoformat(),
         },
         "combination": {
-            "method": "HYBRID_ML_RULES",
+            "method": selected.fallback_mode if selected else "PROPENSITY_ONLY_NO_OPPORTUNITY",
             "mlScore": propensity,
             "rulesScore": rules_score,
-            "mlWeight": ML_WEIGHT,
-            "rulesWeight": RULES_WEIGHT,
+            "mlWeight": float(selected.ml_weight) if selected else None,
+            "rulesWeight": float(selected.rules_weight) if selected else None,
+            "policyId": selected.scoring_policy_id if selected else None,
+            "policyVersion": selected.scoring_policy_version if selected else None,
             "combinedPriorityScore": combined,
-            "summary": "La propension ML complète les règles métier publiées pour ordonner le travail commercial.",
+            "summary": (
+                "La propension ML complete les regles metier publiees "
+                "pour ordonner le travail commercial."
+            ),
         },
         "factors": factors,
         "warnings": [
-            "Aucune décision de crédit : ce score sert uniquement à prioriser une action commerciale.",
-            "Le signal de tension financière, lorsqu’il existe, doit être examiné par un collaborateur.",
+            "Aucune decision de credit : ce score sert uniquement a prioriser "
+            "une action commerciale.",
+            "Le signal de tension financiere, lorsqu'il existe, doit etre examine "
+            "par un collaborateur.",
         ],
         "correlationId": getattr(request.state, "correlation_id", None),
     }

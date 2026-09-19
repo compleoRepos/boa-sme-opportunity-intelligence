@@ -116,6 +116,7 @@ def serialize(item: OpportunityAction) -> dict[str, Any]:
 def list_for(
     request: Request,
     session: Session,
+    principal: Principal,
     *,
     opportunity_id: str | None = None,
     customer_id: str | None = None,
@@ -140,6 +141,15 @@ def list_for(
     params = request.query_params
     offset = decode_cursor(cursor)
     stmt = select(OpportunityAction)
+    if not ({"ADMIN", "SERVICE", "DATA_ANALYST"} & principal.roles):
+        if "RELATIONSHIP_MANAGER" in principal.roles:
+            stmt = stmt.where(OpportunityAction.actor_subject_id == principal.subject)
+        elif "BRANCH_MANAGER" in principal.roles and not (opportunity_id or customer_id):
+            raise Problem(
+                403,
+                "SCOPED_DASHBOARD_REQUIRED",
+                "Branch actions must be consulted through the scoped branch dashboard.",
+            )
     target_opp = opportunity_id or params.get("opportunityId")
     target_customer = customer_id or params.get("customerId")
     if target_opp:
@@ -200,9 +210,10 @@ def list_actions(
     request: Request,
     page_size: Annotated[int, Query(alias="pageSize", ge=1, le=1000)] = 25,
     cursor: str | None = None,
+    principal: Principal = Depends(current_principal),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    return list_for(request, session, page_size=page_size, cursor=cursor)
+    return list_for(request, session, principal, page_size=page_size, cursor=cursor)
 
 
 @app.get(
@@ -215,11 +226,13 @@ def opportunity_actions(
     request: Request,
     page_size: Annotated[int, Query(alias="pageSize", ge=1, le=1000)] = 100,
     cursor: str | None = None,
+    principal: Principal = Depends(current_principal),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     return list_for(
         request,
         session,
+        principal,
         opportunity_id=opportunity_id,
         page_size=page_size,
         cursor=cursor,
@@ -236,9 +249,17 @@ def customer_actions(
     request: Request,
     page_size: Annotated[int, Query(alias="pageSize", ge=1, le=1000)] = 100,
     cursor: str | None = None,
+    principal: Principal = Depends(current_principal),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    return list_for(request, session, customer_id=customer_id, page_size=page_size, cursor=cursor)
+    return list_for(
+        request,
+        session,
+        principal,
+        customer_id=customer_id,
+        page_size=page_size,
+        cursor=cursor,
+    )
 
 
 @app.post(

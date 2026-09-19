@@ -1,11 +1,11 @@
 # Acceptation de l’incrément ML
 
 **Produit :** BOA SME Opportunity Intelligence  
-**Statut initial :** `NOT_RUN`  
+**Statut :** exécution technique POC en cours ; résultats détaillés dans `ml-integration-status.md`
 **Auteur :** Manus AI  
 **Périmètre :** preuve d’acceptation du Feature Store, du ML Engine CPU-ready, de la fusion, des dashboards et de la gouvernance
 
-> Ce document est une checklist normative. Il ne prouve pas que l’incrément ML est implémenté. Aucun item ne peut être déclaré `PASS` sans un artefact vérifiable. Tout échec lié au crédit, au périmètre client, à l’audit, à la gouvernance des outcomes ou à une dépendance LLM bloque l’activation.
+> Ce document reste la checklist normative jusqu’à une éventuelle activation de production. L’implémentation locale actuelle est un `POC_ASSISTIVE` sur données synthétiques. Les résultats exécutés et les limites non implémentées sont consignés dans [`ml-integration-status.md`](./ml-integration-status.md). Aucun résultat de ce POC ne vaut validation de performance, calibration ou gouvernance de production.
 
 ## 1. Statuts et preuve attendue
 
@@ -185,7 +185,7 @@ L’activation est refusée si un score peut être interprété ou consommé com
 
 ## 15. Limites reconnues du MVP
 
-Le MVP actuel demeure déterministe et sans ML. Le premier incrément ML accepté est batch, CPU, PostgreSQL, un nombre limité de modèles et `ML_SHADOW`. Il ne couvre pas le temps réel, l’apprentissage en ligne, l’auto-réentraînement, l’auto-promotion, l’inférence causale, les modèles de crédit, les notes libres, le LLM ou `HYBRID_CANDIDATE`.
+Le MVP exécute un modèle logistique déterministe en batch CPU et persiste une propension commerciale avec ses versions. Il reste un POC sur données synthétiques. Il ne couvre pas la calibration de production, le monitoring de drift opérationnel, le temps réel, l’apprentissage en ligne, l’auto-réentraînement, l’auto-promotion, l’inférence causale, les modèles de crédit, les notes libres, le LLM ou `HYBRID_CANDIDATE`.
 
 ## Références
 

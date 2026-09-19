@@ -1,53 +1,35 @@
-# Statut final — BOA SME Opportunity Intelligence
+# Statut courant — BOA SME Opportunity Intelligence
 
-**Date du constat documentaire :** 2026-09-18
+**Date :** 19 septembre 2026
 
-> Ce document est un gabarit factuel à finaliser après exécution de l’auto-validation. Il ne déclare pas une fonctionnalité comme réalisée sur la seule base d’un document ou de fichiers présents. Tout élément « à confirmer » doit recevoir une preuve de run, de test ou d’artefact.
+BOA SME Opportunity Intelligence est un **POC d’intelligence commerciale PME** exécutable sur CPU. Il combine Analytics, Signals, Rule Studio, Feature Store point-in-time, modèle logistique de propension, Scoring Policy gouvernée, Opportunity Engine, dashboards CC/agence et actions/outcomes. Il ne prend aucune décision de crédit et ne dépend d’aucun LLM, GPU ou appel IA externe.
 
-## IMPLEMENTED
+## Statut technique
 
-| Élément | Preuve requise | Constat |
-|---|---|---|
-| Stack Python 3.12/FastAPI déclarée | `backend/pyproject.toml`, build et `/health` | À confirmer par exécution |
-| SQLAlchemy et Alembic | dépendances et migration sur base vide | À confirmer par exécution |
-| Frontend React/TypeScript et Gateway | build et smoke navigateur | À confirmer par exécution |
-| Seed sans opportunités préchargées | rapport de seed et comptage PostgreSQL | À confirmer par exécution |
-| Règles, preuves et audit | tests métier et inspection de persistance | À confirmer par exécution |
+| Capacité | Statut |
+|---|---|
+| Stack Docker Compose, PostgreSQL, Keycloak, Gateway et frontend premium | **PASS — 20/20 services sains** |
+| Rule Studio versionné, simulation, séparation auteur/approbateur et rollback | **PASS** |
+| Feature Store alimenté par Analytics, Signals et Rule Engine via HTTP | **PASS** |
+| ML Engine CPU avec lignée, score, contributions et versions | **PASS — POC synthétique** |
+| Scoring Policy versionnée, approuvée, active et restaurable | **PASS** |
+| Fallback ML indisponible → `RULES_ONLY` sans score ancien ou inventé | **PASS** |
+| Retour automatique au mode `HYBRID_ML` après récupération | **PASS** |
+| Model Registry, approbation, champion, retrait et rollback | **PASS — SOCLE MLOps** |
+| Monitoring drift/opérationnel persistant et readiness prudente | **PASS — SOCLE** |
+| Dashboard CC limité à son portefeuille | **PASS** |
+| Dashboard agence consolidé et limité à ses branches/CC | **PASS** |
+| Outcomes matérialisés comme futurs labels avec maturité | **PASS — `trainingReady=false`** |
+| Migration base vierge `0001` → `0008_training_status` | **PASS** |
+| Suite navigateur complète | **PASS — 8/8** |
+| Tests backend/frontend et build | **PASS — 119 backend, 15 frontend** |
 
-## PARTIALLY IMPLEMENTED
+## Positionnement et limites
 
-À compléter lorsque le code existe mais que la preuve de bout en bout manque.
+Le modèle actif et les challengers restent en mode **`POC_ASSISTIVE`** sur données synthétiques. Aucune précision, AUC, calibration, uplift ou performance commerciale de production n’est revendiquée. `FINANCIAL_STRESS_SIGNAL` reste un signal relationnel à examiner par un humain.
 
-- Le dépôt contient un socle backend Python/FastAPI, des modèles et une migration initiale ; la séparation complète des services, les routes métier et le parcours complet doivent être prouvés par intégration.
-- La documentation fixe HTTP + outbox, mais la persistance, la reprise et l’idempotence de l’outbox doivent être vérifiées sur l’environnement cible.
-- L’interface et les contrats sont présents dans le dépôt ; leur branchement complet à des données recalculées et leur contrôle RBAC restent à mesurer.
+La production est **BLOCKED**. Les données et labels BOA réels, la validation indépendante du modèle, l’homologation DPO/Sécurité, les adaptateurs CBS/CRM/Payments/Trade, la haute disponibilité, la restauration testée, les secrets/TLS de production et les choix cloud restent à réaliser et approuver. Aucun déploiement AWS n’a été créé.
 
-## NOT IMPLEMENTED
+Le rapport de référence est [`finalization-status-2026-09-19.md`](./finalization-status-2026-09-19.md). La gouvernance des données et la cible d’industrialisation sont détaillées dans [`industrialization-governance.md`](./industrialization-governance.md).
 
-À compléter après inventaire des exigences non couvertes. Ne pas inventer de résultat absent du dépôt ou des rapports.
-
-- Rule Studio complet avec simulation, approbation, publication et rollback : à confirmer.
-- Simulation historique avec taux de conversion réel : à confirmer ; aucune conversion ne doit être inventée.
-- Déploiement de production haute disponibilité, sauvegarde testée, rotation de secrets et intégration bancaire réelle : hors preuve fournie ici.
-
-## KNOWN LIMITATIONS
-
-Le dataset est synthétique. Docker Compose local n’est pas une cible de haute disponibilité. L’historique saisonnier est limité par la période disponible. Les paramètres non validés par BOA doivent rester marqués `DEMO_DEFAULT` ou `PENDING_APPROVAL`. Aucun ML, appel LLM ou décision de crédit ne fait partie du MVP.
-
-## TECHNICAL DEBT
-
-Le registre doit préciser propriétaire, priorité, risque et date cible. Les sujets attendus sont la séparation physique éventuelle des bases, les projections Customer 360, la reprise des jobs, les tests de permission par service, la mesure de performance, l’outillage de migration et le durcissement des secrets.
-
-## NEXT STEPS
-
-1. Exécuter l’auto-validation avec une base vide et conserver le rapport.
-2. Vérifier migrations, seed, pipeline HTTP, outboxes et idempotence.
-3. Exécuter BR-001 à BR-012, FP-001 à FP-007, contrats, sécurité et smoke E2E.
-4. Remplacer chaque « à confirmer » par `PASS`, `FAIL`, `SKIPPED_OPTIONAL` ou `NOT_APPLICABLE`, avec preuve.
-5. Faire valider les paramètres métier et la cartographie BIAN-inspired sans présenter celle-ci comme une certification.
-
-## Références
-
-[1]: ../docs/implementation-blueprint.md "Blueprint d’implémentation exécutable"
-[2]: ../docs/test-plan.md "Plan de tests"
-[3]: ../architecture/data-flow.md "Flux de données"
+Le LLM est **non implémenté par choix** et reste une possibilité architecturale future hors score, éligibilité, priorisation et décision métier.

@@ -3,7 +3,11 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
-from boa_oi.opportunity_api import rule_engine_candidates, rule_engine_metrics
+from boa_oi.opportunity_api import (
+    rerank_with_propensity,
+    rule_engine_candidates,
+    rule_engine_metrics,
+)
 from boa_oi.rules import RuleEvaluator, canonical_operator
 from boa_oi.rules.simulation import metric_payload
 
@@ -153,3 +157,41 @@ def test_analytics_growth_aliases_and_published_rule_trace_are_preserved():
     assert candidates[0].rule_version == "RULE-PUBLISHED:v3"
     assert candidates[0].engine_version == "rule-engine-0.1.0"
     assert candidates[0].evidence[0].observed == 0.42
+
+
+def test_sales_propensity_changes_priority_and_preserves_prediction_trace():
+    candidate = rule_engine_candidates(
+        "SME-00001",
+        date(2026, 9, 18),
+        {
+            "matched": True,
+            "ruleId": "RULE-PUBLISHED",
+            "ruleVersion": 3,
+            "engineVersion": "rule-engine-0.1.0",
+            "opportunityType": "INVESTMENT_FINANCING",
+            "confidence": 0.7,
+            "evidence": [],
+        },
+    )[0]
+
+    def score(value: float):
+        return {
+            "propensity": value,
+            "modelVersion": "sales-propensity-logit-poc-v1",
+            "featureVersion": "sales-features-v2",
+            "trainingDatasetVersion": "synthetic-demo-20260918-v1",
+            "deploymentMode": "POC_ASSISTIVE",
+            "traceId": f"trace-{value}",
+        }
+
+    low = rerank_with_propensity(candidate, score(0.1), rules_weight=0.65, ml_weight=0.35)
+    high = rerank_with_propensity(candidate, score(0.9), rules_weight=0.65, ml_weight=0.35)
+    assert high.priority_score > low.priority_score
+    assert high.priority_score != candidate.priority_score
+    ml_component = next(
+        item for item in high.priority_components if item["name"] == "sales_propensity_ml"
+    )
+    assert ml_component["model_version"] == "sales-propensity-logit-poc-v1"
+    assert ml_component["feature_version"] == "sales-features-v2"
+    assert ml_component["training_dataset_version"] == "synthetic-demo-20260918-v1"
+    assert ml_component["trace_id"] == "trace-0.9"

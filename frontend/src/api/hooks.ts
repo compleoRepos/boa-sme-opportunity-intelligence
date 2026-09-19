@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { apiRequest, buildSearch } from './client'
 import type {
   Account,
+  ActivitySeries,
   ApiPage,
   BranchDashboard,
   CreateActionInput,
@@ -12,6 +13,7 @@ import type {
   Explanation,
   FinancialMetric,
   ListQuery,
+  MlModel,
   Opportunity,
   OpportunityAction,
   Product,
@@ -98,6 +100,20 @@ export const useCustomerMetrics = (id?: string) => customerPage<FinancialMetric>
 export const useCustomerSignals = (id?: string) => customerPage<Signal>(id, 'signals', { pageSize: 100, sort: '-detectedAt' })
 export const useCustomerOpportunities = (id?: string) => customerPage<Opportunity>(id, 'opportunities', { pageSize: 100, sort: '-priorityScore' })
 export const useCustomerActions = (id?: string) => customerPage<OpportunityAction>(id, 'actions', { pageSize: 100, sort: '-createdAt' })
+export const useCustomerActivity = (id?: string, params: { granularity?: 'DAY' | 'WEEK' | 'MONTH'; fromDate?: string; toDate?: string } = {}) => useQuery({
+  queryKey: ['customer', id, 'activity', params],
+  queryFn: () => apiRequest<ActivitySeries>(`/api/v1/customers/${id}/activity${buildSearch(params)}`),
+  enabled: Boolean(id),
+  staleTime: 5 * 60_000,
+})
+export const useMlModels = () => useQuery({
+  queryKey: ['ml', 'models'],
+  queryFn: () => apiRequest<{ data: MlModel[]; meta: { totalCount: number } }>('/api/v1/ml/models'),
+})
+export const useActiveModel = () => useQuery({
+  queryKey: ['ml', 'models', 'active'],
+  queryFn: () => apiRequest<MlModel>('/api/v1/ml/models/active'),
+})
 
 export const useSignals = (params: ListQuery) => useQuery(pageQuery<Signal>('signals', params))
 export const useProducts = (params: ListQuery) => useQuery(pageQuery<Product>('products', params))
@@ -125,6 +141,8 @@ export function useCreateAction(opportunityId: string) {
       void queryClient.invalidateQueries({ queryKey: ['actions'] })
       void queryClient.invalidateQueries({ queryKey: ['customer', action.customerId, 'actions'] })
       void queryClient.invalidateQueries({ queryKey: ['metrics', 'dashboard'] })
+      void queryClient.invalidateQueries({ queryKey: ['dashboards'] })
+      void queryClient.invalidateQueries({ queryKey: ['customer', action.customerId, 'opportunities'] })
     },
   })
 }
@@ -142,6 +160,7 @@ export function useUpdateAction(actionId: string, opportunityId?: string) {
       void queryClient.invalidateQueries({ queryKey: ['opportunity', opportunityId || action.opportunityId, 'actions'] })
       void queryClient.invalidateQueries({ queryKey: ['customer', action.customerId, 'actions'] })
       void queryClient.invalidateQueries({ queryKey: ['metrics', 'dashboard'] })
+      void queryClient.invalidateQueries({ queryKey: ['dashboards'] })
     },
   })
 }

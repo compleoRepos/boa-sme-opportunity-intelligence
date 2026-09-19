@@ -3,10 +3,12 @@ import type { ApiProblem } from './types'
 const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
 let tokenProvider: () => string | undefined = () => undefined
 let authenticationFailure: () => void = () => undefined
+let devPersonaProvider: () => string | undefined = () => undefined
 
-export function configureApiAuth(getToken: () => string | undefined, onAuthenticationFailure: () => void) {
+export function configureApiAuth(getToken: () => string | undefined, onAuthenticationFailure: () => void, getDevPersona?: () => string | undefined) {
   tokenProvider = getToken
   authenticationFailure = onAuthenticationFailure
+  devPersonaProvider = getDevPersona || (() => undefined)
 }
 
 export class ApiError extends Error {
@@ -44,6 +46,8 @@ export async function apiRequest<T>(path: string, init: RequestInit & { idempote
   headers.set('Accept', 'application/json')
   headers.set('X-Correlation-ID', uuid())
   if (token) headers.set('Authorization', `Bearer ${token}`)
+  const persona = devPersonaProvider()
+  if (persona && !token) headers.set('X-Dev-Principal', persona)
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
   if (init.idempotencyKey) headers.set('Idempotency-Key', init.idempotencyKey)
 

@@ -82,6 +82,62 @@ const labels: Record<string, string> = {
   '0-1_MONTH': '0–1 mois',
   '0-3_MONTHS': '0–3 mois',
   '1-3_MONTHS': '1–3 mois',
+  '3-6_MONTHS': '3–6 mois',
+  '6-12_MONTHS': '6–12 mois',
+  INDUSTRIE: 'Industrie',
+  IMPORT_EXPORT: 'Import / Export',
+  DISTRIBUTION: 'Distribution',
+  SERVICES: 'Services',
+  BTP: 'BTP',
+  AGRICULTURE: 'Agriculture',
+  COMMERCE: 'Commerce',
+  TECHNOLOGIE: 'Technologie',
+  SMALL: 'Petite entreprise',
+  SME: 'PME',
+  MICRO_BUSINESS: 'TPE',
+  MID_MARKET: 'ETI',
+  P1: 'Priorité P1',
+  P2: 'Priorité P2',
+  P3: 'Priorité P3',
+  P4: 'Priorité P4',
+  COMPLETED: 'Terminée',
+  CANDIDATE: 'Candidat',
+  ALL: 'Tous',
+  datasetKind: 'Type de dataset',
+  evaluationMode: 'Mode d’évaluation',
+  validationStatus: 'Statut de validation',
+  productionPerformanceClaim: 'Performance de production revendiquée',
+  confirmed_signal_ratio: 'Part de signaux confirmés',
+  published_rule_match_strength: 'Force de correspondance aux règles publiées',
+  CUSTOMER_RECEIPT: 'Encaissement client',
+  SUPPLIER_PAYMENT: 'Paiement fournisseur',
+  OPERATING_EXPENSE: 'Charge d’exploitation',
+  TRANSFER: 'Virement',
+  PAYMENT: 'Paiement',
+  FINANCING: 'Financement',
+  TRADE: 'Trade finance',
+  CASH: 'Cash management',
+  INVESTMENT: 'Placement',
+  cash_inflow_growth_90d: 'Croissance des encaissements (90 j)',
+  supplier_payment_growth_90d: 'Dynamique des paiements fournisseurs (90 j)',
+  international_activity_ratio_90d: 'Part de l’activité internationale (90 j)',
+  balance_strength_90d: 'Solidité de la trésorerie (90 j)',
+  activity_density_90d: 'Densité d’activité transactionnelle (90 j)',
+  analytics_coverage_90d: 'Couverture des données analytiques',
+  customer_tenure_ratio: 'Ancienneté de la relation',
+  segment_medium: 'Segment PME intermédiaire',
+  inflow_amount: 'Encaissements',
+  outflow_amount: 'Décaissements',
+  supplier_payment_amount: 'Paiements fournisseurs',
+  transaction_count: 'Volume de transactions',
+  HISTORICAL_CONSISTENCY: 'Cohérence historique',
+  PRODUCT_GAP: 'Écart d’équipement',
+  RECENCY: 'Récence',
+  NO_RECENT_INVESTMENT_FINANCING: 'Aucun financement investissement récent',
+  ROLLED_BACK: 'Restaurée',
+  CREATED: 'Créée',
+  UPDATED: 'Modifiée',
+  'CASH_INVESTMENT_RULE': 'Placement de trésorerie',
 }
 
 export const label = (value?: string | null) => {
@@ -99,6 +155,45 @@ export const formatMoney = (value?: number | null, currency = 'MAD') =>
   value == null || Number.isNaN(value)
     ? '—'
     : new Intl.NumberFormat('fr-FR', { style: 'currency', currency, maximumFractionDigits: 0 }).format(value)
+
+export const formatCompact = (value?: number | null, currency = 'MAD') => {
+  if (value == null || Number.isNaN(value)) return '—'
+  const abs = Math.abs(value)
+  if (abs >= 1_000_000) return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(value / 1_000_000)} M${currency}`
+  if (abs >= 10_000) return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(value / 1_000)} k${currency}`
+  return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(value)} ${currency}`
+}
+
+export const formatRelative = (value?: string | null, now = new Date()) => {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const days = Math.round((now.getTime() - date.getTime()) / 86_400_000)
+  if (days < 0) return `le ${formatShortDate(value)}`
+  if (days === 0) return 'aujourd’hui'
+  if (days === 1) return 'il y a 1 jour'
+  if (days < 30) return `il y a ${days} jours`
+  const months = Math.round(days / 30)
+  return months <= 1 ? 'il y a 1 mois' : `il y a ${months} mois`
+}
+
+export const formatMonth = (value?: string | null) => {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat('fr-FR', { month: 'short', year: '2-digit' }).format(date)
+}
+
+export const formatShortDate = (value?: string | null) => {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short' }).format(date)
+}
+
+export const initials = (name?: string) => (name || '?').split(/\s+/).map((part) => part[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
+
+export const opportunityTone = (type?: string) => type === 'FINANCIAL_STRESS_SIGNAL' ? 'warning' : type === 'TRADE_FINANCE' ? 'teal' : type === 'CASH_INVESTMENT' ? 'violet' : 'info'
 
 export const formatDate = (value?: string | null, includeTime = false) => {
   if (!value) return '—'

@@ -7,7 +7,7 @@ from typing import Annotated, Any
 
 from fastapi import Depends, Header, Query, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -207,6 +207,92 @@ def account_transactions(
     return query_transactions(
         request, session, forced_account=account_id, page_size=page_size, cursor=cursor
     )
+
+
+ACTIVITY_GRANULARITIES = {"DAY": "day", "WEEK": "week", "MONTH": "month"}
+
+
+@app.get(
+    f"{PREFIX}/customers/{{customer_id}}/activity",
+    dependencies=[Depends(require_roles(*READ_ROLES))],
+    tags=["Transactions"],
+)
+def customer_activity(
+    customer_id: str,
+    request: Request,
+    granularity: Annotated[str, Query(pattern="^(DAY|WEEK|MONTH)$")] = "MONTH",
+    from_date: Annotated[date | None, Query(alias="fromDate")] = None,
+    to_date: Annotated[date | None, Query(alias="toDate")] = None,
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Série temporelle agrégée des mouvements d'une PME (aucune donnée synthétisée côté API :
+    chaque point est une somme SQL sur les transactions importées)."""
+    reject_unknown_filters(request, {"granularity", "fromDate", "toDate"})
+    if from_date and to_date and to_date < from_date:
+        raise Problem(422, "VALIDATION_ERROR", "toDate must be after fromDate.")
+    bucket = func.date_trunc(ACTIVITY_GRANULARITIES[granularity], Transaction.value_date).label(
+        "bucket"
+    )
+    credit = Transaction.direction == "CREDIT"
+    debit = Transaction.direction == "DEBIT"
+    stmt = (
+        select(
+            bucket,
+            func.coalesce(func.sum(case((credit, Transaction.amount), else_=0)), 0).label("inflow"),
+            func.coalesce(func.sum(case((debit, Transaction.amount), else_=0)), 0).label("outflow"),
+            func.count(Transaction.id).label("transaction_count"),
+            func.coalesce(
+                func.sum(
+                    case((Transaction.category == "SUPPLIER_PAYMENT", Transaction.amount), else_=0)
+                ),
+                0,
+            ).label("supplier"),
+            func.coalesce(
+                func.sum(
+                    case((Transaction.is_international.is_(True), Transaction.amount), else_=0)
+                ),
+                0,
+            ).label("international"),
+            func.sum(case((Transaction.is_international.is_(True), 1), else_=0)).label(
+                "international_count"
+            ),
+        )
+        .where(Transaction.customer_id == deterministic_uuid("customer", customer_id))
+        .group_by(bucket)
+        .order_by(bucket)
+    )
+    if from_date:
+        stmt = stmt.where(Transaction.value_date >= from_date)
+    if to_date:
+        stmt = stmt.where(Transaction.value_date <= to_date)
+    rows = session.execute(stmt).all()
+    points = [
+        {
+            "period": row.bucket.date().isoformat()
+            if hasattr(row.bucket, "date")
+            else str(row.bucket),
+            "inflow": float(row.inflow),
+            "outflow": float(row.outflow),
+            "net": float(row.inflow) - float(row.outflow),
+            "transactionCount": int(row.transaction_count),
+            "supplierPayments": float(row.supplier),
+            "internationalAmount": float(row.international),
+            "internationalCount": int(row.international_count or 0),
+        }
+        for row in rows
+    ]
+    return {
+        "customerId": customer_id,
+        "granularity": granularity,
+        "currency": "MAD",
+        "fromDate": from_date.isoformat()
+        if from_date
+        else (points[0]["period"] if points else None),
+        "toDate": to_date.isoformat() if to_date else (points[-1]["period"] if points else None),
+        "points": points,
+        "source": "transaction-service aggregate (SQL)",
+        "correlationId": correlation_id(request),
+    }
 
 
 @app.get(

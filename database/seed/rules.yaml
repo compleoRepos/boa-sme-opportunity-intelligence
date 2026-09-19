@@ -25,8 +25,8 @@ opportunity_rules:
   INVESTMENT_FINANCING:
     version: '1'
     horizon: 1-3_MONTHS
-    what: Potential investment financing need to discuss with the customer.
-    when: Contact within one to three months.
+    what: Besoin potentiel de financement d’investissement à qualifier avec le dirigeant.
+    when: Contacter dans les 1 à 3 mois.
     recommended_product_codes: [INVESTMENT_FINANCING, WORKING_CAPITAL_FACILITY]
     minimum_data_coverage: 0.83
     all_conditions:
@@ -39,8 +39,8 @@ opportunity_rules:
   TRADE_FINANCE:
     version: '1'
     horizon: 0-3_MONTHS
-    what: Potential trade finance need to discuss with the customer.
-    when: Contact within zero to three months.
+    what: Besoin potentiel de trade finance à qualifier avec le client.
+    when: Contacter dans les 3 mois.
     recommended_product_codes: [TRADE_FINANCE]
     minimum_data_coverage: 0.83
     all_conditions:
@@ -53,8 +53,8 @@ opportunity_rules:
   CASH_INVESTMENT:
     version: '1'
     horizon: 0-1_MONTH
-    what: Potential cash management or liquidity investment need to discuss.
-    when: Contact within one month.
+    what: "Excédent de trésorerie récurrent : proposer un placement ou une solution de cash management."
+    when: Contacter dans le mois.
     recommended_product_codes: [CASH_MANAGEMENT, TERM_DEPOSIT, LIQUIDITY_INVESTMENT]
     minimum_data_coverage: 0.83
     all_conditions:
@@ -67,8 +67,8 @@ opportunity_rules:
   FINANCIAL_STRESS_SIGNAL:
     version: '1'
     horizon: 0-1_MONTH
-    what: Relational financial stress signal to examine with the customer.
-    when: Relational contact within one month.
+    what: Signal relationnel de tension financière à examiner avec le client, sans décision de crédit.
+    when: Prise de contact relationnelle dans le mois.
     recommended_product_codes: [CASH_MANAGEMENT, WORKING_CAPITAL_FACILITY]
     minimum_data_coverage: 0.83
     all_conditions:

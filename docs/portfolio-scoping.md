@@ -1,7 +1,7 @@
 # Périmètres agence, chargé de clientèle et portefeuille
 
 **Produit :** BOA SME Opportunity Intelligence  
-**Statut :** spécification cible d’autorisation et de navigation  
+**Statut :** dashboards CC/agence et contrôles de périmètre MVP implémentés ; politiques ABAC avancées différées
 **Auteur :** Manus AI  
 
 > Dans ce document, **CC** désigne le chargé de clientèle PME. Le rôle technique existant reste `RELATIONSHIP_MANAGER`. Le responsable d’agence utilise `BRANCH_MANAGER`. Cette correspondance évite d’introduire un second rôle pour la même fonction.
@@ -150,7 +150,7 @@ Les tests bloquants couvrent : accès CC à son client, accès CC à un client d
 
 Le MVP conserve une hiérarchie simple : un client, une affectation primaire active, un portefeuille principal et une agence. Les équipes multi-agences, portefeuilles matriciels, délégations complexes, contrôle géographique dynamique et politiques ABAC externes sont différés.
 
-Les dashboards agence et CC sont des **contrats cibles**. Leur documentation ne prouve pas leur présence dans le frontend ou le backend actuel. Le premier incrément peut construire les read models dans PostgreSQL et les servir via FastAPI sans ajouter de moteur d’autorisation externe. Keycloak, Customer Service et les contrôles de ressource restent obligatoires.
+Les dashboards agence et CC sont servis par Portfolio Service et exposés uniquement via le Gateway. Le dashboard CC force l’identifiant de chargé issu du token, même lorsqu’un autre `relationshipManagerId` est fourni. Le dashboard agence limite ses agrégats et son drill-down aux `branchIds` autorisés. Customer Service et le Gateway renvoient `404` pour une ressource hors périmètre afin d’éviter d’en révéler l’existence. Les délégations complexes, le moteur ABAC externe et les scopes d’action agence restent hors du MVP.
 
 ## Références
 

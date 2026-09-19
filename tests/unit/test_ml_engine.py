@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import cast
 
 import pytest
 from boa_oi.api import application_for
+from boa_oi.feature_store_api import _analytics_snapshots
 from boa_oi.features import (
     FEATURE_ORDER,
     FEATURE_SET_VERSION,
@@ -16,13 +17,14 @@ from boa_oi.features import (
 )
 from boa_oi.ml import LogisticModel, LogisticScorer, stable_sigmoid
 from boa_oi.models.entities import (
-    Customer,
     ActionOutcome,
+    Customer,
     FeatureMaterialization,
     MetricSnapshot,
     ModelRegistry,
-    OutcomeLabelSnapshot,
+    Opportunity,
     OpportunityAction,
+    OutcomeLabelSnapshot,
     PropensityScoreRecord,
     Rule,
     RuleVersion,
@@ -58,7 +60,10 @@ def model() -> LogisticModel:
         intercept=-1.35,
         feature_order=FEATURE_ORDER,
         threshold=0.58,
-        validation_metrics={"aucRocSynthetic": 0.78, "brierScoreSynthetic": 0.18},
+        validation_metrics={
+            "evaluationMode": "POC_SHADOW",
+            "validationStatus": "NOT_PRODUCTION_VALIDATED",
+        },
         status="ACTIVE",
     )
 
@@ -182,6 +187,33 @@ def test_materialized_features_are_deterministic_versioned_and_checksum_sensitiv
     }
 
 
+def test_http_analytics_adapter_preserves_customer_scope_and_point_in_time():
+    rows = [
+        {
+            "customerId": "internal-database-uuid",
+            "metric": "inflow_amount",
+            "currentValue": 120.0,
+            "growthRate": 0.2,
+            "period": "90D",
+            "asOf": "2026-09-30",
+            "calculationVersion": "analytics-0.1.0",
+        },
+        {
+            "customerId": "internal-database-uuid",
+            "metric": "inflow_amount",
+            "currentValue": 999.0,
+            "growthRate": 9.0,
+            "period": "90D",
+            "asOf": "2026-10-01",
+            "calculationVersion": "analytics-0.1.0",
+        },
+    ]
+    snapshots = _analytics_snapshots(rows, AS_OF, "SME-00125")
+    assert len(snapshots) == 1
+    assert snapshots[0].customer_id == "SME-00125"
+    assert snapshots[0].values["inflow_amount"]["currentValue"] == 120.0
+
+
 def memory_factory():
     engine = create_engine(
         "sqlite+pysqlite://",
@@ -198,6 +230,7 @@ def memory_factory():
         Signal.__mapper__.local_table,
         Rule.__mapper__.local_table,
         RuleVersion.__mapper__.local_table,
+        Opportunity.__mapper__.local_table,
         OpportunityAction.__mapper__.local_table,
         ActionOutcome.__mapper__.local_table,
     ]
@@ -209,6 +242,7 @@ def memory_factory():
             "rule",
             "feature_store",
             "ml",
+            "opportunity",
             "action",
         ):
             connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS '{schema}'")
@@ -243,6 +277,120 @@ def seed_api_data(factory) -> None:
                 values_json=snapshot().values,
                 input_watermark="analytics-snapshot-42",
                 created_by="analytics-service",
+            )
+        )
+        session.add(
+            Signal(
+                id=deterministic_uuid("signal", customer_id, "growth"),
+                signal_ref="SIG-INTEGRATION-001",
+                customer_id=customer_id,
+                customer_ref="SME-00125",
+                signal_type="GROWTH_SIGNAL",
+                severity="HIGH",
+                value=Decimal("0.4"),
+                threshold=Decimal("0.25"),
+                detected_at=datetime(2026, 9, 30, tzinfo=timezone.utc),
+                evidence_json=["inflow growth"],
+                status="CONFIRMED",
+            )
+        )
+        rule_id = deterministic_uuid("rule", "RULE-ML-INTEGRATION")
+        session.add(
+            Rule(
+                id=rule_id,
+                rule_id="RULE-ML-INTEGRATION",
+                name="Published growth rule consumed by ML",
+                description="Integration fixture",
+                status="ACTIVE",
+                current_version=1,
+                active_version=1,
+            )
+        )
+        session.add(
+            RuleVersion(
+                id=deterministic_uuid("rule-version", rule_id, 1),
+                rule_id=rule_id,
+                version=1,
+                status="ACTIVE",
+                name="Published growth rule consumed by ML",
+                description="Integration fixture",
+                scope_json={"segment": ["SME"]},
+                logic="AND",
+                configuration_json={
+                    "name": "Published growth rule consumed by ML",
+                    "description": "Integration fixture",
+                    "logic": "AND",
+                    "conditions": [
+                        {
+                            "metric": "INFLOW_GROWTH",
+                            "operator": "GREATER_THAN",
+                            "value": 25,
+                            "unit": "PERCENT",
+                        }
+                    ],
+                    "recommendation": {
+                        "opportunityType": "INVESTMENT_FINANCING",
+                        "products": ["INVESTMENT_FINANCING"],
+                        "horizon": "1-3_MONTHS",
+                    },
+                    "confidence": {"baseScore": 60, "weights": {"INFLOW_GROWTH": 30}},
+                },
+                checksum="a" * 64,
+                created_by="unit-test",
+            )
+        )
+        opportunity_id = deterministic_uuid("opportunity-row", "OPP-INTEGRATION-001")
+        session.add(
+            Opportunity(
+                id=opportunity_id,
+                opportunity_ref="OPP-INTEGRATION-001",
+                customer_id=customer_id,
+                customer_ref="SME-00125",
+                customer_name="Synthetic SME 125",
+                opportunity_type="GROWTH_FINANCING",
+                status="CONVERTED",
+                horizon="1-3_MONTHS",
+                confidence_score=Decimal("0.82"),
+                confidence_level="HIGH",
+                confidence_components_json=[],
+                priority_score=Decimal("84"),
+                priority_level="P1",
+                priority_components_json=[],
+                generated_at=datetime(2026, 9, 30, tzinfo=timezone.utc),
+                rule_id=deterministic_uuid("rule", "OPP-INTEGRATION-001"),
+                deduplication_key="SME-00125:GROWTH_FINANCING:2026-09-30:v1",
+                created_by="unit-test",
+            )
+        )
+        action_id = deterministic_uuid("action", "ACT-INTEGRATION-001")
+        session.add(
+            OpportunityAction(
+                id=action_id,
+                action_ref="ACT-INTEGRATION-001",
+                opportunity_id=opportunity_id,
+                opportunity_ref="OPP-INTEGRATION-001",
+                customer_id=customer_id,
+                customer_ref="SME-00125",
+                action_type="MARK_CONVERTED",
+                status="DONE",
+                actor_subject_id="rm-01",
+                assigned_to="rm-01",
+                performed_at=datetime(2026, 10, 15, tzinfo=timezone.utc),
+                outcome_type="CONVERTED",
+                idempotency_key="integration-action-converted",
+                request_hash="b" * 64,
+                correlation_id="integration-ml-outcome",
+            )
+        )
+        session.add(
+            ActionOutcome(
+                id=deterministic_uuid("action-outcome", action_id, "CONVERTED"),
+                action_id=action_id,
+                outcome_type="CONVERTED",
+                recorded_at=datetime(2026, 10, 15, tzinfo=timezone.utc),
+                recorded_by="rm-01",
+                correlation_id="integration-ml-outcome",
+                metadata_json={"synthetic": True},
             )
         )
         session.add(
@@ -287,6 +435,13 @@ def test_internal_materialize_score_batch_model_and_outcome_endpoints(monkeypatc
     feature = created.json()["data"][0]
     assert feature["featureSetVersion"] == FEATURE_SET_VERSION
     assert len(feature["checksum"]) == 64
+    assert feature["values"]["confirmed_signal_ratio"] == 1.0
+    assert feature["values"]["published_rule_match_strength"] > 0
+    rule_source = next(item for item in feature["sources"] if item["sourceType"] == "RULE_STUDIO")
+    assert rule_source["activeRuleVersions"] == ["RULE-ML-INTEGRATION:v1"]
+    assert rule_source["matchedRuleVersions"] == ["RULE-ML-INTEGRATION:v1"]
+    assert {item["featureName"] for item in feature["lineage"]} == set(FEATURE_ORDER)
+    assert all(item["featureTimestamp"] <= item["observationAsOf"] for item in feature["lineage"])
 
     ml_client = TestClient(ml_app)
     scored = ml_client.post(
@@ -306,7 +461,11 @@ def test_internal_materialize_score_batch_model_and_outcome_endpoints(monkeypatc
         json={"customerIds": ["SME-00125"], "asOf": AS_OF.isoformat()},
     )
     assert batch.status_code == 200
-    assert batch.json()["data"][0] == body
+    batch_body = batch.json()["data"][0]
+    assert {key: value for key, value in batch_body.items() if key != "traceId"} == {
+        key: value for key, value in body.items() if key != "traceId"
+    }
+    assert batch_body["traceId"] != body["traceId"]
 
     registry = ml_client.get("/internal/v1/ml/models/active").json()
     assert registry["status"] == "ACTIVE"
@@ -319,8 +478,23 @@ def test_internal_materialize_score_batch_model_and_outcome_endpoints(monkeypatc
     assert body["deploymentMode"] == "POC_ASSISTIVE"
     assert body["traceId"]
 
+    materialized_labels = ml_client.post(
+        "/internal/v1/ml/outcomes/materialize",
+        json={
+            "snapshotVersion": "labels-synthetic-v1",
+            "observationAsOf": AS_OF.isoformat(),
+            "labelAvailableFrom": "2026-11-01",
+        },
+    )
+    assert materialized_labels.status_code == 200
+    assert materialized_labels.json()["labelsWritten"] == 1
+    assert materialized_labels.json()["trainingReady"] is False
     outcomes = ml_client.get("/internal/v1/ml/outcomes/snapshots").json()
-    assert outcomes["data"] == []
+    assert outcomes["data"][0]["snapshotVersion"] == "labels-synthetic-v1"
+    assert outcomes["data"][0]["outcomeLabel"] == "CONVERTED"
+    assert outcomes["data"][0]["outcomeValue"] is True
+    assert outcomes["data"][0]["datasetVersion"] == "labels-synthetic-v1"
+    assert outcomes["data"][0]["source"] == "COMMERCIAL_OUTCOME"
     assert outcomes["meta"]["purpose"] == "FUTURE_LABEL_SNAPSHOT_ONLY"
     assert outcomes["meta"]["automaticTraining"] is False
 

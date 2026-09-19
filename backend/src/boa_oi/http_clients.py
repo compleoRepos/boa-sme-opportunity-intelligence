@@ -66,10 +66,13 @@ async def service_request(
     idempotency_key: str | None = None,
     timeout: float = 15.0,
     incoming_authorization: str | None = None,
+    dev_principal: str | None = None,
 ) -> Any:
     headers = {"X-Correlation-ID": correlation_id, "Accept": "application/json"}
     if idempotency_key:
         headers["Idempotency-Key"] = idempotency_key
+    if dev_principal and auth_disabled():
+        headers["X-Dev-Principal"] = dev_principal
     token = None if incoming_authorization else await _token_provider.token()
     if incoming_authorization:
         headers["Authorization"] = incoming_authorization

@@ -49,23 +49,24 @@ flowchart TB
     REN[Rule Engine<br/>évaluation déterministe versionnée]:::rules
     SIG[Signal Service<br/>signaux et preuves]:::rules
     FS[Feature Store PostgreSQL<br/>snapshots point-in-time]:::ml
-    FR[Feature Registry<br/>sens · usage · version · lineage]:::ml
+    FR[Feature contract<br/>ordre · sens · version · lineage]:::ml
     MLE[ML Engine FastAPI<br/>CPU-only · batch · sans LLM]:::ml
-    MR[Model Registry<br/>artefact · checksum · stages · approbation]:::ml
-    PS[Propensity Score<br/>0..1 · cible · horizon · explication]:::ml
-    OPP[Opportunity Engine<br/>garde-fous · fusion configurable · audit]:::rules
+    MR[Model Registry POC<br/>coefficients · dataset · mode]:::ml
+    PS[Propensity Score POC<br/>0..1 · versions · explication]:::ml
+    OPP[Opportunity Engine<br/>règles + reranking POC · audit]:::rules
 
     AN -->|métriques versionnées| REN
-    AN -->|features approuvées| FS
-    REN -->|matches + trace| SIG
+    AN -->|métriques versionnées| SIG
+    AN -->|métriques 90D| FS
+    REN -->|matches + versions| FS
     SIG -->|signaux versionnés| FS
     FR -->|featureSetVersion| FS
     FS -->|FeatureSnapshot| MLE
-    MR -->|modèle approuvé + checksum| MLE
+    MR -->|modèle POC actif| MLE
     MLE --> PS
     REN -->|ruleConfidence| OPP
     SIG -->|preuves| OPP
-    PS -->|shadow ou hybride| OPP
+    PS -->|POC assistif, poids 35 %| OPP
   end
 
   TX --> AN

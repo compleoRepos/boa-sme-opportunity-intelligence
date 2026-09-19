@@ -306,10 +306,17 @@ services:
       DATABASE_URL: postgresql+psycopg://feature_store_service:${FEATURE_STORE_DB_PASSWORD:-DevOnly-FeatureStoreDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Dfeature_store
       OAUTH_CLIENT_ID: feature-store-service
       OAUTH_CLIENT_SECRET: ${FEATURE_STORE_CLIENT_SECRET:-DevOnly-FeatureStoreClient-ChangeMe!}
+      CUSTOMER_SERVICE_URL: http://customer:8080
+      ANALYTICS_SERVICE_URL: http://analytics:8080
+      SIGNAL_SERVICE_URL: http://signal:8080
+      RULE_ENGINE_SERVICE_URL: http://rule-engine:8080
     depends_on:
       postgres: { condition: service_healthy }
       keycloak: { condition: service_healthy }
+      customer: { condition: service_healthy }
       analytics: { condition: service_healthy }
+      signal: { condition: service_healthy }
+      rule-engine: { condition: service_healthy }
 
   ml-engine:
     <<: *backend
@@ -320,6 +327,7 @@ services:
       DATABASE_URL: postgresql+psycopg://ml_engine_service:${ML_ENGINE_DB_PASSWORD:-DevOnly-MlEngineDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Dml
       OAUTH_CLIENT_ID: ml-engine-service
       OAUTH_CLIENT_SECRET: ${ML_ENGINE_CLIENT_SECRET:-DevOnly-MlEngineClient-ChangeMe!}
+      FEATURE_STORE_SERVICE_URL: http://feature-store:8080
     depends_on:
       postgres: { condition: service_healthy }
       keycloak: { condition: service_healthy }
@@ -338,8 +346,6 @@ services:
       DATABASE_URL: postgresql+psycopg://portfolio_service:${PORTFOLIO_DB_PASSWORD:-DevOnly-PortfolioDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Dportfolio
       OAUTH_CLIENT_ID: portfolio-service
       OAUTH_CLIENT_SECRET: ${PORTFOLIO_CLIENT_SECRET:-DevOnly-PortfolioClient-ChangeMe!}
-      ML_PRIORITY_WEIGHT: "0.35"
-      RULES_PRIORITY_WEIGHT: "0.65"
     depends_on:
       postgres: { condition: service_healthy }
       keycloak: { condition: service_healthy }
@@ -360,6 +366,11 @@ services:
       PRODUCT_SERVICE_URL: http://product:8080
       RULE_ENGINE_SERVICE_URL: http://rule-engine:8080
       ML_ENGINE_SERVICE_URL: http://ml-engine:8080
+      ML_TIMEOUT_SECONDS: ${ML_TIMEOUT_SECONDS:-2.0}
+      ML_MAX_RETRIES: ${ML_MAX_RETRIES:-1}
+      ML_CIRCUIT_FAILURE_THRESHOLD: ${ML_CIRCUIT_FAILURE_THRESHOLD:-3}
+      ML_CIRCUIT_RECOVERY_SECONDS: ${ML_CIRCUIT_RECOVERY_SECONDS:-30}
+      ML_MAX_SCORE_AGE_SECONDS: ${ML_MAX_SCORE_AGE_SECONDS:-300}
     depends_on:
       postgres: { condition: service_healthy }
       keycloak: { condition: service_healthy }
@@ -443,6 +454,7 @@ services:
       TRANSACTION_SERVICE_URL: http://transaction:8080
       ANALYTICS_SERVICE_URL: http://analytics:8080
       SIGNAL_SERVICE_URL: http://signal:8080
+      OPPORTUNITY_SERVICE_URL: http://opportunity:8080
       PRODUCT_SERVICE_URL: http://product:8080
       ACTION_SERVICE_URL: http://action:8080
       BANKING_INTEGRATION_SERVICE_URL: http://banking-integration:8080
@@ -466,6 +478,7 @@ services:
       transaction: { condition: service_healthy }
       analytics: { condition: service_healthy }
       signal: { condition: service_healthy }
+      opportunity: { condition: service_healthy }
       product: { condition: service_healthy }
       action: { condition: service_healthy }
       rule-management: { condition: service_healthy }

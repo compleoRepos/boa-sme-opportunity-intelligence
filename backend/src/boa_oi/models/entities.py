@@ -352,8 +352,14 @@ class Opportunity(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     recommended_products_json: Mapped[list] = mapped_column(JSON, default=list)
     explanation_json: Mapped[dict] = mapped_column(JSON, default=dict)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    engine_version: Mapped[str] = mapped_column(String(30), default="0.1.0")
+    engine_version: Mapped[str] = mapped_column(String(100), default="0.1.0")
     rule_version: Mapped[str] = mapped_column(String(30), default="1")
+    scoring_policy_id: Mapped[str] = mapped_column(String(80), default="commercial-hybrid-poc")
+    scoring_policy_version: Mapped[int] = mapped_column(Integer, default=1)
+    rules_weight: Mapped[Decimal] = mapped_column(Numeric(8, 6), default=Decimal("0.65"))
+    ml_weight: Mapped[Decimal] = mapped_column(Numeric(8, 6), default=Decimal("0.35"))
+    fallback_mode: Mapped[str] = mapped_column(String(20), default="HYBRID_ML")
+    fallback_cause_json: Mapped[dict | None] = mapped_column(JSON)
     rule_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("opportunity.opportunity_rules.id")
     )
@@ -465,7 +471,7 @@ class DecisionAudit(Base, UUIDPrimaryKeyMixin):
     __table_args__ = {"schema": "opportunity"}
     opportunity_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
     customer_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
-    engine_version: Mapped[str] = mapped_column(String(30))
+    engine_version: Mapped[str] = mapped_column(String(100))
     rule_version: Mapped[str] = mapped_column(String(30))
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     input_reference: Mapped[str] = mapped_column(String(120))
@@ -473,7 +479,76 @@ class DecisionAudit(Base, UUIDPrimaryKeyMixin):
     metric_snapshots_json: Mapped[list] = mapped_column(JSON)
     confidence_components_json: Mapped[list] = mapped_column(JSON)
     priority_components_json: Mapped[list] = mapped_column(JSON)
+    scoring_policy_id: Mapped[str] = mapped_column(String(80), default="commercial-hybrid-poc")
+    scoring_policy_version: Mapped[int] = mapped_column(Integer, default=1)
+    fallback_mode: Mapped[str] = mapped_column(String(20), default="HYBRID_ML")
+    fallback_cause_json: Mapped[dict | None] = mapped_column(JSON)
     decision_hash: Mapped[str] = mapped_column(String(64), unique=True)
+
+
+class ScoringPolicy(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "scoring_policies"
+    __table_args__ = ({"schema": "opportunity"},)
+    policy_id: Mapped[str] = mapped_column(String(80), unique=True)
+    current_version: Mapped[int] = mapped_column(Integer, default=1)
+    active_version: Mapped[int | None] = mapped_column(Integer)
+
+
+class ScoringPolicyVersion(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "scoring_policy_versions"
+    __table_args__ = (
+        UniqueConstraint("policy_id", "version"),
+        CheckConstraint("rules_weight BETWEEN 0 AND 1", name="rules_weight"),
+        CheckConstraint("ml_weight BETWEEN 0 AND 1", name="ml_weight"),
+        CheckConstraint("rules_weight + ml_weight = 1", name="normalized_weights"),
+        CheckConstraint(
+            "status IN ('DRAFT','SIMULATED','SUBMITTED','APPROVED','PUBLISHED',"
+            "'ACTIVE','DISABLED','ROLLED_BACK')",
+            name="status",
+        ),
+        Index("ix_scoring_policy_versions_status", "status", "effective_from"),
+        {"schema": "opportunity"},
+    )
+    policy_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("opportunity.scoring_policies.id", ondelete="CASCADE")
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    rules_weight: Mapped[Decimal] = mapped_column(Numeric(8, 6))
+    ml_weight: Mapped[Decimal] = mapped_column(Numeric(8, 6))
+    status: Mapped[str] = mapped_column(String(20), default="DRAFT")
+    effective_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    effective_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    author_id: Mapped[str] = mapped_column(String(120))
+    approver_id: Mapped[str | None] = mapped_column(String(120))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approval_reason: Mapped[str | None] = mapped_column(Text)
+    reason: Mapped[str | None] = mapped_column(Text)
+    simulation_id: Mapped[str | None] = mapped_column(String(100))
+    checksum: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ScoringPolicyAuditLog(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "scoring_policy_audit_logs"
+    __table_args__ = (
+        Index("ix_scoring_policy_audit_policy_time", "policy_id", "timestamp"),
+        {"schema": "opportunity"},
+    )
+    policy_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("opportunity.scoring_policies.id", ondelete="RESTRICT")
+    )
+    policy_version: Mapped[int] = mapped_column(Integer)
+    action: Mapped[str] = mapped_column(String(40))
+    user_id: Mapped[str] = mapped_column(String(120))
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    old_value_json: Mapped[dict | None] = mapped_column(JSON)
+    new_value_json: Mapped[dict | None] = mapped_column(JSON)
+    reason: Mapped[str | None] = mapped_column(Text)
+    trace_id: Mapped[str] = mapped_column(String(100))
 
 
 class RuleConfiguration(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -710,6 +785,7 @@ class FeatureMaterialization(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     feature_set_version: Mapped[str] = mapped_column(String(40))
     values_json: Mapped[dict] = mapped_column(JSON)
     sources_json: Mapped[list] = mapped_column(JSON)
+    lineage_json: Mapped[list] = mapped_column(JSON, default=list)
     checksum: Mapped[str] = mapped_column(String(64))
 
 
@@ -717,7 +793,8 @@ class ModelRegistry(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "model_registry"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('CHALLENGER','ACTIVE','RETIRED')",
+            "status IN ('REGISTERED','VALIDATING','SUBMITTED','APPROVED','CHALLENGER',"
+            "'CHAMPION','ACTIVE','RETIRED')",
             name="status",
         ),
         CheckConstraint("score_type = 'SALES_PROPENSITY'", name="score_type"),
@@ -726,6 +803,7 @@ class ModelRegistry(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         {"schema": "ml"},
     )
     model_version: Mapped[str] = mapped_column(String(40), unique=True)
+    model_id: Mapped[str] = mapped_column(String(80), default="sales-propensity")
     score_type: Mapped[str] = mapped_column(String(40), default="SALES_PROPENSITY")
     algorithm: Mapped[str] = mapped_column(String(40), default="LOGISTIC_REGRESSION")
     status: Mapped[str] = mapped_column(String(20))
@@ -738,6 +816,14 @@ class ModelRegistry(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     training_dataset_version: Mapped[str] = mapped_column(String(80))
     training_code_version: Mapped[str] = mapped_column(String(80))
     deployment_mode: Mapped[str] = mapped_column(String(20), default="POC_ASSISTIVE")
+    training_period_from: Mapped[date | None] = mapped_column(Date)
+    training_period_to: Mapped[date | None] = mapped_column(Date)
+    validation_period_from: Mapped[date | None] = mapped_column(Date)
+    validation_period_to: Mapped[date | None] = mapped_column(Date)
+    hyperparameters_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    approved_by: Mapped[str | None] = mapped_column(String(120))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class PropensityScoreRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -771,6 +857,7 @@ class PropensityScoreRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     top_factors_json: Mapped[list] = mapped_column(JSON)
     training_dataset_version: Mapped[str] = mapped_column(String(80))
     deployment_mode: Mapped[str] = mapped_column(String(20), default="POC_ASSISTIVE")
+    prediction_trace_id: Mapped[str] = mapped_column(String(100), default="unknown")
 
 
 class OutcomeLabelSnapshot(Base, UUIDPrimaryKeyMixin):
@@ -791,14 +878,87 @@ class OutcomeLabelSnapshot(Base, UUIDPrimaryKeyMixin):
         {"schema": "ml"},
     )
     snapshot_version: Mapped[str] = mapped_column(String(40))
+    dataset_version: Mapped[str] = mapped_column(String(80))
     customer_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
     customer_ref: Mapped[str] = mapped_column(String(40))
+    opportunity_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    opportunity_ref: Mapped[str | None] = mapped_column(String(80))
+    opportunity_type: Mapped[str | None] = mapped_column(String(80))
+    action_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     score_type: Mapped[str] = mapped_column(String(40), default="SALES_PROPENSITY")
     observation_as_of: Mapped[date] = mapped_column(Date)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     label_available_from: Mapped[date] = mapped_column(Date)
     outcome_label: Mapped[str] = mapped_column(String(80))
-    outcome_value: Mapped[bool] = mapped_column(Boolean)
+    outcome_value: Mapped[bool | None] = mapped_column(Boolean)
     source_reference: Mapped[str] = mapped_column(String(120))
+    source: Mapped[str] = mapped_column(String(40), default="COMMERCIAL_OUTCOME")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class MLTrainingRun(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "training_runs"
+    __table_args__ = (
+        UniqueConstraint("model_id", "model_version"),
+        CheckConstraint(
+            "status IN ('DRAFT','REGISTERED','VALIDATING','SUBMITTED','APPROVED','CHALLENGER',"
+            "'CHAMPION','RETIRED','REJECTED')",
+            name="status",
+        ),
+        {"schema": "ml"},
+    )
+    model_id: Mapped[str] = mapped_column(String(80))
+    model_version: Mapped[str] = mapped_column(String(40))
+    feature_version: Mapped[str] = mapped_column(String(40))
+    dataset_version: Mapped[str] = mapped_column(String(80))
+    training_period_from: Mapped[date] = mapped_column(Date)
+    training_period_to: Mapped[date] = mapped_column(Date)
+    validation_period_from: Mapped[date] = mapped_column(Date)
+    validation_period_to: Mapped[date] = mapped_column(Date)
+    test_period_from: Mapped[date | None] = mapped_column(Date)
+    test_period_to: Mapped[date | None] = mapped_column(Date)
+    code_version: Mapped[str] = mapped_column(String(80))
+    hyperparameters_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    metrics_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    lineage_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(20), default="DRAFT")
+    approved_by: Mapped[str | None] = mapped_column(String(120))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class MLMonitoringSnapshot(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "monitoring_snapshots"
+    __table_args__ = (
+        Index("ix_ml_monitoring_domain_time", "domain", "observed_at"),
+        {"schema": "ml"},
+    )
+    domain: Mapped[str] = mapped_column(String(30))
+    metric: Mapped[str] = mapped_column(String(80))
+    value: Mapped[Decimal] = mapped_column(Numeric(18, 8))
+    status: Mapped[str] = mapped_column(String(20))
+    thresholds_json: Mapped[dict] = mapped_column(JSON)
+    details_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    trace_id: Mapped[str] = mapped_column(String(100))
+
+
+class MLGovernanceAuditLog(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "governance_audit_logs"
+    __table_args__ = (
+        Index("ix_ml_governance_object_time", "object_type", "object_id", "timestamp"),
+        {"schema": "ml"},
+    )
+    action: Mapped[str] = mapped_column(String(50))
+    user_id: Mapped[str] = mapped_column(String(120))
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    object_type: Mapped[str] = mapped_column(String(50))
+    object_id: Mapped[str] = mapped_column(String(100))
+    object_version: Mapped[str] = mapped_column(String(80))
+    old_value_json: Mapped[dict | None] = mapped_column(JSON)
+    new_value_json: Mapped[dict | None] = mapped_column(JSON)
+    reason: Mapped[str | None] = mapped_column(Text)
+    trace_id: Mapped[str] = mapped_column(String(100))

@@ -7,6 +7,16 @@ describe('buildSearch', () => {
 })
 
 describe('apiRequest', () => {
+  it('envoie la persona de développement uniquement en l’absence de jeton', async () => {
+    configureApiAuth(() => undefined, () => undefined, () => '{"subject":"rm-01"}')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"data":[]}', { status: 200, headers: { 'Content-Type': 'application/json' } })))
+    await apiRequest('/api/v1/dashboards/me')
+    const headers = vi.mocked(fetch).mock.calls[0]?.[1]?.headers as Headers
+    expect(headers.get('X-Dev-Principal')).toBe('{"subject":"rm-01"}')
+    expect(headers.get('Authorization')).toBeNull()
+    vi.unstubAllGlobals()
+  })
+
   it('envoie le bearer token et transforme une erreur normalisée', async () => {
     configureApiAuth(() => 'token-test', () => undefined)
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: 'FORBIDDEN', message: 'Accès refusé', correlationId: 'corr-1' }), { status: 403, headers: { 'Content-Type': 'application/json' } })))

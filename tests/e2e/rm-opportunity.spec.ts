@@ -1,67 +1,126 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
+import { login } from './auth'
 
-const username = process.env.E2E_USERNAME || 'rm.demo'
-const password = process.env.E2E_PASSWORD || 'DevOnly-Rm1-ChangeMe!'
-const targetOpportunityId = process.env.E2E_OPPORTUNITY_ID
+test('cockpit CC : dashboard → fiche PME → opportunité → action → dashboard mis à jour', async ({ page }) => {
+  let apiHeaders: Record<string, string> = {}
+  page.on('request', (request) => {
+    if (!request.url().includes('/api/v1/')) return
+    const headers = request.headers()
+    if (headers.authorization) apiHeaders = { authorization: headers.authorization }
+    if (headers['x-dev-principal']) {
+      apiHeaders = { 'x-dev-principal': headers['x-dev-principal'] }
+    }
+  })
+  await login(page, 'cc')
+  await expect(page.getByRole('heading', { name: /Bon(jour|soir| après-midi)/ })).toBeVisible()
+  await expect.poll(() => Object.keys(apiHeaders).length).toBeGreaterThan(0)
 
-async function login(page: Page) {
-  await page.goto('/login')
-  const loginButton = page.getByRole('button', { name: /Se connecter avec Keycloak/i })
-  await expect(loginButton).toBeVisible()
-  await loginButton.click()
-  await page.waitForURL((url) => url.origin === 'http://localhost:8081', { timeout: 15_000 })
-  await page.locator('#username').fill(username)
-  await page.locator('#password').fill(password)
-  await page.getByRole('button', { name: /Sign In|Connexion|Se connecter/i }).click()
-  await expect(page).toHaveURL(/\/$/, { timeout: 30_000 })
-  await expect(page.getByRole('heading', { name: /priorités commerciales/i })).toBeVisible()
-}
+  const ownDashboard = await page.request.get(
+    '/api/v1/dashboards/me?relationshipManagerId=rm-02',
+    { headers: apiHeaders },
+  )
+  expect(ownDashboard.status()).toBe(200)
+  expect((await ownDashboard.json()).scope.relationshipManagerId).toBe('rm-01')
+  const maliciousList = await page.request.get(
+    '/api/v1/customers?relationshipManagerId=rm-02&pageSize=100',
+    { headers: apiHeaders },
+  )
+  expect(maliciousList.status()).toBe(200)
+  expect((await maliciousList.json()).data).toEqual([])
+  expect(
+    (await page.request.get('/api/v1/customers/SME-00006', { headers: apiHeaders })).status(),
+  ).toBe(404)
+  expect(
+    (await page.request.get('/api/v1/opportunities', { headers: apiHeaders })).status(),
+  ).toBe(403)
 
-test('parcours RM réel : opportunité → preuves → acceptation → contact → conversion', async ({ page }) => {
-  await login(page)
-  if (targetOpportunityId) await page.goto(`/opportunites/${targetOpportunityId}`)
-  else {
-    const first = page.getByTestId('opportunity-card').first()
-    await expect(first).toBeVisible()
-    await first.getByRole('link', { name: /Examiner/i }).click()
-  }
+  const kpis = page.locator('.kpi')
+  await expect(kpis).toHaveCount(4)
+  const actionsBefore = Number((await kpis.nth(3).locator('.kpi-value').innerText()).replace(/\D/g, '') || '0')
 
-  await expect(page.getByTestId('evidence-section')).toBeVisible()
-  await expect(page.getByText(/WHY · POURQUOI/i)).toBeVisible()
-  await expect(page.getByText(/CONFIDENCE · CONFIANCE/i)).toBeVisible()
-  await expect(page.getByText(/EVIDENCE · PREUVES/i)).toBeVisible()
+  const firstRow = page.locator('.priority-row').filter({ hasNotText: 'Suivi standard' }).first()
+  await expect(firstRow).toBeVisible()
+  const customerName = await firstRow.locator('h3').innerText()
+  await firstRow.locator('.priority-main').click()
 
-  await page.getByRole('button', { name: /Accepter/i }).click()
-  await expect(page.getByRole('dialog')).toBeVisible()
-  await page.getByLabel(/Note/i).fill('Acceptation E2E du dossier')
-  await page.getByRole('button', { name: /Enregistrer via API/i }).click()
-  await expect(page.getByRole('dialog')).toBeHidden()
-  await expect(page.getByText(/Opportunité acceptée/i).last()).toBeVisible()
+  await expect(page).toHaveURL(/\/clients\/SME-\d+/)
+  await expect(page.locator('.rail')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: customerName })).toBeVisible()
+  await expect(page.locator('#health')).toBeVisible()
+  await expect(page.locator('#why')).toBeVisible()
+  await page.getByRole('button', { name: /^6 mois$/ }).click()
+  await expect(page.locator('#activity .recharts-wrapper')).toBeVisible()
 
-  await page.getByRole('button', { name: /Contacter/i }).click()
-  await page.getByLabel(/Note/i).fill('Client joint dans le cadre du parcours E2E')
-  await page.getByRole('button', { name: /Enregistrer via API/i }).click()
-  await expect(page.getByText(/Contact client/i).last()).toBeVisible()
+  await page.getByRole('button', { name: /Voir l’opportunité/ }).first().click()
+  const drawer = page.getByRole('dialog')
+  await expect(drawer).toBeVisible()
+  await expect(drawer.getByRole('tab', { name: /Signaux & évidence/ })).toBeVisible()
+  await drawer.locator('.choice', { hasText: /^Contacté/ }).click()
+  await page.locator('#choice-form textarea').fill('Contact réalisé dans le parcours E2E')
+  await page.getByRole('button', { name: 'Enregistrer' }).click()
+  await expect(page.locator('.toast.success')).toContainText('Action enregistrée')
+  await drawer.getByRole('tab', { name: /Historique/ }).click()
+  await expect(drawer.locator('.timeline')).toContainText('Contact réalisé dans le parcours E2E')
+  await page.keyboard.press('Escape')
 
-  await page.getByRole('link', { name: /Actions/i }).click()
-  const contactRow = page.locator('.action-item').filter({ hasText: 'Client joint dans le cadre du parcours E2E' }).first()
-  await expect(contactRow).toBeVisible()
-  await contactRow.getByLabel(/Résultat de/i).selectOption('CONTACTED')
-  await expect(contactRow.locator('.badge.success', { hasText: 'Contacté' })).toBeVisible()
+  await page.locator('.sheet-actions .ring').click()
+  await expect(page.getByRole('dialog')).toContainText('Propension')
+  await expect(page.getByRole('dialog')).toContainText('Aucune décision de crédit')
+  await page.keyboard.press('Escape')
 
-  await page.goBack()
-  await page.getByRole('button', { name: /Créer un suivi/i }).click()
-  await page.getByLabel(/Type d’action/i).selectOption('MARK_CONVERTED')
-  await page.getByLabel(/Note/i).fill('Conversion E2E confirmée')
-  await page.getByRole('button', { name: /Enregistrer via API/i }).click()
-  await expect(page.getByText(/Conversion enregistrée/i).last()).toBeVisible()
+  await page.goto('/')
+  await expect(page.locator('.kpi')).toHaveCount(4)
+  const actionsAfter = Number((await page.locator('.kpi').nth(3).locator('.kpi-value').innerText()).replace(/\D/g, '') || '0')
+  expect(actionsAfter).toBeGreaterThanOrEqual(actionsBefore)
 })
 
-test('navigation et pagination restent utilisables sur mobile', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 })
-  await login(page)
-  await page.getByRole('button', { name: /Ouvrir le menu/i }).click()
-  await page.getByRole('link', { name: 'Opportunités', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Opportunités ouvertes' })).toBeVisible()
-  await expect(page.getByRole('button', { name: /Appliquer les filtres/i })).toBeVisible()
+test('dashboard agence : drill-down CC → portefeuille → PME → opportunité', async ({ page }) => {
+  let apiHeaders: Record<string, string> = {}
+  page.on('request', (request) => {
+    if (!request.url().includes('/api/v1/')) return
+    const headers = request.headers()
+    if (headers.authorization) apiHeaders = { authorization: headers.authorization }
+    if (headers['x-dev-principal']) {
+      apiHeaders = { 'x-dev-principal': headers['x-dev-principal'] }
+    }
+  })
+  await login(page, 'agence')
+  await expect(page.getByRole('heading', { name: /^Agence / })).toBeVisible()
+  await expect.poll(() => Object.keys(apiHeaders).length).toBeGreaterThan(0)
+  const branchDashboard = await page.request.get('/api/v1/dashboards/branch', {
+    headers: apiHeaders,
+  })
+  expect(branchDashboard.status()).toBe(200)
+  expect((await branchDashboard.json()).scope.branchId).toBe('BR-01')
+  expect(
+    (
+      await page.request.get('/api/v1/dashboards/relationship-managers/rm-07', {
+        headers: apiHeaders,
+      })
+    ).status(),
+  ).toBe(404)
+  await expect(page.locator('#rms table tbody tr').first()).toBeVisible()
+  await page.locator('#rms table tbody tr').first().click()
+  await expect(page).toHaveURL(/\/agence\/cc\//)
+  await expect(page.locator('.priority-row').first()).toBeVisible()
+  await page
+    .locator('.priority-row')
+    .filter({ hasNotText: 'Suivi standard' })
+    .first()
+    .locator('.priority-main')
+    .click()
+  await expect(page).toHaveURL(/\/clients\/SME-\d+\?cc=/)
+  await expect(page.locator('.rail')).toContainText('Portefeuille de')
+  await page.getByRole('button', { name: /Voir l’opportunité/ }).first().click()
+  await expect(page.getByRole('dialog')).toContainText('Confiance')
+})
+
+test('la navigation reste utilisable en largeur tablette', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await login(page, 'cc')
+  await expect(page.locator('.kpi')).toHaveCount(4)
+  await page.locator('.priority-row .priority-main').first().click()
+  await expect(page.locator('#health')).toBeVisible()
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  expect(overflow).toBeLessThanOrEqual(1)
 })

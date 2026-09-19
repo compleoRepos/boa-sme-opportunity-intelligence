@@ -1,7 +1,7 @@
 # ML Engine CPU-ready — architecture cible et contrats de gouvernance
 
 **Produit :** BOA SME Opportunity Intelligence  
-**Statut :** spécification cible ; aucune implémentation ML n’est revendiquée  
+**Statut :** architecture implémentée en POC assistif sur données synthétiques ; aucune performance de production revendiquée
 **Auteur :** Manus AI  
 **Périmètre :** propension commerciale, fusion avec les règles, explicabilité, audit et gouvernance
 
@@ -24,7 +24,7 @@ Analytics + Rule Engine
 
 Cette chaîne n’est pas une fusion de responsabilités. **Analytics** reste propriétaire des métriques. **Signal Service** et **Rule Engine** restent propriétaires des signaux et évaluations déterministes. Le **Feature Store** matérialise des snapshots point-in-time à partir de ces sorties. Le **ML Engine** ne fait que charger un modèle approuvé et produire un score contractuel. **Opportunity Service** applique les garde-fous, la politique de fusion, la déduplication, l’explication et la recommandation finale.
 
-Le produit actuel reste en `RULES_ONLY` tant que l’incrément ML n’a pas satisfait [`ml-acceptance.md`](./ml-acceptance.md). Le premier mode ML autorisé est `ML_SHADOW`, sans effet sur les opportunités visibles. Aucun modèle n’est entraîné ou servi par la présente évolution documentaire.
+Le runtime local sert un modèle logistique déterministe `sales-propensity-logit-poc-v1` sur CPU. Il consomme le Feature Set `sales-features-v2`, qui intègre les sorties Analytics, Signal Service et Rule Studio. Opportunity Service utilise le score dans un reranking **POC assistif** traçable. Ce mode démontre l’intégration technique ; il ne constitue pas une activation de production et ne satisfait pas, à lui seul, les portes G2/G3 de [`ml-acceptance.md`](./ml-acceptance.md).
 
 ## 2. Invariants non négociables
 
@@ -251,7 +251,7 @@ Toute activation future exige une décision d’architecture séparée et ne peu
 
 ## 12. Limites de l’incrément ML MVP
 
-Le premier incrément est limité à un modèle par type d’opportunité choisi, entraîné sur données synthétiques ou sur un dataset réel préalablement approuvé, servi en batch CPU et exécuté en `ML_SHADOW`. Il réutilise PostgreSQL pour les snapshots et registres. Il ne fournit ni streaming, ni GPU, ni entraînement en ligne, ni auto-ML, ni auto-réentraînement, ni promotion automatique, ni causalité, ni optimisation de crédit, ni génération de texte.
+Le premier incrément est limité à un modèle logistique de démonstration alimenté par un dataset synthétique versionné, servi en batch CPU et exécuté en `POC_ASSISTIVE`. Il réutilise PostgreSQL pour les snapshots et registres. Il ne fournit ni streaming, ni GPU, ni entraînement en ligne, ni auto-ML, ni auto-réentraînement, ni promotion automatique, ni causalité, ni optimisation de crédit, ni génération de texte.
 
 `HYBRID_RERANK` n’est activable qu’après une période shadow, une comparaison au champion règles, une validation de drift, une revue par segment et une acceptation formelle. `HYBRID_CANDIDATE` est hors MVP initial. Le système déterministe existant reste le fallback et la source d’opportunités pendant toute la phase shadow.
 

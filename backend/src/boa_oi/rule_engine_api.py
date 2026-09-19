@@ -29,7 +29,9 @@ def evaluate(
 ) -> dict[str, Any]:
     evaluator = RuleEvaluator()
     results: list[dict[str, Any]] = []
-    for rule, version in active_versions(session):
+    active = active_versions(session)
+    evaluated_versions = [f"{rule.rule_id}:v{version.version}" for rule, version in active]
+    for rule, version in active:
         evaluation = evaluator.evaluate(version.configuration_json, payload.metrics)
         if not evaluation.matched:
             continue
@@ -50,11 +52,12 @@ def evaluate(
             }
         )
     if len(results) == 1:
-        return results[0]
+        return {**results[0], "evaluatedRuleVersions": evaluated_versions}
     return {
         "matched": bool(results),
         "customerId": payload.customerId,
         "engineVersion": ENGINE_VERSION,
+        "evaluatedRuleVersions": evaluated_versions,
         "matches": results,
     }
 

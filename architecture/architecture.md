@@ -1,6 +1,6 @@
 # Architecture exécutable — BOA SME Opportunity Intelligence
 
-**Version :** 1.0 — architecture MVP
+**Version :** 1.1 — architecture MVP avec propension commerciale CPU
 
 **Statut :** décision d’architecture pour implémentation
 
@@ -32,6 +32,13 @@ flowchart LR
     INT --> CUS
     TX --> AN[Transaction Analytics]
     AN --> SIG
+    AN --> RE[Rule Engine]
+    AN --> FS[Feature Store]
+    SIG --> FS
+    RE --> FS
+    FS --> ML[ML Engine CPU]
+    ML --> OPP
+    RE --> OPP
     SIG --> OPP
     PROD --> OPP
     OPP --> ACT
@@ -56,7 +63,7 @@ flowchart LR
 | Données | PostgreSQL, une instance Docker avec une base logique par service au MVP | Une seule instance simplifie le démarrage local, tandis que les bases/logical schemas séparés évitent la base partagée de fait. Une séparation physique est possible en production. |
 | Événements | Contrats CloudEvents-like, publication via broker futur au MVP et outbox PostgreSQL | Le moteur reste découplé du transport. broker futur fournit une exécution locale réellement event-driven sans imposer Kafka dès le POC. |
 | Identité | Keycloak local, OIDC/OAuth2, JWT et RBAC | IdP remplaçable par celui de BOA sans réécrire les services. |
-| Calcul décisionnel | Règles déterministes configurables et stratégie statistique simple | Le résultat doit être explicable, auditable, testable et non généré par un LLM. |
+| Calcul décisionnel | Règles versionnées + propension logistique CPU en mode `POC_ASSISTIVE` | Le score réordonne réellement les candidates éligibles et reste traçable. Il ne constitue ni une performance de production ni une décision de crédit. |
 | Observabilité | Logs structurés, correlation ID, OpenTelemetry, métriques Prometheus, traces et health checks | Les chaînes d’analyse sont asynchrones et nécessitent une traçabilité de bout en bout. |
 | Déploiement | Docker Compose pour le MVP, images immuables et variables d’environnement | Une commande `docker compose up` démarre l’environnement complet tout en gardant une trajectoire vers Kubernetes ou une plateforme privée BOA. |
 
@@ -302,10 +309,10 @@ Un signal comprend au minimum `signalId`, `customerId`, `type`, `severity`, `val
 IOpportunityStrategy
   RuleBasedOpportunityStrategy
   StatisticalOpportunityStrategy
-  MLOpportunityStrategy (extension future, non activée au MVP)
+  ML reranking adapter (propension POC CPU, après éligibilité déterministe)
 ```
 
-Le MVP active `RuleBasedOpportunityStrategy` et utilise des éléments statistiques pour la cohérence historique, la récence et la saisonnalité. Le moteur ne reçoit pas de texte libre comme entrée de décision et ne dépend d’aucun LLM.
+Le MVP active `RuleBasedOpportunityStrategy`, les règles publiées de Rule Studio et une propension logistique POC. Feature Store matérialise le Feature Set `sales-features-v2` via les contrats HTTP Customer, Analytics, Signal et Rule Engine. ML Engine consomme ce snapshot par HTTP et persiste `modelVersion`, `featureVersion`, `trainingDatasetVersion`, `deploymentMode` et `traceId`. Opportunity Service applique ensuite un reranking pondéré règles 65 % / ML 35 % aux candidates déjà éligibles. Le moteur ne reçoit pas de texte libre, ne dépend d’aucun LLM ou GPU et ne prend aucune décision de crédit.
 
 ```text
 GET  /api/v1/opportunities?type=&confidenceMin=&priority=&sector=&segment=&relationshipManagerId=&horizon=&date=&page=&pageSize=

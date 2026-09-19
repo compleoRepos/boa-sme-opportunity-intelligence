@@ -44,6 +44,7 @@ SERVICES = {
     "ml-engine": "ML_ENGINE_SERVICE_URL",
     "portfolio": "PORTFOLIO_SERVICE_URL",
 }
+GLOBAL_ANALYTICS_ROLES = ("DATA_ANALYST", "ADMIN", "SERVICE")
 
 
 def target(service: str) -> str:
@@ -63,6 +64,7 @@ async def authorize_customer_scope(request: Request, customer_id: str) -> None:
         f"{target('customer')}/internal/v1/customers/{customer_id}",
         correlation_id=correlation_id(request),
         incoming_authorization=request.headers.get("Authorization"),
+        dev_principal=request.headers.get("X-Dev-Principal"),
     )
 
 
@@ -72,6 +74,7 @@ async def authorize_opportunity_scope(request: Request, opportunity_id: str) -> 
         f"{target('opportunity')}/internal/v1/opportunities/{opportunity_id}",
         correlation_id=correlation_id(request),
         incoming_authorization=request.headers.get("Authorization"),
+        dev_principal=request.headers.get("X-Dev-Principal"),
     )
     await authorize_customer_scope(request, opportunity["customerId"])
 
@@ -99,6 +102,7 @@ async def proxy(
         json=body,
         idempotency_key=idempotency_key,
         incoming_authorization=request.headers.get("Authorization"),
+        dev_principal=request.headers.get("X-Dev-Principal"),
     )
     status_code = response_status or (
         201
@@ -128,7 +132,21 @@ GET_ROUTES = [
         "customers/{customer_id}/propensity",
         ("RELATIONSHIP_MANAGER", "BRANCH_MANAGER", "ADMIN"),
     ),
-    ("/api/v1/opportunities", "opportunity", "opportunities", READ_ROLES),
+    (
+        "/api/v1/customers/{customer_id}/activity",
+        "transaction",
+        "customers/{customer_id}/activity",
+        READ_ROLES,
+    ),
+    ("/api/v1/ml/models", "ml-engine", "ml/models", READ_ROLES),
+    ("/api/v1/ml/models/active", "ml-engine", "ml/models/active", READ_ROLES),
+    ("/api/v1/ml/models/{model_version}", "ml-engine", "ml/models/{model_version}", READ_ROLES),
+    (
+        "/api/v1/opportunities",
+        "opportunity",
+        "opportunities",
+        GLOBAL_ANALYTICS_ROLES,
+    ),
     (
         "/api/v1/opportunities/{opportunity_id}",
         "opportunity",
@@ -197,35 +215,50 @@ GET_ROUTES = [
         "customers/{customer_id}/actions",
         READ_ROLES,
     ),
-    ("/api/v1/accounts", "account", "accounts", READ_ROLES),
-    ("/api/v1/accounts/{account_id}", "account", "accounts/{account_id}", READ_ROLES),
+    ("/api/v1/accounts", "account", "accounts", GLOBAL_ANALYTICS_ROLES),
+    (
+        "/api/v1/accounts/{account_id}",
+        "account",
+        "accounts/{account_id}",
+        GLOBAL_ANALYTICS_ROLES,
+    ),
     (
         "/api/v1/accounts/{account_id}/balances",
         "account",
         "accounts/{account_id}/balances",
-        READ_ROLES,
+        GLOBAL_ANALYTICS_ROLES,
     ),
     (
         "/api/v1/accounts/{account_id}/transactions",
         "transaction",
         "accounts/{account_id}/transactions",
-        READ_ROLES,
+        GLOBAL_ANALYTICS_ROLES,
     ),
-    ("/api/v1/transactions", "transaction", "transactions", READ_ROLES),
+    ("/api/v1/transactions", "transaction", "transactions", GLOBAL_ANALYTICS_ROLES),
     (
         "/api/v1/transactions/{transaction_id}",
         "transaction",
         "transactions/{transaction_id}",
-        READ_ROLES,
+        GLOBAL_ANALYTICS_ROLES,
     ),
-    ("/api/v1/analytics/metrics", "analytics", "metrics", READ_ROLES),
-    ("/api/v1/signals", "signal", "signals", READ_ROLES),
-    ("/api/v1/signals/{signal_id}", "signal", "signals/{signal_id}", READ_ROLES),
+    ("/api/v1/analytics/metrics", "analytics", "metrics", GLOBAL_ANALYTICS_ROLES),
+    ("/api/v1/signals", "signal", "signals", GLOBAL_ANALYTICS_ROLES),
+    (
+        "/api/v1/signals/{signal_id}",
+        "signal",
+        "signals/{signal_id}",
+        GLOBAL_ANALYTICS_ROLES,
+    ),
     ("/api/v1/products", "product", "products", READ_ROLES),
     ("/api/v1/products/{product_id}", "product", "products/{product_id}", READ_ROLES),
     ("/api/v1/admin/rules", "opportunity", "admin/rules", ADMIN_ROLES),
     ("/api/v1/admin/engine", "opportunity", "admin/engine", ADMIN_ROLES),
-    ("/api/v1/metrics/dashboard", "action", "metrics/dashboard", READ_ROLES),
+    (
+        "/api/v1/metrics/dashboard",
+        "action",
+        "metrics/dashboard",
+        GLOBAL_ANALYTICS_ROLES,
+    ),
 ]
 
 
@@ -264,6 +297,81 @@ async def json_body(request: Request) -> Any:
         return await request.json()
     except ValueError as exc:
         raise Problem(400, "VALIDATION_ERROR", "The request body must be valid JSON.") from exc
+
+
+@app.api_route(
+    "/api/v1/admin/scoring-policies",
+    methods=["GET", "POST"],
+    tags=["Scoring governance"],
+)
+@app.api_route(
+    "/api/v1/admin/scoring-policies/{subpath:path}",
+    methods=["GET", "POST"],
+    tags=["Scoring governance"],
+)
+async def scoring_policy_governance(
+    request: Request,
+    subpath: str = "",
+    _principal: Principal = Depends(require_roles(*RULE_READ_ROLES)),
+) -> JSONResponse:
+    path = "scoring-policies" + (f"/{subpath}" if subpath else "")
+    body = await json_body(request) if request.method != "GET" else None
+    return await proxy(request, "opportunity", path, body=body)
+
+
+@app.api_route(
+    "/api/v1/admin/ml/governance",
+    methods=["GET", "POST"],
+    tags=["ML governance"],
+)
+@app.api_route(
+    "/api/v1/admin/ml/governance/{subpath:path}",
+    methods=["GET", "POST"],
+    tags=["ML governance"],
+)
+async def ml_governance(
+    request: Request,
+    subpath: str = "",
+    _principal: Principal = Depends(require_roles("DATA_ANALYST", "RULE_APPROVER", "ADMIN")),
+) -> JSONResponse:
+    path = "ml/governance" + (f"/{subpath}" if subpath else "")
+    body = await json_body(request) if request.method != "GET" else None
+    return await proxy(request, "ml-engine", path, body=body)
+
+
+@app.post("/api/v1/admin/ml/outcomes/materialize", tags=["ML governance"])
+async def materialize_ml_outcomes(
+    request: Request,
+    _principal: Principal = Depends(require_roles("DATA_ANALYST", "ADMIN", "SERVICE")),
+) -> JSONResponse:
+    return await proxy(
+        request,
+        "ml-engine",
+        "ml/outcomes/materialize",
+        body=await json_body(request),
+    )
+
+
+@app.get("/api/v1/admin/readiness", tags=["Operations"])
+async def platform_readiness(
+    request: Request,
+    _principal: Principal = Depends(require_roles("DATA_ANALYST", "ADMIN")),
+) -> JSONResponse:
+    return await proxy(request, "ml-engine", "readiness")
+
+
+@app.api_route(
+    "/api/v1/admin/monitoring/{subpath:path}",
+    methods=["GET", "POST"],
+    tags=["Operations"],
+)
+async def monitoring_governance(
+    request: Request,
+    subpath: str,
+    _principal: Principal = Depends(require_roles("DATA_ANALYST", "ADMIN")),
+) -> JSONResponse:
+    body = await json_body(request) if request.method != "GET" else None
+    return await proxy(request, "ml-engine", f"monitoring/{subpath}", body=body)
 
 
 @app.get("/api/v1/rules", tags=["Rule Studio"])
@@ -401,6 +509,7 @@ async def create_action(
         f"{target('opportunity')}/internal/v1/opportunities/{opportunity_id}",
         correlation_id=correlation_id(request),
         incoming_authorization=request.headers.get("Authorization"),
+        dev_principal=request.headers.get("X-Dev-Principal"),
     )
     body = {
         "opportunityId": opportunity_id,
@@ -451,6 +560,7 @@ async def pipeline(
 ) -> dict[str, Any]:
     corr = correlation_id(request)
     auth = request.headers.get("Authorization")
+    persona = request.headers.get("X-Dev-Principal")
     analytics = await service_request(
         "POST",
         f"{target('analytics')}/internal/v1/analytics/recompute",
@@ -458,6 +568,7 @@ async def pipeline(
         idempotency_key=f"{idempotency_key}-analytics",
         json=payload.model_dump(mode="json"),
         incoming_authorization=auth,
+        dev_principal=persona,
         timeout=120,
     )
     signals = await service_request(
@@ -467,6 +578,7 @@ async def pipeline(
         idempotency_key=f"{idempotency_key}-signals",
         json=payload.model_dump(mode="json"),
         incoming_authorization=auth,
+        dev_principal=persona,
         timeout=60,
     )
     opportunities = await service_request(
@@ -476,6 +588,7 @@ async def pipeline(
         idempotency_key=f"{idempotency_key}-opportunities",
         json={"customerIds": payload.customerIds, "asOf": payload.asOf.isoformat()},
         incoming_authorization=auth,
+        dev_principal=persona,
         timeout=60,
     )
     return {
