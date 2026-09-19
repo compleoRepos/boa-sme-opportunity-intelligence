@@ -60,5 +60,6 @@ def test_draft_rule_is_never_evaluated(monkeypatch):
         "matched": False,
         "customerId": "SME-1",
         "engineVersion": "rule-engine-0.1.0",
+        "evaluatedRuleVersions": [],
         "matches": [],
     }

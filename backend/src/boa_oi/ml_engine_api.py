@@ -1,18 +1,32 @@
 from __future__ import annotations
 
+import os
 from datetime import date
 from typing import Annotated, Any
 
-from fastapi import Depends, Query
+from fastapi import Depends, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from boa_oi.features import FEATURE_SET_VERSION
 from boa_oi.features.service import materialize_customer
+from boa_oi.http_clients import service_request
 from boa_oi.ml.service import active_model, score_materialization, serialize_model, serialize_score
-from boa_oi.models.entities import ActionOutcome, OpportunityAction, OutcomeLabelSnapshot
-from boa_oi.platform import READ_ROLES, Problem, create_service_app, get_session, require_roles
+from boa_oi.models.entities import (
+    ActionOutcome,
+    FeatureMaterialization,
+    OpportunityAction,
+    OutcomeLabelSnapshot,
+)
+from boa_oi.platform import (
+    READ_ROLES,
+    Problem,
+    correlation_id,
+    create_service_app,
+    get_session,
+    require_roles,
+)
 from boa_oi.technical.ids import deterministic_uuid
 
 app = create_service_app(
@@ -39,21 +53,53 @@ class OutcomeMaterializationRequest(BaseModel):
     labelAvailableFrom: date
 
 
-def _score_customer(
+async def _score_customer(
     session: Session,
     customer_id: str,
-    request: ScoreRequest,
+    payload: ScoreRequest,
+    http_request: Request,
 ) -> dict[str, Any]:
-    features = materialize_customer(
-        session,
-        customer_id,
-        request.asOf,
-        request.featureSetVersion,
-    )
+    feature_store_url = os.getenv("FEATURE_STORE_SERVICE_URL")
+    if feature_store_url:
+        feature_payload = await service_request(
+            "POST",
+            f"{feature_store_url.rstrip('/')}/internal/v1/features/customers/"
+            f"{customer_id}/materialize",
+            correlation_id=correlation_id(http_request),
+            params={
+                "asOf": payload.asOf.isoformat(),
+                "featureSetVersion": payload.featureSetVersion,
+            },
+            incoming_authorization=http_request.headers.get("Authorization"),
+        )
+        features = FeatureMaterialization(
+            id=deterministic_uuid(
+                "feature-materialization",
+                deterministic_uuid("customer", customer_id),
+                payload.asOf,
+                payload.featureSetVersion,
+            ),
+            customer_id=deterministic_uuid("customer", customer_id),
+            customer_ref=customer_id,
+            as_of_date=payload.asOf,
+            feature_set_version=str(feature_payload["featureSetVersion"]),
+            values_json=feature_payload["values"],
+            sources_json=feature_payload["sources"],
+            checksum=str(feature_payload["checksum"]),
+            created_by="feature-store-service",
+        )
+    else:
+        # Test-only in-process path. Runtime Compose always configures the service URL.
+        features = materialize_customer(
+            session,
+            customer_id,
+            payload.asOf,
+            payload.featureSetVersion,
+        )
     score = score_materialization(
         session,
         features,
-        model_version=request.modelVersion,
+        model_version=payload.modelVersion,
     )
     return serialize_score(score)
 
@@ -63,12 +109,13 @@ def _score_customer(
     dependencies=[Depends(require_roles(*ML_SCORE_ROLES))],
     tags=["ML Scoring"],
 )
-def score_customer(
+async def score_customer(
     customer_id: str,
     payload: ScoreRequest,
+    request: Request,
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    return _score_customer(session, customer_id, payload)
+    return await _score_customer(session, customer_id, payload, request)
 
 
 @app.post(
@@ -76,8 +123,9 @@ def score_customer(
     dependencies=[Depends(require_roles(*ML_SCORE_ROLES))],
     tags=["ML Scoring"],
 )
-def score_batch(
+async def score_batch(
     payload: BatchScoreRequest,
+    request: Request,
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     score_request = ScoreRequest(
@@ -86,7 +134,8 @@ def score_batch(
         modelVersion=payload.modelVersion,
     )
     data = [
-        _score_customer(session, customer_id, score_request) for customer_id in payload.customerIds
+        await _score_customer(session, customer_id, score_request, request)
+        for customer_id in payload.customerIds
     ]
     return {
         "data": data,

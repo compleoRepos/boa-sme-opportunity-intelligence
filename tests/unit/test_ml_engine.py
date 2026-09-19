@@ -14,6 +14,7 @@ from boa_oi.features import (
     CustomerProfile,
     FeatureBuilder,
 )
+from boa_oi.feature_store_api import _analytics_snapshots
 from boa_oi.ml import LogisticModel, LogisticScorer, stable_sigmoid
 from boa_oi.models.entities import (
     ActionOutcome,
@@ -183,6 +184,33 @@ def test_materialized_features_are_deterministic_versioned_and_checksum_sensitiv
         "SIGNAL_SERVICE",
         "RULE_STUDIO",
     }
+
+
+def test_http_analytics_adapter_preserves_customer_scope_and_point_in_time():
+    rows = [
+        {
+            "customerId": "internal-database-uuid",
+            "metric": "inflow_amount",
+            "currentValue": 120.0,
+            "growthRate": 0.2,
+            "period": "90D",
+            "asOf": "2026-09-30",
+            "calculationVersion": "analytics-0.1.0",
+        },
+        {
+            "customerId": "internal-database-uuid",
+            "metric": "inflow_amount",
+            "currentValue": 999.0,
+            "growthRate": 9.0,
+            "period": "90D",
+            "asOf": "2026-10-01",
+            "calculationVersion": "analytics-0.1.0",
+        },
+    ]
+    snapshots = _analytics_snapshots(rows, AS_OF, "SME-00125")
+    assert len(snapshots) == 1
+    assert snapshots[0].customer_id == "SME-00125"
+    assert snapshots[0].values["inflow_amount"]["currentValue"] == 120.0
 
 
 def memory_factory():

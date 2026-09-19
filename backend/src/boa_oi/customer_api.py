@@ -89,6 +89,7 @@ def serialize(customer: Customer, rm: RelationshipManager | None = None) -> dict
         "relationshipManagerId": rm.subject_id if rm else None,
         "relationshipManagerName": rm.display_name if rm else None,
         "status": customer.status,
+        "incorporatedOn": customer.incorporated_on.isoformat(),
         "createdAt": customer.created_at.isoformat() if customer.created_at else None,
         "updatedAt": customer.updated_at.isoformat() if customer.updated_at else None,
     }

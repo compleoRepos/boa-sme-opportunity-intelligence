@@ -58,11 +58,12 @@ done
 compose exec -T postgres psql --set=ON_ERROR_STOP=1 --username "$POSTGRES_ADMIN_USER" --dbname "$POSTGRES_DB" <<'SQL'
 GRANT USAGE ON SCHEMA customer, analytics TO rule_management_service;
 GRANT SELECT ON ALL TABLES IN SCHEMA customer, analytics TO rule_management_service;
-GRANT USAGE ON SCHEMA customer, analytics, signal, rule TO feature_store_service;
-GRANT SELECT ON ALL TABLES IN SCHEMA customer, analytics, signal, rule TO feature_store_service;
-GRANT USAGE ON SCHEMA customer, analytics, signal, rule, feature_store, ml, action TO ml_engine_service;
-GRANT SELECT ON ALL TABLES IN SCHEMA customer, analytics, signal, rule, feature_store, action TO ml_engine_service;
-GRANT INSERT, UPDATE ON ALL TABLES IN SCHEMA feature_store TO ml_engine_service;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA customer, analytics, signal, rule FROM feature_store_service;
+REVOKE USAGE ON SCHEMA customer, analytics, signal, rule FROM feature_store_service;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA customer, analytics, signal, rule, feature_store FROM ml_engine_service;
+REVOKE USAGE ON SCHEMA customer, analytics, signal, rule, feature_store FROM ml_engine_service;
+GRANT USAGE ON SCHEMA action TO ml_engine_service;
+GRANT SELECT ON ALL TABLES IN SCHEMA action TO ml_engine_service;
 GRANT USAGE ON SCHEMA customer, opportunity, action, ml TO portfolio_service;
 GRANT SELECT ON ALL TABLES IN SCHEMA customer, opportunity, action, ml TO portfolio_service;
 SQL
