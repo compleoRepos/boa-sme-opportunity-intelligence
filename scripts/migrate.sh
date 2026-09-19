@@ -68,6 +68,8 @@ GRANT USAGE ON SCHEMA opportunity TO ml_engine_service;
 GRANT SELECT ON opportunity.opportunities TO ml_engine_service;
 GRANT USAGE ON SCHEMA audit TO opportunity_service;
 GRANT SELECT, INSERT ON audit.audit_logs TO opportunity_service;
+GRANT USAGE ON SCHEMA audit TO action_service;
+GRANT SELECT, INSERT ON audit.audit_logs TO action_service;
 GRANT USAGE ON SCHEMA customer TO opportunity_service;
 GRANT SELECT ON customer.customers, customer.relationship_managers, customer.portfolio_assignments TO opportunity_service;
 GRANT USAGE ON SCHEMA integration TO analytics_service;

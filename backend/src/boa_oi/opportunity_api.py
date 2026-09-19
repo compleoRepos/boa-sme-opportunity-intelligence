@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
-from datetime import date, datetime, time, timezone
-from decimal import Decimal
+from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import Depends, Header, Query, Request, status
-from pydantic import BaseModel, Field
-from sqlalchemy import and_, func, select
+from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy import and_, func, inspect, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from boa_oi.audit import DecisionAuditBuilder
 from boa_oi.http_clients import service_request
@@ -30,9 +32,11 @@ from boa_oi.opportunities.domain import ConditionEvidence
 from boa_oi.platform import (
     ADMIN_ROLES,
     READ_ROLES,
+    Principal,
     Problem,
     correlation_id,
     create_service_app,
+    current_principal,
     decode_cursor,
     get_session,
     not_found,
@@ -56,6 +60,21 @@ app = create_service_app(
 )
 app.include_router(scoring_policy_router)
 PREFIX = "/internal/v1"
+ACTIVE_OPPORTUNITY_STATUSES = frozenset({"OPEN", "ACCEPTED", "CONTACTED"})
+TERMINAL_OPPORTUNITY_STATUSES = frozenset({"CONVERTED", "DISMISSED", "DEFERRED", "EXPIRED"})
+OPPORTUNITY_STATUSES = ACTIVE_OPPORTUNITY_STATUSES | TERMINAL_OPPORTUNITY_STATUSES
+OPPORTUNITY_TRANSITIONS: dict[str, frozenset[str]] = {
+    "OPEN": frozenset({"ACCEPTED", "CONTACTED", "DISMISSED", "DEFERRED", "EXPIRED"}),
+    "ACCEPTED": frozenset({"CONTACTED", "DISMISSED", "DEFERRED", "EXPIRED"}),
+    "CONTACTED": frozenset({"CONVERTED", "DISMISSED", "DEFERRED", "EXPIRED"}),
+    "CONVERTED": frozenset(),
+    "DISMISSED": frozenset(),
+    "DEFERRED": frozenset(),
+    "EXPIRED": frozenset(),
+}
+DEFAULT_OPPORTUNITY_TTL_DAYS = int(os.getenv("OPPORTUNITY_TTL_DAYS", "90"))
+DEFAULT_TERMINAL_COOLDOWN_DAYS = int(os.getenv("OPPORTUNITY_COOLDOWN_DAYS", "30"))
+MINIMUM_HISTORY_DAYS = 90
 ML_TIMEOUT_SECONDS = float(os.getenv("ML_TIMEOUT_SECONDS", "2.0"))
 ML_MAX_RETRIES = int(os.getenv("ML_MAX_RETRIES", "1"))
 ML_CIRCUIT_FAILURE_THRESHOLD = int(os.getenv("ML_CIRCUIT_FAILURE_THRESHOLD", "3"))
@@ -68,6 +87,23 @@ class GenerationRequest(BaseModel):
     asOf: date
     engineVersion: str | None = None
     ruleVersion: str | None = None
+
+
+class OpportunityTransitionRequest(BaseModel):
+    status: Literal[
+        "OPEN", "ACCEPTED", "CONTACTED", "CONVERTED", "DISMISSED", "DEFERRED", "EXPIRED"
+    ]
+    reason: str = Field(min_length=3, max_length=1_000)
+    occurredAt: datetime | None = None
+    cooldownUntil: datetime | None = None
+    actorSubjectId: str | None = Field(default=None, min_length=1, max_length=120)
+
+
+class ExpirationRequest(BaseModel):
+    asOf: datetime | None = None
+    reason: str = Field(
+        default="Opportunity validity period elapsed", min_length=3, max_length=1_000
+    )
 
 
 def url_for(name: str) -> str:
@@ -156,20 +192,429 @@ def serialize(item: Opportunity) -> dict[str, Any]:
         "scoringPolicyId": item.scoring_policy_id,
         "scoringPolicyVersion": item.scoring_policy_version,
         "fallbackMode": item.fallback_mode,
-        "lastActionAt": None,
+        "statusUpdatedAt": item.status_updated_at.isoformat(),
+        "statusReason": item.status_reason,
+        "expiresAt": item.expires_at.isoformat() if item.expires_at else None,
+        "cooldownUntil": item.cooldown_until.isoformat() if item.cooldown_until else None,
+        "lastActionAt": item.last_action_at.isoformat() if item.last_action_at else None,
     }
 
 
-def find(item_id: str, session: Session) -> Opportunity:
-    item = session.scalar(select(Opportunity).where(Opportunity.opportunity_ref == item_id))
+def scoped_customer_ids(session: Session, principal: Principal) -> Any | None:
+    if {"ADMIN", "SERVICE"} & principal.roles:
+        return None
+    manager = aliased(RelationshipManager)
+    bind = session.get_bind()
+    assignments_available = bind.dialect.name != "sqlite" or inspect(bind).has_table(
+        PortfolioAssignment.__tablename__, schema="customer"
+    )
+    if assignments_available:
+        assignment = aliased(PortfolioAssignment)
+        stmt = (
+            select(assignment.customer_id)
+            .join(manager, assignment.relationship_manager_id == manager.id)
+            .where(
+                assignment.valid_from <= datetime.now(timezone.utc),
+                assignment.valid_to.is_(None),
+            )
+        )
+        branch_code: Any = assignment.branch_code
+    else:
+        stmt = select(Customer.id).join(manager, Customer.rm_id == manager.id)
+        branch_code = manager.branch_code
+    if "RELATIONSHIP_MANAGER" in principal.roles:
+        if not principal.relationship_manager_ids:
+            raise Problem(
+                403,
+                "PORTFOLIO_SCOPE_MISSING",
+                "No relationship-manager scope is assigned.",
+            )
+        return stmt.where(manager.subject_id.in_(principal.relationship_manager_ids))
+    if "BRANCH_MANAGER" in principal.roles:
+        if not principal.branch_ids:
+            raise Problem(403, "PORTFOLIO_SCOPE_MISSING", "No branch scope is assigned.")
+        return stmt.where(branch_code.in_(principal.branch_ids))
+    raise Problem(403, "PORTFOLIO_SCOPE_FORBIDDEN", "No commercial portfolio scope is assigned.")
+
+
+def find(item_id: str, session: Session, principal: Principal | None = None) -> Opportunity:
+    stmt = select(Opportunity).where(Opportunity.opportunity_ref == item_id)
+    if principal is not None:
+        customer_scope = scoped_customer_ids(session, principal)
+        if customer_scope is not None:
+            stmt = stmt.where(Opportunity.customer_id.in_(customer_scope))
+    item = session.scalar(stmt)
     if item is None:
         raise not_found("Opportunity")
     return item
 
 
+def find_for_update(item_id: str, session: Session) -> Opportunity:
+    item = session.scalar(
+        select(Opportunity).where(Opportunity.opportunity_ref == item_id).with_for_update()
+    )
+    if item is None:
+        raise not_found("Opportunity")
+    return item
+
+
+def lifecycle_policy(raw: dict[str, Any] | None) -> dict[str, int]:
+    source = (raw or {}).get("lifecycle", raw or {})
+    aliases = {
+        "validity_days": ("validity_days", "validityDays"),
+        "dismissed_cooldown_days": (
+            "dismissed_cooldown_days",
+            "dismissedCooldownDays",
+        ),
+        "converted_cooldown_days": (
+            "converted_cooldown_days",
+            "convertedCooldownDays",
+        ),
+        "deferred_cooldown_days": (
+            "deferred_cooldown_days",
+            "deferredCooldownDays",
+        ),
+        "expired_cooldown_days": ("expired_cooldown_days", "expiredCooldownDays"),
+    }
+    defaults = {
+        "validity_days": DEFAULT_OPPORTUNITY_TTL_DAYS,
+        "dismissed_cooldown_days": DEFAULT_TERMINAL_COOLDOWN_DAYS,
+        "converted_cooldown_days": 180,
+        "deferred_cooldown_days": DEFAULT_TERMINAL_COOLDOWN_DAYS,
+        "expired_cooldown_days": 7,
+    }
+    for target, keys in aliases.items():
+        for key in keys:
+            if key in source:
+                defaults[target] = int(source[key])
+                break
+    return defaults
+
+
+def policy_for_opportunity(session: Session, item: Opportunity) -> dict[str, int]:
+    rule = session.get(OpportunityRule, item.rule_id)
+    return lifecycle_policy(rule.configuration_json if rule is not None else None)
+
+
+def cooldown_days_for(status: str, policy: dict[str, int]) -> int:
+    return {
+        "DISMISSED": policy["dismissed_cooldown_days"],
+        "CONVERTED": policy["converted_cooldown_days"],
+        "DEFERRED": policy["deferred_cooldown_days"],
+        "EXPIRED": policy["expired_cooldown_days"],
+    }.get(status, DEFAULT_TERMINAL_COOLDOWN_DAYS)
+
+
+def serialize_lifecycle_policy(raw: dict[str, Any] | None) -> dict[str, int]:
+    policy = lifecycle_policy(raw)
+    return {
+        "validityDays": policy["validity_days"],
+        "dismissedCooldownDays": policy["dismissed_cooldown_days"],
+        "convertedCooldownDays": policy["converted_cooldown_days"],
+        "deferredCooldownDays": policy["deferred_cooldown_days"],
+        "expiredCooldownDays": policy["expired_cooldown_days"],
+    }
+
+
+def audit_opportunity_transition(
+    session: Session,
+    *,
+    item: Opportunity,
+    actor_subject_id: str,
+    event: str,
+    correlation: str,
+    before: dict[str, Any],
+    after: dict[str, Any],
+    command_id: str | None = None,
+    command_hash: str | None = None,
+    authorized_by: str | None = None,
+) -> None:
+    occurred_at = datetime.now(timezone.utc)
+    session.add(
+        AuditLog(
+            id=(
+                deterministic_uuid(
+                    "opportunity-transition-command",
+                    item.opportunity_ref,
+                    command_id,
+                )
+                if command_id is not None
+                else deterministic_uuid(
+                    "opportunity-lifecycle-audit",
+                    item.opportunity_ref,
+                    event,
+                    correlation,
+                    occurred_at.isoformat(),
+                )
+            ),
+            occurred_at=occurred_at,
+            actor_subject_id=actor_subject_id,
+            service_name="opportunity-service",
+            action=event,
+            resource_type="OPPORTUNITY",
+            resource_id=item.opportunity_ref,
+            correlation_id=correlation,
+            result="SUCCESS",
+            metadata_json={
+                "before": before,
+                "after": after,
+                "commandId": command_id,
+                "commandHash": command_hash,
+                "authorizedBy": authorized_by,
+            },
+        )
+    )
+
+
+def lifecycle_time(value: datetime | None = None) -> datetime:
+    result = value or datetime.now(timezone.utc)
+    if result.tzinfo is None:
+        raise Problem(
+            422,
+            "VALIDATION_ERROR",
+            "Lifecycle timestamps must include a timezone.",
+        )
+    return result.astimezone(timezone.utc)
+
+
+def transition_opportunity(
+    item: Opportunity,
+    target_status: str,
+    *,
+    reason: str,
+    occurred_at: datetime,
+    cooldown_until: datetime | None = None,
+    cooldown_days: int = DEFAULT_TERMINAL_COOLDOWN_DAYS,
+) -> Opportunity:
+    if item.status == target_status:
+        if item.status in ACTIVE_OPPORTUNITY_STATUSES:
+            if cooldown_until is not None:
+                raise Problem(
+                    422,
+                    "VALIDATION_ERROR",
+                    "cooldownUntil is only accepted for a terminal status.",
+                )
+            item.status_updated_at = occurred_at
+            item.status_reason = reason
+            item.last_action_at = occurred_at
+            return item
+        persisted_cooldown = item.cooldown_until
+        if persisted_cooldown is not None and persisted_cooldown.tzinfo is None:
+            persisted_cooldown = persisted_cooldown.replace(tzinfo=timezone.utc)
+        if (
+            cooldown_until is not None
+            and persisted_cooldown is not None
+            and (lifecycle_time(cooldown_until) != persisted_cooldown.astimezone(timezone.utc))
+        ):
+            raise Problem(
+                409,
+                "OPPORTUNITY_TRANSITION_REPLAY_CONFLICT",
+                "The terminal transition was already recorded with another cooldown.",
+            )
+        return item
+    allowed = OPPORTUNITY_TRANSITIONS.get(item.status)
+    if allowed is None or target_status not in allowed:
+        raise Problem(
+            409,
+            "INVALID_OPPORTUNITY_TRANSITION",
+            f"Opportunity cannot transition from {item.status} to {target_status}.",
+            details=[
+                {
+                    "field": "status",
+                    "code": "INVALID_OPPORTUNITY_TRANSITION",
+                    "message": f"Allowed targets: {', '.join(sorted(allowed or ())) or 'none'}.",
+                }
+            ],
+        )
+    if target_status in TERMINAL_OPPORTUNITY_STATUSES:
+        terminal_cooldown = cooldown_until or occurred_at + timedelta(days=cooldown_days)
+        terminal_cooldown = lifecycle_time(terminal_cooldown)
+        if terminal_cooldown < occurred_at:
+            raise Problem(
+                422,
+                "VALIDATION_ERROR",
+                "cooldownUntil cannot be before occurredAt.",
+            )
+        item.cooldown_until = terminal_cooldown
+    elif cooldown_until is not None:
+        raise Problem(
+            422,
+            "VALIDATION_ERROR",
+            "cooldownUntil is only accepted for a terminal status.",
+        )
+    item.status = target_status
+    item.status_updated_at = occurred_at
+    item.status_reason = reason
+    item.last_action_at = occurred_at
+    return item
+
+
+def expire_due_opportunities(
+    session: Session,
+    *,
+    as_of: datetime,
+    reason: str = "Opportunity validity period elapsed",
+    customer_refs: list[str] | None = None,
+    actor_subject_id: str | None = None,
+    audit_correlation: str | None = None,
+) -> int:
+    stmt = select(Opportunity).where(
+        Opportunity.status.in_(ACTIVE_OPPORTUNITY_STATUSES),
+        Opportunity.expires_at.is_not(None),
+        Opportunity.expires_at <= as_of,
+    )
+    if customer_refs is not None:
+        stmt = stmt.where(Opportunity.customer_ref.in_(customer_refs))
+    rows = list(session.scalars(stmt.with_for_update(skip_locked=True)))
+    for item in rows:
+        before = serialize(item)
+        previous_last_action_at = item.last_action_at
+        policy = policy_for_opportunity(session, item)
+        transition_opportunity(
+            item,
+            "EXPIRED",
+            reason=reason,
+            occurred_at=as_of,
+            cooldown_days=cooldown_days_for("EXPIRED", policy),
+        )
+        item.last_action_at = previous_last_action_at
+        if actor_subject_id is not None and audit_correlation is not None:
+            audit_opportunity_transition(
+                session,
+                item=item,
+                actor_subject_id=actor_subject_id,
+                event="OPPORTUNITY_EXPIRED",
+                correlation=audit_correlation,
+                before=before,
+                after=serialize(item),
+            )
+    return len(rows)
+
+
+def claim_generation_customers(session: Session, customer_ids: list[str]) -> None:
+    if session.get_bind().dialect.name != "postgresql":
+        return
+    for customer_id in sorted(set(customer_ids)):
+        claimed = session.scalar(
+            select(
+                func.pg_try_advisory_xact_lock(
+                    func.hashtext(customer_id),
+                    func.hashtext("OPPORTUNITY_GENERATION"),
+                )
+            )
+        )
+        if not claimed:
+            raise Problem(
+                409,
+                "GENERATION_IN_PROGRESS",
+                f"Another generation is already evaluating customer {customer_id}.",
+            )
+
+
+def classify_generation(
+    session: Session,
+    *,
+    customer_id: Any,
+    opportunity_type: str,
+    as_of: datetime,
+) -> tuple[Literal["CREATED", "REFRESHED", "SUPPRESSED"], Opportunity | None, Opportunity | None]:
+    if session.get_bind().dialect.name == "postgresql":
+        claimed = session.scalar(
+            select(
+                func.pg_try_advisory_xact_lock(
+                    func.hashtext(str(customer_id)),
+                    func.hashtext(opportunity_type),
+                )
+            )
+        )
+        if not claimed:
+            raise Problem(
+                409,
+                "GENERATION_IN_PROGRESS",
+                "Another generation is already evaluating this customer and opportunity type.",
+            )
+    terminal = session.scalar(
+        select(Opportunity)
+        .where(
+            Opportunity.customer_id == customer_id,
+            Opportunity.opportunity_type == opportunity_type,
+            Opportunity.status.in_(TERMINAL_OPPORTUNITY_STATUSES),
+            Opportunity.cooldown_until.is_not(None),
+            Opportunity.cooldown_until > as_of,
+        )
+        .order_by(Opportunity.cooldown_until.desc())
+        .with_for_update()
+    )
+    active = session.scalar(
+        select(Opportunity)
+        .where(
+            Opportunity.customer_id == customer_id,
+            Opportunity.opportunity_type == opportunity_type,
+            Opportunity.status.in_(ACTIVE_OPPORTUNITY_STATUSES),
+        )
+        .order_by(Opportunity.generated_at.desc())
+        .with_for_update()
+    )
+    decision: Literal["CREATED", "REFRESHED", "SUPPRESSED"] = (
+        "SUPPRESSED" if terminal is not None else "REFRESHED" if active else "CREATED"
+    )
+    return decision, terminal, active
+
+
+def parse_opportunity_date_filter(request: Request, name: str) -> date | None:
+    raw = request.query_params.get(name)
+    if raw is None:
+        return None
+    try:
+        parsed = date.fromisoformat(raw)
+    except ValueError as exc:
+        raise Problem(
+            422,
+            "VALIDATION_ERROR",
+            f"{name} must be a valid ISO date (YYYY-MM-DD).",
+            details=[{"field": name, "code": "date", "message": f"Invalid date: {raw}"}],
+        ) from exc
+    if parsed.isoformat() != raw:
+        raise Problem(
+            422,
+            "VALIDATION_ERROR",
+            f"{name} must use the YYYY-MM-DD format.",
+        )
+    return parsed
+
+
+def parse_confidence_filter(request: Request, name: str) -> Decimal | None:
+    raw = request.query_params.get(name)
+    if raw is None:
+        return None
+    try:
+        parsed = Decimal(raw)
+    except InvalidOperation as exc:
+        raise Problem(
+            422,
+            "VALIDATION_ERROR",
+            f"{name} must be a decimal between 0 and 1.",
+            details=[
+                {
+                    "field": name,
+                    "code": "decimal_parsing",
+                    "message": f"Invalid value: {raw}",
+                }
+            ],
+        ) from exc
+    if not parsed.is_finite() or parsed < 0 or parsed > 1:
+        raise Problem(
+            422,
+            "VALIDATION_ERROR",
+            f"{name} must be a decimal between 0 and 1.",
+        )
+    return parsed
+
+
 def list_for(
     request: Request,
     session: Session,
+    principal: Principal,
     *,
     customer_id: str | None = None,
     page_size: int = 25,
@@ -198,8 +643,23 @@ def list_for(
         },
     )
     params = request.query_params
+    min_confidence = parse_confidence_filter(request, "minConfidence")
+    max_confidence = parse_confidence_filter(request, "maxConfidence")
+    from_date = parse_opportunity_date_filter(request, "fromDate")
+    to_date = parse_opportunity_date_filter(request, "toDate")
+    if (
+        min_confidence is not None
+        and max_confidence is not None
+        and min_confidence > max_confidence
+    ):
+        raise Problem(422, "VALIDATION_ERROR", "maxConfidence must be at least minConfidence.")
+    if from_date is not None and to_date is not None and to_date <= from_date:
+        raise Problem(422, "VALIDATION_ERROR", "toDate must be after fromDate.")
     offset = decode_cursor(cursor)
     stmt = select(Opportunity)
+    customer_scope = scoped_customer_ids(session, principal)
+    if customer_scope is not None:
+        stmt = stmt.where(Opportunity.customer_id.in_(customer_scope))
     sector = params.get("sector")
     customer_segment = params.get("customerSegment")
     relationship_manager_id = params.get("relationshipManagerId")
@@ -234,27 +694,23 @@ def list_for(
     opp_type = params.get("type") or params.get("opportunityType")
     if opp_type:
         stmt = stmt.where(Opportunity.opportunity_type == opp_type)
-    if params.get("minConfidence"):
-        stmt = stmt.where(Opportunity.confidence_score >= Decimal(params["minConfidence"]))
-    if params.get("maxConfidence"):
-        stmt = stmt.where(Opportunity.confidence_score <= Decimal(params["maxConfidence"]))
+    if min_confidence is not None:
+        stmt = stmt.where(Opportunity.confidence_score >= min_confidence)
+    if max_confidence is not None:
+        stmt = stmt.where(Opportunity.confidence_score <= max_confidence)
     if params.get("priorityLevel"):
         stmt = stmt.where(Opportunity.priority_level == params["priorityLevel"])
     if params.get("horizon"):
         stmt = stmt.where(Opportunity.horizon == params["horizon"])
     if params.get("status"):
         stmt = stmt.where(Opportunity.status == params["status"])
-    if params.get("fromDate"):
+    if from_date is not None:
         stmt = stmt.where(
-            Opportunity.generated_at
-            >= datetime.combine(
-                date.fromisoformat(params["fromDate"]), time.min, tzinfo=timezone.utc
-            )
+            Opportunity.generated_at >= datetime.combine(from_date, time.min, tzinfo=timezone.utc)
         )
-    if params.get("toDate"):
+    if to_date is not None:
         stmt = stmt.where(
-            Opportunity.generated_at
-            < datetime.combine(date.fromisoformat(params["toDate"]), time.min, tzinfo=timezone.utc)
+            Opportunity.generated_at < datetime.combine(to_date, time.min, tzinfo=timezone.utc)
         )
     sort = params.get("sort", "-priorityScore")
     column = {
@@ -290,9 +746,10 @@ def list_opportunities(
     request: Request,
     page_size: Annotated[int, Query(alias="pageSize", ge=1, le=1000)] = 25,
     cursor: str | None = None,
+    principal: Principal = Depends(current_principal),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    return list_for(request, session, page_size=page_size, cursor=cursor)
+    return list_for(request, session, principal, page_size=page_size, cursor=cursor)
 
 
 @app.get(
@@ -305,9 +762,17 @@ def customer_opportunities(
     request: Request,
     page_size: Annotated[int, Query(alias="pageSize", ge=1, le=1000)] = 100,
     cursor: str | None = None,
+    principal: Principal = Depends(current_principal),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    return list_for(request, session, customer_id=customer_id, page_size=page_size, cursor=cursor)
+    return list_for(
+        request,
+        session,
+        principal,
+        customer_id=customer_id,
+        page_size=page_size,
+        cursor=cursor,
+    )
 
 
 @app.get(
@@ -315,8 +780,12 @@ def customer_opportunities(
     dependencies=[Depends(require_roles(*READ_ROLES))],
     tags=["Opportunities"],
 )
-def get_opportunity(opportunity_id: str, session: Session = Depends(get_session)) -> dict[str, Any]:
-    return serialize(find(opportunity_id, session))
+def get_opportunity(
+    opportunity_id: str,
+    principal: Principal = Depends(current_principal),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    return serialize(find(opportunity_id, session, principal))
 
 
 @app.get(
@@ -324,8 +793,109 @@ def get_opportunity(opportunity_id: str, session: Session = Depends(get_session)
     dependencies=[Depends(require_roles(*READ_ROLES))],
     tags=["Opportunities"],
 )
-def get_explanation(opportunity_id: str, session: Session = Depends(get_session)) -> dict[str, Any]:
-    return find(opportunity_id, session).explanation_json
+def get_explanation(
+    opportunity_id: str,
+    principal: Principal = Depends(current_principal),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    return find(opportunity_id, session, principal).explanation_json
+
+
+@app.post(
+    f"{PREFIX}/opportunities/{{opportunity_id}}/transition",
+    dependencies=[Depends(require_roles(*ADMIN_ROLES))],
+    tags=["Opportunities"],
+)
+def transition(
+    opportunity_id: str,
+    payload: OpportunityTransitionRequest,
+    request: Request,
+    idempotency_key: Annotated[
+        str | None,
+        Header(alias="Idempotency-Key", min_length=8, max_length=200),
+    ] = None,
+    principal: Principal = Depends(current_principal),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    occurred_at = lifecycle_time(payload.occurredAt)
+    item = find_for_update(opportunity_id, session)
+    command_audit_id = (
+        deterministic_uuid(
+            "opportunity-transition-command",
+            opportunity_id,
+            idempotency_key,
+        )
+        if idempotency_key is not None
+        else None
+    )
+    command_hash = hashlib.sha256(
+        json.dumps(
+            payload.model_dump(mode="json", exclude_none=True),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    if command_audit_id is not None:
+        existing_command = session.get(AuditLog, command_audit_id)
+        if existing_command is not None:
+            if existing_command.metadata_json.get("commandHash") != command_hash:
+                raise Problem(
+                    409,
+                    "IDEMPOTENCY_KEY_REUSED",
+                    "The idempotency key was reused with different transition content.",
+                )
+            return serialize(item)
+    before = serialize(item)
+    policy = policy_for_opportunity(session, item)
+    item = transition_opportunity(
+        item,
+        payload.status,
+        reason=payload.reason,
+        occurred_at=occurred_at,
+        cooldown_until=payload.cooldownUntil,
+        cooldown_days=cooldown_days_for(payload.status, policy),
+    )
+    after = serialize(item)
+    actor_subject_id = (
+        payload.actorSubjectId
+        if payload.actorSubjectId is not None and "SERVICE" in principal.roles
+        else principal.subject
+    )
+    audit_opportunity_transition(
+        session,
+        item=item,
+        actor_subject_id=actor_subject_id,
+        event=f"OPPORTUNITY_{payload.status}",
+        correlation=correlation_id(request),
+        before=before,
+        after=after,
+        command_id=idempotency_key,
+        command_hash=command_hash,
+        authorized_by=principal.subject,
+    )
+    return after
+
+
+@app.post(
+    f"{PREFIX}/opportunities/maintenance/expire",
+    dependencies=[Depends(require_roles(*ADMIN_ROLES))],
+    tags=["Operations"],
+)
+def expire(
+    payload: ExpirationRequest,
+    request: Request,
+    principal: Principal = Depends(current_principal),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    as_of = lifecycle_time(payload.asOf)
+    expired = expire_due_opportunities(
+        session,
+        as_of=as_of,
+        reason=payload.reason,
+        actor_subject_id=principal.subject,
+        audit_correlation=correlation_id(request),
+    )
+    return {"status": "COMPLETED", "expired": expired, "asOf": as_of.isoformat()}
 
 
 def configured_rules(session: Session) -> RuleSetConfig:
@@ -452,6 +1022,7 @@ def rule_engine_candidates(
                 engine_version=str(match.get("engineVersion") or "rule-engine"),
                 rule_version=f"{rule_id}:v{rule_version}",
                 rule_set_version="rule-studio",
+                lifecycle_policy=lifecycle_policy(match.get("lifecycle")),
             )
         )
     return candidates
@@ -554,7 +1125,11 @@ async def context_for(
         "GET",
         f"{url_for('analytics')}/internal/v1/customers/{customer_id}/metrics",
         correlation_id=corr,
-        params={"pageSize": 1000},
+        params={
+            "fromDate": as_of.isoformat(),
+            "toDate": (as_of + timedelta(days=1)).isoformat(),
+            "pageSize": 1000,
+        },
         incoming_authorization=auth,
     )
     signals_page = await service_request(
@@ -642,6 +1217,38 @@ async def context_for(
             len([row for row in signals_page["data"] if row.get("status") == "CONFIRMED"]) / 3,
         ),
     }
+    history_complete = bool(metrics_90) and all(
+        row.get("historyDays") is not None and row.get("observedFrom") is not None
+        for row in metrics_90.values()
+    )
+    history_values = [int(row["historyDays"]) for row in metrics_90.values() if history_complete]
+    history_days = min(history_values) if history_values else 0
+    observed_from = min(
+        (
+            date.fromisoformat(str(row["observedFrom"]))
+            for row in metrics_90.values()
+            if row.get("observedFrom") is not None
+        ),
+        default=None,
+    )
+    if not history_complete or history_days < MINIMUM_HISTORY_DAYS or observed_from is None:
+        raise Problem(
+            422,
+            "INSUFFICIENT_TRANSACTION_HISTORY",
+            f"Customer {customer_id} has less than "
+            f"{MINIMUM_HISTORY_DAYS} calendar days of transaction history.",
+            details=[
+                {
+                    "field": "historyDays",
+                    "code": "INSUFFICIENT_TRANSACTION_HISTORY",
+                    "message": (
+                        f"Observed {history_days} days from "
+                        f"{observed_from.isoformat() if observed_from else 'unknown'}; "
+                        f"{MINIMUM_HISTORY_DAYS} required. Recompute legacy snapshots first."
+                    ),
+                }
+            ],
+        )
     coverages = [float(row.get("dataCoverage") or 0) for row in metrics_90.values()]
     quality = min(coverages) if coverages else 0.0
     seasonality = bool(metrics_90)
@@ -669,6 +1276,7 @@ async def generate(
     payload: GenerationRequest,
     request: Request,
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=200)],
+    principal: Principal = Depends(current_principal),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     config = configured_rules(session)
@@ -685,7 +1293,18 @@ async def generate(
         raise Problem(503, "SCORING_POLICY_NOT_FOUND", "Active scoring policy is invalid.")
     rules_weight = float(policy_version.rules_weight)
     ml_weight = float(policy_version.ml_weight)
-    generated = 0
+    created = 0
+    refreshed = 0
+    suppressed = 0
+    generation_time = datetime.combine(payload.asOf, time.min, tzinfo=timezone.utc)
+    claim_generation_customers(session, payload.customerIds)
+    expired = expire_due_opportunities(
+        session,
+        as_of=generation_time,
+        customer_refs=payload.customerIds,
+        actor_subject_id=principal.subject,
+        audit_correlation=correlation_id(request),
+    )
     hybrid_customers = 0
     rules_only_customers = 0
     audit_builder = DecisionAuditBuilder()
@@ -756,6 +1375,7 @@ async def generate(
                         else {
                             "source": "rule-studio",
                             "ruleVersion": candidate.rule_version,
+                            "lifecycle": candidate.lifecycle_policy,
                             "evidence": [
                                 item.model_dump(mode="json") for item in candidate.evidence
                             ],
@@ -770,6 +1390,7 @@ async def generate(
                 catalog[code] for code in candidate.recommended_products if code in catalog
             ]
             evidence = [item.model_dump(mode="json") for item in candidate.evidence]
+            candidate_policy = lifecycle_policy(candidate.lifecycle_policy)
             relevant_metrics = [
                 row
                 for row in metrics
@@ -841,14 +1462,44 @@ async def generate(
                     "commercialUseOnly": True,
                 },
             }
+            customer_uuid = deterministic_uuid("customer", customer_id)
+            decision, terminal, active = classify_generation(
+                session,
+                customer_id=customer_uuid,
+                opportunity_type=candidate.opportunity_type,
+                as_of=generation_time,
+            )
+            opportunity_id = (
+                terminal.id
+                if terminal is not None
+                else active.id
+                if active is not None
+                else deterministic_uuid("opportunity-row", candidate.opportunity_id)
+            )
+            opportunity_ref = (
+                terminal.opportunity_ref
+                if terminal is not None
+                else active.opportunity_ref
+                if active is not None
+                else candidate.opportunity_id
+            )
             values = {
-                "id": deterministic_uuid("opportunity-row", candidate.opportunity_id),
-                "opportunity_ref": candidate.opportunity_id,
-                "customer_id": deterministic_uuid("customer", customer_id),
+                "id": opportunity_id,
+                "opportunity_ref": opportunity_ref,
+                "customer_id": customer_uuid,
                 "customer_ref": customer_id,
                 "customer_name": customer["legalName"],
                 "opportunity_type": candidate.opportunity_type,
-                "status": candidate.status,
+                "status": active.status if active is not None else candidate.status,
+                "status_updated_at": (
+                    active.status_updated_at if active is not None else generation_time
+                ),
+                "status_reason": (
+                    active.status_reason if active is not None else "Opportunity generated"
+                ),
+                "expires_at": generation_time + timedelta(days=candidate_policy["validity_days"]),
+                "cooldown_until": None,
+                "last_action_at": active.last_action_at if active is not None else None,
                 "horizon": candidate.horizon,
                 "confidence_score": Decimal(str(candidate.confidence)),
                 "confidence_level": candidate.confidence_level,
@@ -861,7 +1512,7 @@ async def generate(
                 "when_text": candidate.when,
                 "recommended_products_json": recommendations,
                 "explanation_json": explanation,
-                "generated_at": datetime.combine(payload.asOf, time.min, tzinfo=timezone.utc),
+                "generated_at": generation_time,
                 "engine_version": candidate.engine_version,
                 "rule_version": candidate.rule_version,
                 "scoring_policy_id": policy.policy_id,
@@ -877,21 +1528,26 @@ async def generate(
                 ),
                 "created_by": "opportunity-service",
             }
-            session.execute(
-                pg_insert(Opportunity)
-                .values(**values)
-                .on_conflict_do_update(
-                    index_elements=[Opportunity.deduplication_key],
-                    set_={
-                        key: value
-                        for key, value in values.items()
-                        if key not in {"id", "deduplication_key", "created_by"}
-                    },
-                )
-            )
+            if decision == "CREATED":
+                session.add(Opportunity(**values))
+                created += 1
+            elif decision == "REFRESHED" and active is not None:
+                for key, value in values.items():
+                    if key not in {
+                        "id",
+                        "opportunity_ref",
+                        "created_by",
+                        "status",
+                        "status_updated_at",
+                        "status_reason",
+                        "last_action_at",
+                    }:
+                        setattr(active, key, value)
+                refreshed += 1
+            else:
+                suppressed += 1
             session.flush()
-            opportunity_id = values["id"]
-            for position, item in enumerate(candidate.evidence):
+            for position, item in enumerate(candidate.evidence if decision != "SUPPRESSED" else ()):
                 observed = (
                     1
                     if item.observed is True
@@ -914,7 +1570,7 @@ async def generate(
                     pg_insert(OpportunityEvidence)
                     .values(
                         id=deterministic_uuid(
-                            "opportunity-evidence", candidate.opportunity_id, position
+                            "opportunity-evidence", opportunity_id, payload.asOf, position
                         ),
                         opportunity_id=opportunity_id,
                         metric_code=item.key,
@@ -932,10 +1588,14 @@ async def generate(
                     )
                 )
             audit = audit_builder.build(
-                decision_id=candidate.opportunity_id,
+                decision_id=(
+                    f"{candidate.opportunity_id}:{decision}:{idempotency_key}:"
+                    f"{candidate.opportunity_type}"
+                ),
                 opportunity={
                     "type": candidate.opportunity_type,
                     "what": candidate.what,
+                    "decision": decision,
                 },
                 inputs={
                     "metrics": metrics,
@@ -946,20 +1606,74 @@ async def generate(
                         "version": policy_version.version,
                     },
                     "fallback": ml_result.audit_event.as_dict(),
+                    "lifecycle": {
+                        "policy": candidate_policy,
+                        "activeOpportunityId": (
+                            active.opportunity_ref if active is not None else None
+                        ),
+                        "terminalOpportunityId": (
+                            terminal.opportunity_ref if terminal is not None else None
+                        ),
+                        "cooldownUntil": (
+                            terminal.cooldown_until.isoformat()
+                            if terminal is not None and terminal.cooldown_until is not None
+                            else None
+                        ),
+                    },
                 },
                 config_id=config.config_id,
                 config_checksum=config.checksum(),
                 correlation_id=correlation_id(request),
+            )
+            session.add(
+                AuditLog(
+                    id=deterministic_uuid(
+                        "opportunity-generation-audit",
+                        candidate.opportunity_id,
+                        decision,
+                        idempotency_key,
+                        candidate.opportunity_type,
+                    ),
+                    occurred_at=datetime.now(timezone.utc),
+                    actor_subject_id=principal.subject,
+                    service_name="opportunity-service",
+                    action=f"OPPORTUNITY_GENERATION_{decision}",
+                    resource_type="OPPORTUNITY_GENERATION",
+                    resource_id=candidate.opportunity_id,
+                    correlation_id=correlation_id(request),
+                    result="SUCCESS",
+                    metadata_json={
+                        "decision": decision,
+                        "customerId": customer_id,
+                        "opportunityType": candidate.opportunity_type,
+                        "candidateOpportunityId": candidate.opportunity_id,
+                        "activeOpportunityId": (
+                            active.opportunity_ref if active is not None else None
+                        ),
+                        "terminalOpportunityId": (
+                            terminal.opportunity_ref if terminal is not None else None
+                        ),
+                        "cooldownUntil": (
+                            terminal.cooldown_until.isoformat()
+                            if terminal is not None and terminal.cooldown_until is not None
+                            else None
+                        ),
+                        "lifecyclePolicy": candidate_policy,
+                        "ruleVersion": candidate.rule_version,
+                        "engineVersion": candidate.engine_version,
+                        "fallbackMode": ml_result.mode.value,
+                    },
+                )
             )
             session.execute(
                 pg_insert(DecisionAudit)
                 .values(
                     id=deterministic_uuid("decision-audit", audit["decision_hash"]),
                     opportunity_id=opportunity_id,
-                    customer_id=deterministic_uuid("customer", customer_id),
+                    customer_id=customer_uuid,
                     engine_version=candidate.engine_version,
                     rule_version=candidate.rule_version,
-                    generated_at=datetime.combine(payload.asOf, time.min, tzinfo=timezone.utc),
+                    generated_at=generation_time,
                     input_reference=f"metrics:{payload.asOf}",
                     signals_json=signals,
                     metric_snapshots_json=metrics,
@@ -973,11 +1687,14 @@ async def generate(
                 )
                 .on_conflict_do_nothing(index_elements=[DecisionAudit.decision_hash])
             )
-            generated += 1
     return {
         "jobId": str(deterministic_uuid("opportunity-job", idempotency_key)),
         "status": "COMPLETED",
-        "opportunities": generated,
+        "opportunities": created + refreshed,
+        "created": created,
+        "refreshed": refreshed,
+        "suppressed": suppressed,
+        "expired": expired,
         "customers": len(payload.customerIds),
         "asOf": payload.asOf.isoformat(),
         "ruleSetVersion": config.rule_set_version,
@@ -1021,6 +1738,7 @@ def rules(
             "version": row.version,
             "ruleVersion": row.version,
             "parameters": row.configuration_json,
+            "lifecyclePolicy": serialize_lifecycle_policy(row.configuration_json),
         }
         for row in rows
     ]
@@ -1035,7 +1753,7 @@ def rules(
 
 class RuleUpdate(BaseModel):
     enabled: bool | None = None
-    parameters: dict[str, Any] | list[dict[str, Any]] | None = None
+    parameters: dict[str, Any] | None = None
     justification: str = Field(min_length=3, max_length=1_000)
     effectiveAt: datetime | None = None
 
@@ -1046,7 +1764,11 @@ class RuleUpdate(BaseModel):
     tags=["Administration"],
 )
 def update_rule(
-    rule_id: str, payload: RuleUpdate, session: Session = Depends(get_session)
+    rule_id: str,
+    payload: RuleUpdate,
+    request: Request,
+    principal: Principal = Depends(current_principal),
+    session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     try:
         parsed_rule_id = UUID(rule_id)
@@ -1055,20 +1777,65 @@ def update_rule(
     row = session.get(OpportunityRule, parsed_rule_id)
     if row is None:
         raise not_found("Rule")
+    now = datetime.now(timezone.utc)
+    if payload.effectiveAt is not None and lifecycle_time(payload.effectiveAt) > now:
+        raise Problem(
+            422,
+            "FUTURE_EFFECTIVE_DATE_UNSUPPORTED",
+            "A future effectiveAt requires a scheduler and is not accepted by this endpoint.",
+        )
     version = f"{row.version}-v{int(datetime.now(timezone.utc).timestamp())}"
     configuration = dict(row.configuration_json)
-    if isinstance(payload.parameters, dict):
+    if payload.parameters is not None:
         configuration.update(payload.parameters)
+    try:
+        validated = OpportunityRuleConfig.model_validate(configuration)
+    except ValidationError as exc:
+        raise Problem(
+            422,
+            "INVALID_RULE_CONFIGURATION",
+            "The merged opportunity rule configuration is invalid.",
+            details=[
+                {"field": ".".join(map(str, error["loc"])), "message": error["msg"]}
+                for error in exc.errors()
+            ],
+        ) from exc
+    configuration = validated.model_dump(mode="json")
+    configuration["governance"] = {
+        "justification": payload.justification,
+        "effectiveAt": lifecycle_time(payload.effectiveAt).isoformat()
+        if payload.effectiveAt is not None
+        else now.isoformat(),
+        "updatedBy": principal.subject,
+    }
     clone = OpportunityRule(
         id=deterministic_uuid("opp-rule", row.opportunity_type, version),
         opportunity_type=row.opportunity_type,
         version=version,
         configuration_json=configuration,
         active=payload.enabled if payload.enabled is not None else row.active,
-        created_by="admin-api",
+        created_by=principal.subject,
     )
     row.active = False
     session.add(clone)
+    session.add(
+        AuditLog(
+            id=deterministic_uuid("opportunity-rule-audit", clone.id, now.isoformat()),
+            occurred_at=now,
+            actor_subject_id=principal.subject,
+            service_name="opportunity-service",
+            action="OPPORTUNITY_RULE_VERSION_CREATED",
+            resource_type="OPPORTUNITY_RULE",
+            resource_id=str(clone.id),
+            correlation_id=correlation_id(request),
+            result="SUCCESS",
+            metadata_json={
+                "previousRuleId": str(row.id),
+                "version": version,
+                "justification": payload.justification,
+            },
+        )
+    )
     return {
         "ruleId": str(clone.id),
         "name": clone.opportunity_type.replace("_", " ").title(),
@@ -1077,8 +1844,8 @@ def update_rule(
         "version": clone.version,
         "ruleVersion": clone.version,
         "parameters": clone.configuration_json,
-        "updatedAt": datetime.now(timezone.utc).isoformat(),
-        "updatedBy": "admin-api",
+        "updatedAt": now.isoformat(),
+        "updatedBy": principal.subject,
     }
 
 

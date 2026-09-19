@@ -363,6 +363,11 @@ class Opportunity(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __table_args__ = (
         CheckConstraint("confidence_score BETWEEN 0 AND 1", name="confidence"),
         CheckConstraint("priority_score BETWEEN 0 AND 100", name="priority"),
+        CheckConstraint(
+            "status IN ('OPEN','ACCEPTED','CONTACTED','CONVERTED',"
+            "'DISMISSED','DEFERRED','EXPIRED')",
+            name="lifecycle",
+        ),
         UniqueConstraint("deduplication_key"),
         Index(
             "ix_opportunities_active_priority",
@@ -371,6 +376,14 @@ class Opportunity(Base, UUIDPrimaryKeyMixin, TimestampMixin):
             "priority_score",
             "generated_at",
         ),
+        Index(
+            "ix_opportunities_customer_type_status",
+            "customer_id",
+            "opportunity_type",
+            "status",
+        ),
+        Index("ix_opportunities_expiration", "status", "expires_at"),
+        Index("ix_opportunities_cooldown", "customer_id", "opportunity_type", "cooldown_until"),
         {"schema": "opportunity"},
     )
     opportunity_ref: Mapped[str] = mapped_column(String(80), unique=True)
@@ -378,7 +391,14 @@ class Opportunity(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     customer_ref: Mapped[str] = mapped_column(String(40), default="UNKNOWN")
     customer_name: Mapped[str] = mapped_column(String(180), default="Synthetic SME")
     opportunity_type: Mapped[str] = mapped_column(String(80))
-    status: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20), default="OPEN")
+    status_updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    status_reason: Mapped[str | None] = mapped_column(Text)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cooldown_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_action_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     horizon: Mapped[str] = mapped_column(String(30))
     confidence_score: Mapped[Decimal] = mapped_column(Numeric(8, 6))
     confidence_level: Mapped[str] = mapped_column(String(10))
@@ -444,7 +464,12 @@ class OpportunityAction(Base, UUIDPrimaryKeyMixin):
     __tablename__ = "opportunity_actions"
     __table_args__ = (
         UniqueConstraint("idempotency_key"),
+        CheckConstraint(
+            "transition_status IN ('NOT_REQUIRED','PENDING','APPLIED','FAILED')",
+            name="ck_action_transition_status",
+        ),
         Index("ix_actions_opportunity_created", "opportunity_id", "created_at"),
+        Index("ix_actions_transition_status_updated", "transition_status", "updated_at"),
         {"schema": "action"},
     )
     action_ref: Mapped[str] = mapped_column(String(80), unique=True)
@@ -461,6 +486,15 @@ class OpportunityAction(Base, UUIDPrimaryKeyMixin):
     performed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes_redacted: Mapped[str | None] = mapped_column(Text)
     outcome_type: Mapped[str | None] = mapped_column(String(40))
+    transition_status: Mapped[str] = mapped_column(
+        String(20), default="NOT_REQUIRED", server_default="NOT_REQUIRED"
+    )
+    transition_target: Mapped[str | None] = mapped_column(String(20))
+    transition_command_id: Mapped[str | None] = mapped_column(String(200), unique=True)
+    transition_attempt_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    transition_error: Mapped[str | None] = mapped_column(Text)
+    transition_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pending_outcome_type: Mapped[str | None] = mapped_column(String(40))
     idempotency_key: Mapped[str] = mapped_column(String(200))
     request_hash: Mapped[str] = mapped_column(String(64))
     correlation_id: Mapped[str] = mapped_column(String(100))

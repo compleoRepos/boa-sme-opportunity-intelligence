@@ -9,3 +9,28 @@
 **Alternative si BOA décide autrement.** Rebaser les seuls commits du chantier pilote sur une future branche officielle `feat/ux-premium-cockpit`, puis rejouer toutes les migrations et portes de qualité avant fusion.
 
 **Impact.** Aucun historique existant n’est réécrit. Le point de départ réel et le décalage avec le mandat sont traçables dans l’audit préalable.
+
+## 19 septembre 2026 — Politique lifecycle initiale du pilote
+
+**Question.** Le mandat exige une expiration, un cooldown et un traitement explicite du choix « à revoir », sans fournir les durées à appliquer par type d’opportunité.
+
+**Option retenue.** Introduire l’état terminal `DEFERRED` et l’outcome `REVIEW_LATER`. Versionner cinq paramètres dans chaque règle : durée de validité et cooldown après rejet, conversion, report ou expiration. Les valeurs initiales sont 30 jours après rejet, 180 jours après conversion, 30 jours après report et 7 jours après expiration. La validité est de 90 jours pour financement d’investissement et Trade Finance, de 60 jours pour placement de trésorerie et de 30 jours pour le signal relationnel de tension financière.
+
+**Statut des valeurs.** Ces durées sont des hypothèses de configuration du pilote, pas des résultats mesurés. Le comité métier peut les modifier dans Rule Studio ; toute modification crée une nouvelle version auditée.
+
+**Règle de non-régression.** Une opportunité terminale n’est jamais rouverte. Un nouveau candidat du même client et du même type est supprimé jusqu’à `cooldownUntil`, puis peut créer une nouvelle instance. Une opportunité active est rafraîchie sans doublon.
+
+**Résilience interservice.** Une transition terminale strictement identique est rejouable afin qu’Action Service puisse terminer sa transaction locale après une panne partielle. Un rejeu avec un autre cooldown est refusé par `409 OPPORTUNITY_TRANSITION_REPLAY_CONFLICT`.
+
+## 19 septembre 2026 — Cohérence distribuée et concurrence du pilote
+
+**Question.** Une revue indépendante a montré qu’un appel Opportunity exécuté avant le commit Action pouvait laisser un succès distant sans action locale. Elle a aussi relevé une course possible entre deux générations sur une clé métier absente.
+
+**Option retenue.** Action Service persiste une commande locale `PENDING` avant tout appel distant. Opportunity Service déduplique son identifiant stable. Après réponse, Action passe la commande à `APPLIED` et écrit l’outcome, ou à `FAILED` avec code et compteur de tentatives. Le même appel idempotent reprend une commande inachevée. Pour la génération, `pg_try_advisory_xact_lock` revendique `(client, type)` sans bloquer le worker async; un concurrent reçoit `409 GENERATION_IN_PROGRESS`. L’expiration utilise `FOR UPDATE SKIP LOCKED`.
+
+**Limite acceptée pour le pilote.** Il ne s’agit pas d’un commit distribué ACID et aucun dispatcher permanent ne reprend automatiquement les échecs. L’état durable rend cependant chaque succès partiel visible et reprenable. Un worker avec backoff et file morte est requis avant production à haute disponibilité.
+
+## Références
+
+[1]: ./business-rules.md "Moteur déterministe d’intelligence d’opportunités"
+[2]: ./api.md "Contrats API-first — BOA SME Opportunity Intelligence"

@@ -32,6 +32,19 @@ describe('recordCommercialChoice', () => {
     expect(new Date(body.dueAt).getTime() - Date.now()).toBeGreaterThan(6 * 86_400_000)
   })
 
+  it('diffère réellement l’opportunité pour le choix « À revoir »', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(json({ actionId: 'ACT-3', opportunityId: 'OPP-1', customerId: 'SME-1', actionType: 'DEFER_OPPORTUNITY', status: 'COMPLETED', outcome: 'REVIEW_LATER', createdAt: 'x' }, 201))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const action = await recordCommercialChoice('OPP-1', COMMERCIAL_CHOICES.find((choice) => choice.id === 'later')!)
+
+    expect(action.outcome).toBe('REVIEW_LATER')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const body = JSON.parse(String(fetchMock.mock.calls[0]![1].body))
+    expect(body.actionType).toBe('DEFER_OPPORTUNITY')
+    expect(new Date(body.dueAt).getTime() - Date.now()).toBeGreaterThan(29 * 86_400_000)
+  })
+
   it('propage l’erreur normalisée du Gateway (ex. conversion sans contact préalable)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json({ code: 'STATE_CONFLICT', message: 'Conversion requires a prior customer engagement action.' }, 409)))
     await expect(recordCommercialChoice('OPP-1', COMMERCIAL_CHOICES.find((choice) => choice.id === 'converted')!)).rejects.toMatchObject({ status: 409, code: 'STATE_CONFLICT' })

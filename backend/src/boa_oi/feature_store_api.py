@@ -7,7 +7,7 @@ from typing import Annotated, Any
 
 from fastapi import Depends, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from boa_oi.features import FEATURE_SET_VERSION
@@ -222,12 +222,36 @@ async def _materialize_customer(
     feature_set_version: str,
     request: Request,
 ) -> FeatureMaterialization:
+    claim_materialization(session, customer_id, as_of, feature_set_version)
     if _runtime_dependencies_configured():
         return await _materialize_from_services(
             session, customer_id, as_of, feature_set_version, request
         )
     # Unit-test fallback only. Runtime Compose configures every service URL.
     return materialize_customer(session, customer_id, as_of, feature_set_version)
+
+
+def claim_materialization(
+    session: Session,
+    customer_id: str,
+    as_of: date,
+    feature_set_version: str,
+) -> None:
+    if session.get_bind().dialect.name == "postgresql":
+        claimed = session.scalar(
+            select(
+                func.pg_try_advisory_xact_lock(
+                    func.hashtext(customer_id),
+                    func.hashtext(f"{as_of.isoformat()}:{feature_set_version}"),
+                )
+            )
+        )
+        if not claimed:
+            raise Problem(
+                409,
+                "FEATURE_MATERIALIZATION_IN_PROGRESS",
+                "This feature vector is already being materialized.",
+            )
 
 
 @app.post(

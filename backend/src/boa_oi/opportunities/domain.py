@@ -55,3 +55,4 @@ class OpportunityCandidate(BaseModel):
     engine_version: str
     rule_version: str
     rule_set_version: str
+    lifecycle_policy: dict[str, int] = Field(default_factory=dict)

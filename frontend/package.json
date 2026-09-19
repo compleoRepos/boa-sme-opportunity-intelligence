@@ -9,7 +9,7 @@
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test --config ../tests/e2e/playwright.config.ts"
+    "test:e2e": "cd ../tests/e2e && E2E_BASE_URL=${E2E_BASE_URL:-http://localhost:3000} npx playwright test --config playwright.config.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.2",

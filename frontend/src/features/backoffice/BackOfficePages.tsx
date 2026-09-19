@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { formatDate, formatNumber, formatPercent, label, safeJson } from '../../api/format'
 import { useActions, useActiveModel, useDashboard, useEngine, useMlModels, useProducts, useRules, useUpdateRule } from '../../api/hooks'
 import { useRuleAudit, useRuleSimulations, useStudioRules } from '../../api/ruleStudioHooks'
-import type { MlModel, RuleConfig, RuleParameter } from '../../api/types'
+import type { MlModel, RuleConfig, RuleLifecyclePolicy, RuleParameter } from '../../api/types'
 import { BreakdownBars } from '../../charts/BreakdownBars'
 import { CHART, OPPORTUNITY_COLORS, PRIORITY_COLORS } from '../../charts/theme'
 import { Badge, Button, EmptyState, ErrorState, Kpi, Modal, Panel, SkeletonStack, Tabs, useToast } from '../../ui'
@@ -55,11 +55,17 @@ export function EngineThresholdsPage() {
     {rules.isPending ? <SkeletonStack rows={3} /> : rules.isError ? <ErrorState error={rules.error} onRetry={() => void rules.refetch()} /> : <div className="grid cols-2">{rules.data.data.map((rule) => { const params = rule.parameters as Record<string, unknown>; const conditions = (params?.all_conditions as Array<{ key: string; operator: string; value: unknown; label?: string }> | undefined) || []; return <Panel key={rule.ruleId} eyebrow={label(rule.opportunityType)} title={rule.name || label(rule.opportunityType)} id={`rule-${rule.ruleId}`} tools={<div className="row" style={{ gap: 6 }}><Badge value={rule.enabled ? 'ACTIVE' : 'INACTIVE'} /><Badge tone="outline">v{rule.version || rule.ruleVersion}</Badge></div>}>
       <div className="stack">
         {conditions.length ? <ul className="threshold-list">{conditions.map((condition) => <li key={condition.key}><span>{condition.label || label(condition.key)}</span><b className="num">{condition.operator} {typeof condition.value === 'number' && Math.abs(condition.value) <= 1 && !condition.key.includes('period') ? formatPercent(condition.value, 0) : String(condition.value)}</b></li>)}</ul> : <details><summary className="muted" style={{ cursor: 'pointer', fontSize: 12 }}>Paramètres</summary><pre className="mono" style={{ whiteSpace: 'pre-wrap', fontSize: 11 }}>{safeJson(rule.parameters)}</pre></details>}
+        <LifecyclePolicySummary policy={rule.lifecyclePolicy} />
         <div className="row between"><span className="muted" style={{ fontSize: 12 }}>Horizon {label(String(params?.horizon || '—'))} · modifiée {formatDate(rule.updatedAt)}</span><Button size="sm" onClick={() => setEditing(rule)} icon={<SlidersHorizontal size={14} />}>Modifier</Button></div>
       </div>
     </Panel> })}</div>}
     {editing && <ThresholdEditor rule={editing} onClose={() => setEditing(undefined)} />}
   </>
+}
+
+function LifecyclePolicySummary({ policy }: { policy?: RuleLifecyclePolicy }) {
+  if (!policy) return null
+  return <div className="notice neutral"><History size={15} /><div><strong>Cycle de vie</strong>Validité {policy.validityDays} j · rejet {policy.dismissedCooldownDays} j · conversion {policy.convertedCooldownDays} j · à revoir {policy.deferredCooldownDays} j · expiration {policy.expiredCooldownDays} j.</div></div>
 }
 
 function ThresholdEditor({ rule, onClose }: { rule: RuleConfig; onClose: () => void }) {
@@ -69,7 +75,7 @@ function ThresholdEditor({ rule, onClose }: { rule: RuleConfig; onClose: () => v
   const [enabled, setEnabled] = useState(rule.enabled)
   const [parameters, setParameters] = useState<RuleParameter[]>(initial)
   const [justification, setJustification] = useState('')
-  const submit = (event: FormEvent) => { event.preventDefault(); mutation.mutate({ enabled, parameters, justification }, { onSuccess: () => { toast.push('success', 'Nouvelle version créée', rule.name || rule.ruleId); onClose() }, onError: (error) => toast.push('error', 'Modification refusée', error.message) }) }
+  const submit = (event: FormEvent) => { event.preventDefault(); mutation.mutate({ enabled, parameters: Object.fromEntries(parameters.map((parameter) => [parameter.key, parameter.value])), justification }, { onSuccess: () => { toast.push('success', 'Nouvelle version créée', rule.name || rule.ruleId); onClose() }, onError: (error) => toast.push('error', 'Modification refusée', error.message) }) }
   return <Modal title={`Modifier ${rule.name || label(rule.opportunityType)}`} onClose={onClose} footer={<><Button onClick={onClose}>Annuler</Button><Button variant="primary" type="submit" form="threshold-form" loading={mutation.isPending}>Créer une nouvelle version</Button></>}>
     <form id="threshold-form" className="stack" onSubmit={submit}>
       <label className="checkbox"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /> Règle active</label>

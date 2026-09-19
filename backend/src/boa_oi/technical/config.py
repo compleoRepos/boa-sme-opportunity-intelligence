@@ -22,6 +22,16 @@ class ConditionConfig(BaseModel):
     label: str
 
 
+class LifecyclePolicyConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    validity_days: int = Field(default=90, ge=1, le=365)
+    dismissed_cooldown_days: int = Field(default=30, ge=1, le=365)
+    converted_cooldown_days: int = Field(default=180, ge=1, le=730)
+    deferred_cooldown_days: int = Field(default=30, ge=1, le=365)
+    expired_cooldown_days: int = Field(default=7, ge=1, le=90)
+
+
 class OpportunityRuleConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -36,6 +46,7 @@ class OpportunityRuleConfig(BaseModel):
     confidence_weights: dict[str, float]
     priority_defaults: dict[str, float]
     minimum_data_coverage: float = Field(default=0.83, ge=0, le=1)
+    lifecycle: LifecyclePolicyConfig = Field(default_factory=LifecyclePolicyConfig)
 
     @field_validator("confidence_weights")
     @classmethod

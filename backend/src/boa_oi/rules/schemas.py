@@ -6,6 +6,16 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+class LifecyclePolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    validityDays: int = Field(default=90, ge=1, le=365)
+    dismissedCooldownDays: int = Field(default=30, ge=1, le=365)
+    convertedCooldownDays: int = Field(default=180, ge=1, le=730)
+    deferredCooldownDays: int = Field(default=30, ge=1, le=365)
+    expiredCooldownDays: int = Field(default=7, ge=1, le=90)
+
+
 class RuleDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -19,6 +29,7 @@ class RuleDefinition(BaseModel):
     logic: str = "AND"
     recommendation: dict[str, Any]
     confidence: dict[str, Any] = Field(default_factory=dict)
+    lifecycle: LifecyclePolicy = Field(default_factory=LifecyclePolicy)
     reason: str | None = Field(default=None, max_length=4_000)
 
 
@@ -69,6 +80,7 @@ class EvaluationRequest(BaseModel):
 __all__ = [
     "DuplicateRequest",
     "EvaluationRequest",
+    "LifecyclePolicy",
     "RollbackRequest",
     "RuleDefinition",
     "SimulationRequest",

@@ -25,8 +25,14 @@ export async function login(page: Page, account: keyof typeof accounts) {
   if (devMode) {
     await page.getByRole('button', { name: new RegExp(target.persona === 'cc' ? 'Ahmed' : target.persona === 'agence' ? 'Salma' : target.persona === 'approbateur' ? 'Nadia' : 'Youssef') }).click()
   } else {
-    await page.getByRole('button', { name: /Se connecter avec Keycloak/i }).click()
-    await page.waitForURL((url) => url.origin === keycloakOrigin, { timeout: 20_000 })
+    // Keycloak peut être déclenché automatiquement par l'initialisation OIDC ou manuellement
+    // depuis l'écran local. Le helper accepte les deux comportements sans attendre un bouton
+    // qui n'existe déjà plus après la redirection.
+    await page.waitForURL((url) => url.origin === keycloakOrigin, { timeout: 5_000 }).catch(() => undefined)
+    if (new URL(page.url()).origin !== keycloakOrigin) {
+      await page.getByRole('button', { name: /Se connecter avec Keycloak/i }).click()
+      await page.waitForURL((url) => url.origin === keycloakOrigin, { timeout: 20_000 })
+    }
     await page.locator('#username').fill(target.username)
     await page.locator('#password').fill(target.password)
     await page.getByRole('button', { name: /Sign In|Connexion|Se connecter/i }).click()

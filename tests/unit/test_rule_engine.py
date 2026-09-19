@@ -141,6 +141,13 @@ def test_analytics_growth_aliases_and_published_rule_trace_are_preserved():
             "opportunityType": "INVESTMENT_FINANCING",
             "productCodes": ["CASH_MANAGEMENT"],
             "horizon": "1-3_MONTHS",
+            "lifecycle": {
+                "validityDays": 45,
+                "dismissedCooldownDays": 60,
+                "convertedCooldownDays": 200,
+                "deferredCooldownDays": 20,
+                "expiredCooldownDays": 5,
+            },
             "confidence": 0.9,
             "evidence": [
                 {
@@ -157,6 +164,13 @@ def test_analytics_growth_aliases_and_published_rule_trace_are_preserved():
     assert candidates[0].rule_version == "RULE-PUBLISHED:v3"
     assert candidates[0].engine_version == "rule-engine-0.1.0"
     assert candidates[0].evidence[0].observed == 0.42
+    assert candidates[0].lifecycle_policy == {
+        "validity_days": 45,
+        "dismissed_cooldown_days": 60,
+        "converted_cooldown_days": 200,
+        "deferred_cooldown_days": 20,
+        "expired_cooldown_days": 5,
+    }
 
 
 def test_sales_propensity_changes_priority_and_preserves_prediction_trace():

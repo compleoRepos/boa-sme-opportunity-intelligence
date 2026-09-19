@@ -2,8 +2,8 @@
 
 **Produit :** BOA SME Opportunity Intelligence  
 **Statut :** spécification métier du MVP  
-**Version du document :** 1.0.0  
-**Date de référence :** 2026-09-18  
+**Version du document :** 1.2.0
+**Date de référence :** 2026-09-19
 **Périmètre :** détection d’événements transactionnels, génération d’opportunités commerciales explicables et signal relationnel de tension financière.
 
 > Ce document formalise le comportement attendu du moteur à partir des exigences du MVP. Il ne décrit pas une décision de crédit. Il ne définit ni une probabilité de défaut, ni une notation de risque, ni une autorisation de financement.
@@ -592,3 +592,57 @@ Le premier incrément est batch, CPU-only et `ML_SHADOW`. GPU, temps réel, appr
 [4]: ./ml-engine.md "ML Engine CPU-ready — architecture cible et contrats"
 [5]: ./ml-acceptance.md "Acceptation de l’incrément ML"
 [6]: ./portfolio-scoping.md "Périmètres agence, chargé de clientèle et portefeuille"
+
+## 22. Cycle de vie, expiration et non-répétition
+
+### 22.1 États gouvernés
+
+Une instance d’opportunité commence à l’état `OPEN`. Elle peut être acceptée (`ACCEPTED`) puis contactée (`CONTACTED`). Le contact direct depuis `OPEN` est autorisé lorsqu’une action commerciale prouve que le client a été joint. La conversion (`CONVERTED`) n’est autorisée qu’après contact. Le rejet (`DISMISSED`), le report (`DEFERRED`) et l’expiration (`EXPIRED`) terminent l’instance.
+
+Une mise à jour d’engagement dans un état actif peut conserver le même statut tout en mettant à jour `lastActionAt` et le motif. Cette tolérance sert notamment à enregistrer une offre après un premier contact. Elle ne permet pas de rejouer un état terminal. Toute transition hors graphe est refusée et n’écrit aucun audit de succès.
+
+### 22.2 Validité et expiration
+
+Chaque règle porte `validityDays`. La date `expiresAt` est calculée au moment de la création ou du rafraîchissement. Le traitement d’expiration ne modifie que les opportunités actives dont cette date est atteinte. Le passage à `EXPIRED` renseigne `statusUpdatedAt`, `statusReason` et `cooldownUntil`, mais préserve `lastActionAt` : une maintenance automatique ne doit pas être présentée comme une action commerciale.
+
+Le rerun du moteur classe chaque candidat en trois résultats. `CREATED` crée une instance en l’absence d’instance active ou de cooldown. `REFRESHED` met à jour l’instance active existante sans modifier son identité ni son état commercial. `SUPPRESSED` conserve l’instance terminale et interdit la réémission tant que son cooldown n’est pas terminé.
+
+### 22.3 Cooldowns versionnés
+
+Les valeurs initiales suivantes sont des **hypothèses de configuration du pilote**. Elles ne constituent pas un résultat mesuré ni une recommandation commerciale définitive. Le comité métier doit les confirmer avant un déploiement réel.
+
+| Événement terminal | Paramètre | Valeur pilote |
+|---|---|---:|
+| Rejet ou non-pertinence | `dismissedCooldownDays` | 30 jours |
+| Conversion | `convertedCooldownDays` | 180 jours |
+| À revoir | `deferredCooldownDays` | 30 jours, ou date explicite choisie par le CC |
+| Expiration | `expiredCooldownDays` | 7 jours |
+
+La validité initiale est de 90 jours pour `INVESTMENT_FINANCING` et `TRADE_FINANCE`, 60 jours pour `CASH_INVESTMENT` et 30 jours pour `FINANCIAL_STRESS_SIGNAL`. Ces valeurs sont enregistrées avec la version de règle. Une modification crée une nouvelle version gouvernée dans Rule Studio.
+
+### 22.4 Historique transactionnel minimal
+
+Le pipeline refuse la génération lorsque la période entre la première transaction observée et `asOfDate` est inférieure à 90 jours calendaires. Cette profondeur est distincte de la couverture de données. La profondeur établit que la période historique existe ; `dataCoverage` mesure ensuite si les observations nécessaires dans les fenêtres sont suffisamment complètes.
+
+Les anciens snapshots dépourvus de `historyDays` et `observedFrom` ne sont pas considérés comme une preuve. Ils doivent être recalculés en mode `HISTORICAL`. Le refus est explicite et retourne `INSUFFICIENT_TRANSACTION_HISTORY` ; le moteur ne substitue aucune valeur synthétique ou implicite.
+
+### 22.5 Actions et futurs labels ML
+
+`ACCEPT_OPPORTUNITY`, `DISMISS_OPPORTUNITY`, `DEFER_OPPORTUNITY` et `MARK_CONVERTED` sont des actions terminales directement projetées vers le cycle Opportunity. `CONTACT_CUSTOMER` et `SCHEDULE_MEETING` restent des actions planifiées tant qu’aucun outcome ne prouve le contact ou le rendez-vous. Les outcomes sont persistés séparément sous forme structurée. `REVIEW_LATER` représente le report ; il ne vaut ni rejet ni absence d’intérêt.
+
+Une action terminale identique ne peut pas être créée deux fois pour la même opportunité avec une nouvelle clé technique. Un outcome enregistré ne peut pas être remplacé. Ces garde-fous préservent la qualité des futurs labels d’apprentissage. Ils ne transforment pas les outcomes du pilote en preuve de performance ML : le modèle reste **POC assistif/shadow**, CPU-only, sans LLM et sans décision de crédit.
+
+### 22.6 Audit et périmètre
+
+Chaque transition conserve l’acteur, le service, la corrélation, le motif et les représentations avant/après. Chaque décision de génération conserve `CREATED`, `REFRESHED` ou `SUPPRESSED`, ainsi que les identifiants actifs ou terminaux et la fin du cooldown. Les lectures d’opportunités sont filtrées dans Opportunity Service à partir de l’affectation active datée. Le Gateway et l’interface ne sont donc pas les seules barrières de périmètre.
+
+### 22.7 Concurrence et reprise interservice
+
+La génération revendique d’abord le client, puis la clé métier `(client, type d’opportunité)`, au moyen de verrous PostgreSQL transactionnels non bloquants. Un second lot simultané reçoit `GENERATION_IN_PROGRESS`; il ne crée aucun doublon et ne bloque pas le worker asynchrone. Feature Store protège de la même manière `(client, date, feature set)` et retourne `FEATURE_MATERIALIZATION_IN_PROGRESS` en cas de conflit. La maintenance d’expiration revendique les lignes par `FOR UPDATE SKIP LOCKED`.
+
+Action Service persiste la commande de transition avant l’appel distant. Les états `PENDING`, `APPLIED` et `FAILED`, la cible, l’identifiant stable, le nombre de tentatives et le dernier code d’erreur rendent le flux observable et reprenable. Opportunity Service déduplique cet identifiant de commande et refuse sa réutilisation avec un autre contenu. Une panne entre services ne peut donc plus produire un succès silencieux : la ligne Action reste visible en `FAILED` et le même appel idempotent reprend l’opération. Le pilote n’exécute pas encore de dispatcher automatique en arrière-plan ; cette automatisation reste une amélioration de production.
+
+## Références du cycle de vie
+
+[7]: ./api.md "Contrats API-first — cycle de vie Opportunity"
+[8]: ./lots/LOT-02-LIFECYCLE-OPPORTUNITY-ACTIONS.md "Rapport de validation du lot 2"

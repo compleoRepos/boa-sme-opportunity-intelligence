@@ -1,7 +1,7 @@
 # Contrats API-first — BOA SME Opportunity Intelligence
 
 **Statut :** contrat cible du MVP  
-**Version du contrat :** `1.0.0`  
+**Version du contrat :** `1.2.0`
 **Préfixe public :** `/api/v1`  
 **Préfixe interne :** `/internal/v1`  
 **Format :** REST/JSON, OpenAPI 3.0  
@@ -1164,3 +1164,72 @@ Aucune route, clé, URL, dépendance ou fallback LLM n’existe. Un futur port n
 [2]: ./ml-engine.md "ML Engine CPU-ready — architecture cible et contrats"
 [3]: ./ml-acceptance.md "Acceptation de l’incrément ML"
 [4]: ./portfolio-scoping.md "Périmètres agence, chargé de clientèle et portefeuille"
+
+## 17. Contrats implémentés — cycle de vie Opportunity
+
+### 17.1 États et horodatages
+
+Une opportunité utilise les états `OPEN`, `ACCEPTED`, `CONTACTED`, `CONVERTED`, `DISMISSED`, `DEFERRED` et `EXPIRED`. Les trois premiers sont actifs. Les quatre derniers sont terminaux pour l’instance concernée. La réponse `Opportunity` expose `statusUpdatedAt`, `statusReason`, `expiresAt`, `cooldownUntil` et `lastActionAt`.
+
+Le graphe autorise `OPEN → ACCEPTED`, `OPEN → CONTACTED`, `ACCEPTED → CONTACTED`, puis `CONTACTED → CONVERTED`. Les états actifs peuvent évoluer vers `DISMISSED`, `DEFERRED` ou `EXPIRED`. Une transition hors graphe retourne `409 INVALID_OPPORTUNITY_TRANSITION`. Un timestamp sans fuseau, un cooldown antérieur à la transition ou un cooldown fourni pour un état actif retourne `422 VALIDATION_ERROR`.
+
+### 17.2 Transition et maintenance
+
+L’endpoint interne suivant est réservé aux rôles administratifs et aux comptes de service :
+
+```http
+POST /internal/v1/opportunities/{opportunityId}/transition
+Content-Type: application/json
+Idempotency-Key: action-command-defer-001
+
+{
+  "status": "DEFERRED",
+  "reason": "À revoir après la campagne annuelle",
+  "occurredAt": "2026-09-19T14:41:04Z",
+  "cooldownUntil": "2026-10-30T09:00:00Z",
+  "actorSubjectId": "rm-01"
+}
+```
+
+La maintenance contrôlée appelle `POST /internal/v1/opportunities/maintenance/expire`. Elle passe en `EXPIRED` les opportunités actives dont `expiresAt` est atteint. Chaque transition enregistre l’acteur, le service autorisant, le `X-Correlation-ID`, l’état avant, l’état après et le motif dans `audit.audit_logs`. Le header `Idempotency-Key` déduplique une commande Action→Opportunity ; sa réutilisation avec un contenu différent retourne `409 IDEMPOTENCY_KEY_REUSED`.
+
+### 17.3 Actions commerciales et projection
+
+`POST /api/v1/opportunities/{opportunityId}/actions` accepte l’action `DEFER_OPPORTUNITY`. Elle exige un `dueAt` futur avec fuseau. Action Service persiste d’abord une commande locale `PENDING`, puis utilise son compte de service pour projeter `DEFERRED` dans Opportunity Service. Après succès, l’action devient `COMPLETED`, la commande devient `APPLIED` et l’outcome structuré `REVIEW_LATER` est persisté dans la même transaction locale. En cas d’échec distant, la commande reste `FAILED` avec son code d’erreur ; rejouer le même payload et la même clé reprend la commande sans créer une seconde action. Les réponses exposent `transitionStatus` et `transitionError`.
+
+Les outcomes `CONTACTED`, `MEETING_SCHEDULED` et `OFFER_CREATED` projettent l’état `CONTACTED`. Les outcomes `CONVERTED`, `REJECTED` et `NOT_RELEVANT` projettent respectivement `CONVERTED` et `DISMISSED`. Créer une action planifiée `CONTACT_CUSTOMER` ou `SCHEDULE_MEETING` ne marque pas le client comme contacté ; seule la persistance de l’outcome le fait. Rejouer le même outcome sur la même action est idempotent. Remplacer un outcome déjà enregistré retourne `409 OUTCOME_CONFLICT`. Une seconde action terminale de même type retourne `409 DUPLICATE_ACTION`.
+
+Les listes filtrées par `opportunityId` ou `customerId` et `PATCH /actions/{actionId}` valident la ressource auprès d’Opportunity Service ou Customer Service avec le jeton utilisateur. Un identifiant connu ne permet donc pas de modifier ou lire une action hors portefeuille.
+
+### 17.4 Génération, historique et cooldown
+
+`POST /internal/v1/opportunities/generate` exige une profondeur calendaire d’historique transactionnel d’au moins 90 jours. Le service lit `historyDays` et `observedFrom` produits par Analytics. Une lignée historique absente ou insuffisante retourne `422 INSUFFICIENT_TRANSACTION_HISTORY` ; un recalcul historique explicite est alors nécessaire.
+
+Pour chaque candidat, le moteur classe la décision en `CREATED`, `REFRESHED` ou `SUPPRESSED`. Une opportunité active de même client et de même type est rafraîchie, sans doublon. Une opportunité terminale dont le cooldown est encore actif supprime la réémission. La décision est enregistrée sous `OPPORTUNITY_GENERATION_CREATED`, `OPPORTUNITY_GENERATION_REFRESHED` ou `OPPORTUNITY_GENERATION_SUPPRESSED`, avec l’identifiant de l’opportunité active ou terminale, la date de fin de cooldown, la règle, le moteur et le mode de fallback. PostgreSQL revendique le client avant tout appel aval, puis chaque clé `(customerId, opportunityType)`, par des advisory locks transactionnels non bloquants. Une exécution concurrente reçoit `409 GENERATION_IN_PROGRESS` au lieu d’attendre dans le worker ou de créer un doublon. Feature Store revendique aussi `(customerId, asOf, featureSetVersion)` et retourne `409 FEATURE_MATERIALIZATION_IN_PROGRESS` en cas de concurrence directe. L’expiration utilise `FOR UPDATE SKIP LOCKED` afin qu’une ligne ne soit traitée que par un worker.
+
+### 17.5 Politique lifecycle versionnée
+
+Chaque version Rule Studio contient :
+
+```json
+{
+  "lifecycle": {
+    "validityDays": 90,
+    "dismissedCooldownDays": 30,
+    "convertedCooldownDays": 180,
+    "deferredCooldownDays": 30,
+    "expiredCooldownDays": 7
+  }
+}
+```
+
+Ces paramètres sont visibles et modifiables dans Rule Studio. Le Rule Engine les propage avec la recommandation. Opportunity Service les conserve dans la règle technique et les applique lors de la création, de l’expiration et des transitions terminales. Les anciennes versions dépourvues de ce bloc reçoivent les valeurs par défaut à la lecture, sans réécriture de leur historique.
+
+### 17.6 Isolation objet côté service
+
+Les routes de liste, détail et explication d’Opportunity Service appliquent le périmètre du principal, indépendamment du Gateway et de l’interface. Un `RELATIONSHIP_MANAGER` est limité aux affectations actives dont le `relationshipManagerId` figure dans son jeton. Un `BRANCH_MANAGER` est limité aux affectations actives de ses agences. Un paramètre `relationshipManagerId` ne peut qu’affiner ce périmètre ; il ne peut jamais l’élargir. Une lecture directe hors périmètre retourne `404` afin de ne pas révéler l’existence de la ressource. Un rôle commercial sans périmètre reçoit `403 PORTFOLIO_SCOPE_MISSING`.
+
+## Références du cycle de vie
+
+[7]: ./business-rules.md "Moteur déterministe d’intelligence d’opportunités — cycle de vie pilote"
+[8]: ./lots/LOT-02-LIFECYCLE-OPPORTUNITY-ACTIONS.md "Rapport de validation du lot 2"

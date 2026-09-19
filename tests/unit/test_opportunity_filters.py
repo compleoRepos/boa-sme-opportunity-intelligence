@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -147,6 +148,25 @@ def opportunity_ids(response) -> set[str]:
     return {item["opportunityId"] for item in response.json()["data"]}
 
 
+def persona(
+    role: str,
+    *,
+    relationship_manager_ids: list[str] | None = None,
+    branch_ids: list[str] | None = None,
+) -> dict[str, str]:
+    return {
+        "X-Dev-Principal": json.dumps(
+            {
+                "subject": f"scope-{role.lower()}",
+                "username": f"scope-{role.lower()}",
+                "roles": [role],
+                "relationshipManagerIds": relationship_manager_ids or [],
+                "branchIds": branch_ids or [],
+            }
+        )
+    }
+
+
 @pytest.mark.parametrize(
     ("query", "expected"),
     [
@@ -198,3 +218,44 @@ def test_customer_filters_compose_with_existing_opportunity_filters(
     )
 
     assert opportunity_ids(response) == {"OPP-1"}
+
+
+def test_relationship_manager_scope_cannot_be_overridden_by_query(
+    opportunity_client: TestClient,
+) -> None:
+    headers = persona("RELATIONSHIP_MANAGER", relationship_manager_ids=["rm-01"])
+
+    scoped = opportunity_client.get("/internal/v1/opportunities?pageSize=100", headers=headers)
+    attempted_escape = opportunity_client.get(
+        "/internal/v1/opportunities?relationshipManagerId=rm-02&pageSize=100",
+        headers=headers,
+    )
+    direct_escape = opportunity_client.get("/internal/v1/opportunities/OPP-3", headers=headers)
+
+    assert opportunity_ids(scoped) == {"OPP-1", "OPP-2"}
+    assert opportunity_ids(attempted_escape) == set()
+    assert direct_escape.status_code == 404
+
+
+def test_branch_manager_scope_is_enforced_on_list_and_detail(
+    opportunity_client: TestClient,
+) -> None:
+    headers = persona("BRANCH_MANAGER", branch_ids=["BR-02"])
+
+    scoped = opportunity_client.get("/internal/v1/opportunities?pageSize=100", headers=headers)
+    direct_escape = opportunity_client.get("/internal/v1/opportunities/OPP-1", headers=headers)
+
+    assert opportunity_ids(scoped) == {"OPP-3"}
+    assert direct_escape.status_code == 404
+
+
+def test_relationship_manager_without_scope_is_forbidden(
+    opportunity_client: TestClient,
+) -> None:
+    response = opportunity_client.get(
+        "/internal/v1/opportunities",
+        headers=persona("RELATIONSHIP_MANAGER"),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "PORTFOLIO_SCOPE_MISSING"

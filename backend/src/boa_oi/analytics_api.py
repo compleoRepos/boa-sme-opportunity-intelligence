@@ -187,7 +187,23 @@ def save_checkpoint(
     return existing
 
 
-def metric_rows(snapshot: MetricSnapshot) -> list[dict[str, Any]]:
+def observed_history(
+    transactions: tuple[TransactionFact, ...], as_of: date
+) -> tuple[int, date | None]:
+    observed_from = min(
+        (item.value_date for item in transactions if item.value_date <= as_of),
+        default=None,
+    )
+    history_days = (as_of - observed_from).days + 1 if observed_from is not None else 0
+    return history_days, observed_from
+
+
+def metric_rows(
+    snapshot: MetricSnapshot,
+    *,
+    history_days: int,
+    observed_from: date | None,
+) -> list[dict[str, Any]]:
     result = []
     for code, metric in sorted(snapshot.metrics.items()):
         result.append(
@@ -214,6 +230,8 @@ def metric_rows(snapshot: MetricSnapshot) -> list[dict[str, Any]]:
                 "dataCoverage": float(metric.data_coverage),
                 "sampleSize": metric.sample_size,
                 "seasonalityAdjusted": metric.seasonality_adjusted,
+                "historyDays": history_days,
+                "observedFrom": observed_from.isoformat() if observed_from is not None else None,
             }
         )
     return result
@@ -262,9 +280,56 @@ def persisted_rows(
                     "dataCoverage": item.get("dataCoverage"),
                     "sampleSize": item.get("sampleSize"),
                     "seasonalityAdjusted": item.get("seasonalityAdjusted"),
+                    "historyDays": item.get("historyDays"),
+                    "observedFrom": item.get("observedFrom"),
                 }
             )
     return rows
+
+
+def parse_date_filter(request: Request, name: str) -> date | None:
+    raw = request.query_params.get(name)
+    if raw is None:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError as exc:
+        raise Problem(
+            422,
+            "VALIDATION_ERROR",
+            f"{name} must be a valid ISO date (YYYY-MM-DD).",
+            details=[
+                {
+                    "field": name,
+                    "code": "date_from_datetime_parsing",
+                    "message": f"Invalid date: {raw}",
+                }
+            ],
+        ) from exc
+
+
+def filter_metric_dates(rows: list[dict[str, Any]], request: Request) -> list[dict[str, Any]]:
+    from_date = parse_date_filter(request, "fromDate")
+    to_date = parse_date_filter(request, "toDate")
+    if from_date is not None and to_date is not None and to_date <= from_date:
+        raise Problem(
+            422,
+            "VALIDATION_ERROR",
+            "toDate must be after fromDate.",
+            details=[
+                {
+                    "field": "toDate",
+                    "code": "date_range",
+                    "message": "toDate must be after fromDate.",
+                }
+            ],
+        )
+    return [
+        row
+        for row in rows
+        if (from_date is None or date.fromisoformat(str(row["asOf"])) >= from_date)
+        and (to_date is None or date.fromisoformat(str(row["asOf"])) < to_date)
+    ]
 
 
 @app.get(
@@ -296,7 +361,9 @@ def list_metrics(
         },
     )
     offset = decode_cursor(cursor)
-    rows = persisted_rows(session, customer_id=customer_id, period=period, metric=metric)
+    rows = filter_metric_dates(
+        persisted_rows(session, customer_id=customer_id, period=period, metric=metric), request
+    )
     return page_response(
         request,
         rows[offset : offset + page_size + 1],
@@ -321,9 +388,13 @@ def customer_metrics(
     sort: str = "-asOf",
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    reject_unknown_filters(request, {"pageSize", "cursor", "metric", "period", "sort"})
+    reject_unknown_filters(
+        request, {"pageSize", "cursor", "metric", "period", "fromDate", "toDate", "sort"}
+    )
     offset = decode_cursor(cursor)
-    rows = persisted_rows(session, customer_id=customer_id, period=period, metric=metric)
+    rows = filter_metric_dates(
+        persisted_rows(session, customer_id=customer_id, period=period, metric=metric), request
+    )
     return page_response(
         request,
         rows[offset : offset + page_size + 1],
@@ -432,6 +503,7 @@ def persist_analytics_metrics(
 ) -> int:
     engine = AnalyticsEngine()
     count = 0
+    history_days, observed_from = observed_history(inputs.transactions, as_of)
     for period in periods:
         days = int(period.removesuffix("D"))
         history: dict[str, list[Decimal]] = defaultdict(list)
@@ -460,7 +532,14 @@ def persist_analytics_metrics(
             days,
             historical_values=dict(history),
         )
-        values = {row["metric"]: row for row in metric_rows(snapshot)}
+        values = {
+            row["metric"]: row
+            for row in metric_rows(
+                snapshot,
+                history_days=history_days,
+                observed_from=observed_from,
+            )
+        }
         session.execute(
             pg_insert(MetricSnapshotRecord)
             .values(

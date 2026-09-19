@@ -8,13 +8,21 @@ import { Badge, Button, ErrorState, Panel, SkeletonStack, useToast } from '../..
 import { ReadableRule, RecommendationTokens, RuleBuilder } from './RuleBlocks'
 import { LIFECYCLE_LABELS, REGIONS, SECTORS, SEGMENTS, isGroup, newCondition } from './ruleModel'
 
+const DEFAULT_LIFECYCLE = {
+  validityDays: 90,
+  dismissedCooldownDays: 30,
+  convertedCooldownDays: 180,
+  deferredCooldownDays: 30,
+  expiredCooldownDays: 7,
+}
+
 const initialDraft = (): SaveRuleInput => ({
   name: '', description: '', scope: { segment: ['SME'], sectors: ['ALL'], regions: ['ALL'] }, logic: 'AND', conditions: [newCondition()],
   recommendation: { opportunityType: 'INVESTMENT_FINANCING', products: [], horizon: '1-3_MONTHS' },
-  confidence: { baseScore: 20, weights: {}, highThreshold: 80, mediumThreshold: 60 }, reason: '',
+  confidence: { baseScore: 20, weights: {}, highThreshold: 80, mediumThreshold: 60 }, lifecycle: { ...DEFAULT_LIFECYCLE }, reason: '',
 })
 
-const fromRule = (rule: RuleDefinition): SaveRuleInput => ({ name: rule.name, description: rule.description || '', scope: rule.scope, logic: rule.logic, conditions: rule.conditions, recommendation: rule.recommendation, confidence: rule.confidence, reason: '' })
+const fromRule = (rule: RuleDefinition): SaveRuleInput => ({ name: rule.name, description: rule.description || '', scope: rule.scope, logic: rule.logic, conditions: rule.conditions, recommendation: rule.recommendation, confidence: rule.confidence, lifecycle: rule.lifecycle || { ...DEFAULT_LIFECYCLE }, reason: '' })
 
 function weightsFrom(expressions: RuleExpression[], into: Record<string, number> = {}) {
   expressions.forEach((item) => { if (isGroup(item)) weightsFrom(item.conditions, into); else into[item.metric] = item.weight ?? into[item.metric] ?? 0 })
@@ -91,11 +99,25 @@ export function RuleBuilderPage() {
             <ChipField legend="Régions" options={REGIONS} value={draft.scope.regions || ['ALL']} onChange={(regions) => setDraft({ ...draft, scope: { ...draft.scope, regions } })} />
           </div>
         </Panel>
+        <Panel eyebrow="06 · Cycle de vie" title="Expiration et refroidissement" id="lifecycle">
+          <div className="grid cols-2">
+            <LifecycleDays label="Validité" value={draft.lifecycle.validityDays} onChange={(validityDays) => setDraft({ ...draft, lifecycle: { ...draft.lifecycle, validityDays } })} />
+            <LifecycleDays label="Après rejet" value={draft.lifecycle.dismissedCooldownDays} onChange={(dismissedCooldownDays) => setDraft({ ...draft, lifecycle: { ...draft.lifecycle, dismissedCooldownDays } })} />
+            <LifecycleDays label="Après conversion" value={draft.lifecycle.convertedCooldownDays} onChange={(convertedCooldownDays) => setDraft({ ...draft, lifecycle: { ...draft.lifecycle, convertedCooldownDays } })} max={730} />
+            <LifecycleDays label="Après « à revoir »" value={draft.lifecycle.deferredCooldownDays} onChange={(deferredCooldownDays) => setDraft({ ...draft, lifecycle: { ...draft.lifecycle, deferredCooldownDays } })} />
+            <LifecycleDays label="Après expiration" value={draft.lifecycle.expiredCooldownDays} onChange={(expiredCooldownDays) => setDraft({ ...draft, lifecycle: { ...draft.lifecycle, expiredCooldownDays } })} max={90} />
+          </div>
+          <p className="muted" style={{ fontSize: 12 }}>Ces durées sont versionnées avec la règle. Une opportunité terminale n’est pas réémise avant la fin de son délai de refroidissement.</p>
+        </Panel>
         <div className="notice info"><ShieldCheck size={16} /><div><strong>Gouvernance</strong>Brouillon → validation → simulation → soumission → approbation (par un autre utilisateur) → publication. Le moteur n’exécute que les versions publiées.</div></div>
         {(create.error || update.error) && <p className="form-error"><CheckCircle2 size={14} /> {(create.error || update.error)?.message}</p>}
       </div>
     </div>
   </form>
+}
+
+function LifecycleDays({ label, value, onChange, max = 365 }: { label: string; value: number; onChange: (value: number) => void; max?: number }) {
+  return <label className="field">{label}<input className="input sm" type="number" min={1} max={max} required value={value} onChange={(event) => onChange(Number(event.target.value))} /><span className="hint">jours</span></label>
 }
 
 function ChipField({ legend, options, value, onChange }: { legend: string; options: string[]; value: string[]; onChange: (value: string[]) => void }) {

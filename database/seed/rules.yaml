@@ -29,6 +29,7 @@ opportunity_rules:
     when: Contacter dans les 1 à 3 mois.
     recommended_product_codes: [INVESTMENT_FINANCING, WORKING_CAPITAL_FACILITY]
     minimum_data_coverage: 0.83
+    lifecycle: {validity_days: 90, dismissed_cooldown_days: 30, converted_cooldown_days: 180, deferred_cooldown_days: 30, expired_cooldown_days: 7}
     all_conditions:
       - {key: inflow_growth_rate, operator: gt, value: 0.25, label: Inflow growth}
       - {key: supplier_payment_growth_rate, operator: gt, value: 0.20, label: Supplier payment growth}
@@ -43,6 +44,7 @@ opportunity_rules:
     when: Contacter dans les 3 mois.
     recommended_product_codes: [TRADE_FINANCE]
     minimum_data_coverage: 0.83
+    lifecycle: {validity_days: 90, dismissed_cooldown_days: 30, converted_cooldown_days: 180, deferred_cooldown_days: 30, expired_cooldown_days: 7}
     all_conditions:
       - {key: international_flow_growth_rate, operator: gt, value: 0.30, label: International flow growth}
       - {key: international_frequency_growth_rate, operator: gt, value: 0.10, label: International frequency growth}
@@ -57,6 +59,7 @@ opportunity_rules:
     when: Contacter dans le mois.
     recommended_product_codes: [CASH_MANAGEMENT, TERM_DEPOSIT, LIQUIDITY_INVESTMENT]
     minimum_data_coverage: 0.83
+    lifecycle: {validity_days: 60, dismissed_cooldown_days: 30, converted_cooldown_days: 180, deferred_cooldown_days: 30, expired_cooldown_days: 7}
     all_conditions:
       - {key: average_balance, operator: gt, value: 1000000, label: High average balance}
       - {key: surplus_day_ratio, operator: gte, value: 0.70, label: Persistent cash surplus}
@@ -71,6 +74,7 @@ opportunity_rules:
     when: Prise de contact relationnelle dans le mois.
     recommended_product_codes: [CASH_MANAGEMENT, WORKING_CAPITAL_FACILITY]
     minimum_data_coverage: 0.83
+    lifecycle: {validity_days: 30, dismissed_cooldown_days: 30, converted_cooldown_days: 180, deferred_cooldown_days: 30, expired_cooldown_days: 7}
     all_conditions:
       - {key: credit_utilization_change, operator: gt, value: 0.20, label: Increasing credit utilization}
     any_conditions:

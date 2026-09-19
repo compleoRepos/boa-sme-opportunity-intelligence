@@ -81,6 +81,11 @@ export function RuleDetailPage() {
           <dt>Confiance moyenne</dt><dd>à partir de {item.confidence.mediumThreshold ?? 60} %</dd>
           <dt>Segments</dt><dd>{item.scope.segment.map(label).join(', ')}</dd>
           <dt>Secteurs</dt><dd>{item.scope.sectors.map(label).join(', ')}</dd>
+          <dt>Validité</dt><dd>{item.lifecycle.validityDays} jours</dd>
+          <dt>Cooldown rejet</dt><dd>{item.lifecycle.dismissedCooldownDays} jours</dd>
+          <dt>Cooldown conversion</dt><dd>{item.lifecycle.convertedCooldownDays} jours</dd>
+          <dt>Cooldown « à revoir »</dt><dd>{item.lifecycle.deferredCooldownDays} jours</dd>
+          <dt>Cooldown expiration</dt><dd>{item.lifecycle.expiredCooldownDays} jours</dd>
           <dt>Auteur</dt><dd>{item.createdBy || '—'} · {formatDate(item.createdAt)}</dd>
           <dt>Dernière modification</dt><dd>{item.updatedBy || '—'} · {formatDate(item.updatedAt, true)}</dd>
         </dl>

@@ -110,6 +110,7 @@ class OpportunityEngine:
                     engine_version=self.config.engine_version,
                     rule_version=rule.version,
                     rule_set_version=self.config.rule_set_version,
+                    lifecycle_policy=rule.lifecycle.model_dump(mode="python"),
                 )
             )
         return tuple(candidates)

@@ -28,7 +28,7 @@ export const COMMERCIAL_CHOICES: CommercialChoice[] = [
   { id: 'offer', label: 'Offre créée', icon: <Check size={15} />, description: 'Une offre commerciale a été formalisée.', actionType: 'CREATE_FOLLOW_UP', outcome: 'OFFER_CREATED' },
   { id: 'converted', label: 'Converti', icon: <Trophy size={15} />, description: 'Souscription réalisée (nécessite un contact préalable).', actionType: 'MARK_CONVERTED', tone: 'success' },
   { id: 'not-interested', label: 'Non intéressé', icon: <CircleSlash size={15} />, description: 'L’opportunité est écartée avec le motif NON PERTINENT.', actionType: 'DISMISS_OPPORTUNITY', tone: 'danger' },
-  { id: 'later', label: 'À revoir', icon: <RotateCcw size={15} />, description: 'Suivi replanifié dans 30 jours.', actionType: 'CREATE_FOLLOW_UP', dueInDays: 30 },
+  { id: 'later', label: 'À revoir', icon: <RotateCcw size={15} />, description: 'Opportunité différée et non réémise pendant 30 jours.', actionType: 'DEFER_OPPORTUNITY', dueInDays: 30 },
 ]
 
 const isoInDays = (days?: number) => (days ? new Date(Date.now() + days * 86_400_000).toISOString() : undefined)

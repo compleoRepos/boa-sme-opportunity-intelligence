@@ -145,6 +145,10 @@ export interface Opportunity {
   generatedAt: string
   engineVersion?: string
   ruleVersion?: string
+  statusUpdatedAt?: string
+  statusReason?: string | null
+  expiresAt?: string | null
+  cooldownUntil?: string | null
   lastActionAt?: string | null
 }
 
@@ -175,10 +179,11 @@ export type ActionType =
   | 'DISMISS_OPPORTUNITY'
   | 'CONTACT_CUSTOMER'
   | 'CREATE_FOLLOW_UP'
+  | 'DEFER_OPPORTUNITY'
   | 'SCHEDULE_MEETING'
   | 'MARK_CONVERTED'
 
-export type Outcome = 'CONTACTED' | 'MEETING_SCHEDULED' | 'OFFER_CREATED' | 'CONVERTED' | 'REJECTED' | 'NOT_RELEVANT'
+export type Outcome = 'CONTACTED' | 'MEETING_SCHEDULED' | 'OFFER_CREATED' | 'CONVERTED' | 'REJECTED' | 'NOT_RELEVANT' | 'REVIEW_LATER'
 
 export interface OpportunityAction {
   actionId: string
@@ -190,6 +195,8 @@ export interface OpportunityAction {
   dueAt?: string | null
   note?: string | null
   outcome?: Outcome | null
+  transitionStatus?: 'NOT_REQUIRED' | 'PENDING' | 'APPLIED' | 'FAILED'
+  transitionError?: string | null
   createdAt: string
   createdBy?: string
   updatedAt?: string
@@ -458,6 +465,7 @@ export interface RuleConfig {
   version?: string
   ruleVersion?: string
   parameters?: RuleParameter[] | Record<string, string | number | boolean>
+  lifecyclePolicy?: RuleLifecyclePolicy
   updatedAt?: string
   updatedBy?: string
 }
@@ -495,7 +503,7 @@ export interface UpdateActionInput {
 
 export interface UpdateRuleInput {
   enabled?: boolean
-  parameters?: RuleParameter[] | Record<string, string | number | boolean>
+  parameters?: Record<string, string | number | boolean>
   justification: string
   effectiveAt?: string
 }
@@ -544,6 +552,14 @@ export interface RuleConfidenceConfiguration {
   mediumThreshold?: number
 }
 
+export interface RuleLifecyclePolicy {
+  validityDays: number
+  dismissedCooldownDays: number
+  convertedCooldownDays: number
+  deferredCooldownDays: number
+  expiredCooldownDays: number
+}
+
 export interface RuleDefinition {
   ruleId: string
   version: number | string
@@ -556,6 +572,7 @@ export interface RuleDefinition {
   logic: RuleLogic
   recommendation: RuleRecommendation
   confidence: RuleConfidenceConfiguration
+  lifecycle: RuleLifecyclePolicy
   createdBy?: string
   updatedBy?: string
   createdAt?: string
@@ -572,6 +589,7 @@ export interface SaveRuleInput {
   logic: RuleLogic
   recommendation: RuleRecommendation
   confidence: RuleConfidenceConfiguration
+  lifecycle: RuleLifecyclePolicy
   reason?: string
 }
 

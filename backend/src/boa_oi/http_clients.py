@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import os
+import time
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -18,39 +20,55 @@ from boa_oi.platform import Problem, auth_disabled, oidc_internal_issuer
 class ServiceTokenProvider:
     def __init__(self) -> None:
         self._token: str | None = None
+        self._expires_at = 0.0
+        self._refresh_lock = asyncio.Lock()
 
-    async def token(self) -> str | None:
+    async def token(self, *, force_refresh: bool = False) -> str | None:
         if auth_disabled():
             return None
-        if self._token:
+        if not force_refresh and self._token and time.monotonic() < self._expires_at:
             return self._token
-        client_id = os.getenv("OAUTH_CLIENT_ID")
-        client_secret = os.getenv("OAUTH_CLIENT_SECRET")
-        if not client_id or not client_secret:
-            raise Problem(
-                503,
-                "AUTH_CONFIGURATION_ERROR",
-                "Service OAuth credentials are not configured.",
-            )
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.post(
-                    f"{oidc_internal_issuer()}/protocol/openid-connect/token",
-                    data={
-                        "grant_type": "client_credentials",
-                        "client_id": client_id,
-                        "client_secret": client_secret,
-                    },
+        async with self._refresh_lock:
+            if not force_refresh and self._token and time.monotonic() < self._expires_at:
+                return self._token
+            client_id = os.getenv("OAUTH_CLIENT_ID")
+            client_secret = os.getenv("OAUTH_CLIENT_SECRET")
+            if not client_id or not client_secret:
+                raise Problem(
+                    503,
+                    "AUTH_CONFIGURATION_ERROR",
+                    "Service OAuth credentials are not configured.",
                 )
-                response.raise_for_status()
-        except (httpx.HTTPError, ValueError) as exc:
-            raise Problem(
-                503,
-                "AUTH_PROVIDER_UNAVAILABLE",
-                "A service token could not be obtained.",
-            ) from exc
-        self._token = str(response.json()["access_token"])
-        return self._token
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    response = await client.post(
+                        f"{oidc_internal_issuer()}/protocol/openid-connect/token",
+                        data={
+                            "grant_type": "client_credentials",
+                            "client_id": client_id,
+                            "client_secret": client_secret,
+                        },
+                    )
+                    response.raise_for_status()
+                payload = response.json()
+                token = payload["access_token"]
+                expires_in = max(float(payload.get("expires_in", 60)), 0.0)
+                if not isinstance(token, str) or not token:
+                    raise ValueError("access_token must be a non-empty string")
+            except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
+                raise Problem(
+                    503,
+                    "AUTH_PROVIDER_UNAVAILABLE",
+                    "A service token could not be obtained.",
+                ) from exc
+            self._token = token
+            self._expires_at = time.monotonic() + max(expires_in - 30.0, 0.0)
+            return self._token
+
+    def invalidate(self, token: str | None = None) -> None:
+        if token is None or self._token == token:
+            self._token = None
+            self._expires_at = 0.0
 
 
 _token_provider = ServiceTokenProvider()
@@ -81,6 +99,18 @@ async def service_request(
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.request(method, url, headers=headers, json=json, params=params)
+            if response.status_code == 401 and incoming_authorization is None and token:
+                _token_provider.invalidate(token)
+                token = await _token_provider.token()
+                if token:
+                    headers["Authorization"] = f"Bearer {token}"
+                response = await client.request(
+                    method,
+                    url,
+                    headers=headers,
+                    json=json,
+                    params=params,
+                )
     except httpx.TimeoutException as exc:
         raise Problem(504, "DEPENDENCY_TIMEOUT", "A dependent service timed out.") from exc
     except httpx.HTTPError as exc:

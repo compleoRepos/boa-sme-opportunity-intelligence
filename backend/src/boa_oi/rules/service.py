@@ -475,6 +475,16 @@ def rollback_rule(
 
 def serialize_version(version: RuleVersion) -> dict[str, Any]:
     result = dict(version.configuration_json)
+    result.setdefault(
+        "lifecycle",
+        {
+            "validityDays": 90,
+            "dismissedCooldownDays": 30,
+            "convertedCooldownDays": 180,
+            "deferredCooldownDays": 30,
+            "expiredCooldownDays": 7,
+        },
+    )
     result.update(
         {
             "version": version.version,
