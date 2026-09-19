@@ -1,10 +1,10 @@
-import { Activity, BriefcaseBusiness, Cpu, Database, FlaskConical, GitBranch, History, PackageSearch, RotateCcw, Settings2, ShieldCheck, SlidersHorizontal } from 'lucide-react'
+import { Activity, BriefcaseBusiness, Cpu, Database, FlaskConical, GitBranch, History, Languages, PackageSearch, RotateCcw, Settings2, ShieldCheck, SlidersHorizontal } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { formatDate, formatNumber, formatPercent, label, safeJson } from '../../api/format'
-import { useActions, useActiveModel, useDashboard, useEngine, useMlModels, useProducts, useRules, useUpdateRule } from '../../api/hooks'
+import { useActions, useActiveModel, useDashboard, useEngine, useLabelCatalog, useMlModels, useProducts, useRules, useUpdateLabel, useUpdateRule } from '../../api/hooks'
 import { useRuleAudit, useRuleSimulations, useStudioRules } from '../../api/ruleStudioHooks'
-import type { MlModel, RuleConfig, RuleLifecyclePolicy, RuleParameter } from '../../api/types'
+import type { LabelCatalogEntry, MlModel, RuleConfig, RuleLifecyclePolicy, RuleParameter } from '../../api/types'
 import { BreakdownBars } from '../../charts/BreakdownBars'
 import { CHART, OPPORTUNITY_COLORS, PRIORITY_COLORS } from '../../charts/theme'
 import { Badge, Button, EmptyState, ErrorState, Kpi, Modal, Panel, SkeletonStack, Tabs, useToast } from '../../ui'
@@ -36,6 +36,7 @@ export function BackOfficeHomePage() {
         { to: '/back-office/modeles', icon: Cpu, title: 'ML Governance', text: 'Registre des modèles, métriques, versions.' },
         { to: '/back-office/simulations', icon: FlaskConical, title: 'Simulations', text: 'Historique des simulations et impacts estimés.' },
         { to: '/back-office/audit', icon: ShieldCheck, title: 'Audit', text: 'Journal des règles et des actions commerciales.' },
+        { to: '/back-office/libelles', icon: Languages, title: 'Libellés', text: 'Terminologie française versionnée sans modifier les codes métier.' },
       ].map((card) => <Link key={card.to} to={card.to} className="panel interactive bo-card"><span className="kpi-icon"><card.icon size={20} /></span><div><strong>{card.title}</strong><span className="muted">{card.text}</span></div></Link>)}
     </section>
     <section className="grid cols-2">
@@ -158,4 +159,40 @@ export function AuditPage() {
     </div>
     <div className="notice neutral"><Database size={16} /><div><strong>Persisté côté services</strong>Audit des règles : rule-management-service · actions et outcomes : action-service · décisions moteur : opportunity-service (versions moteur et règle sur chaque opportunité). {rules.data ? `${rules.data.data.length} règle(s) · statuts ${rules.data.data.map((rule) => LIFECYCLE_LABELS[rule.status] || rule.status).join(', ')}` : ''}</div></div>
   </>
+}
+
+/* ------------------------------------------------------------------ Libellés */
+export function LabelsPage() {
+  const catalog = useLabelCatalog(true)
+  const [editing, setEditing] = useState<LabelCatalogEntry>()
+  const entries = catalog.data?.data || []
+  const namespaces = useMemo(() => [...new Set(entries.map((entry) => entry.namespace))], [entries])
+  return <>
+    <header className="page-head"><div><p className="eyebrow accent">Terminologie</p><h1>Libellés fonctionnels</h1><p className="subtitle">Le code technique reste stable. Chaque changement de texte français crée une version justifiée et immuable.</p></div></header>
+    {catalog.isPending ? <SkeletonStack rows={5} /> : catalog.isError ? <ErrorState error={catalog.error} onRetry={() => void catalog.refetch()} /> : <div className="stack">{namespaces.map((namespace) => <Panel key={namespace} eyebrow="Catalogue français" title={namespace} id={`labels-${namespace.toLowerCase()}`} flush><div className="table-wrap"><table className="table hover"><thead><tr><th>Code stable</th><th>Libellé affiché</th><th>Version</th><th>État</th><th>Action</th></tr></thead><tbody>{entries.filter((entry) => entry.namespace === namespace).map((entry) => <tr key={`${entry.namespace}-${entry.code}`}><td className="mono">{entry.code}</td><td><strong>{entry.label}</strong><small>{entry.justification}</small></td><td className="num">v{entry.version}</td><td><Badge value={entry.active ? 'ACTIVE' : 'INACTIVE'} /></td><td><Button size="sm" onClick={() => setEditing(entry)}>Modifier</Button></td></tr>)}</tbody></table></div></Panel>)}</div>}
+    {editing && <LabelEditor entry={editing} onClose={() => setEditing(undefined)} />}
+  </>
+}
+
+function LabelEditor({ entry, onClose }: { entry: LabelCatalogEntry; onClose: () => void }) {
+  const mutation = useUpdateLabel(entry.namespace, entry.code)
+  const toast = useToast()
+  const [value, setValue] = useState(entry.label)
+  const [active, setActive] = useState(entry.active)
+  const [justification, setJustification] = useState('')
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    mutation.mutate({ label: value, active, expectedVersion: entry.version, justification }, {
+      onSuccess: (updated) => { toast.push('success', 'Libellé versionné', `${updated.code} · v${updated.version}`); onClose() },
+      onError: (error) => toast.push('error', 'Modification refusée', error.message),
+    })
+  }
+  return <Modal title={`Modifier ${entry.code}`} onClose={onClose} footer={<><Button onClick={onClose}>Annuler</Button><Button variant="primary" type="submit" form="label-form" loading={mutation.isPending}>Créer la version</Button></>}>
+    <form id="label-form" className="stack" onSubmit={submit}>
+      <div className="notice neutral"><Languages size={16} /><div><strong>Code immuable</strong><span className="mono">{entry.namespace}.{entry.code}</span></div></div>
+      <label className="field">Libellé français<input className="input" required maxLength={180} value={value} onChange={(event) => setValue(event.target.value)} /></label>
+      <label className="checkbox"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Libellé actif</label>
+      <label className="field">Justification<textarea className="textarea" required minLength={8} maxLength={1000} rows={3} value={justification} onChange={(event) => setJustification(event.target.value)} placeholder="Motif métier auditable" /></label>
+    </form>
+  </Modal>
 }

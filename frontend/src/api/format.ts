@@ -1,4 +1,4 @@
-const labels: Record<string, string> = {
+const defaultLabels: Record<string, string> = {
   INVESTMENT_FINANCING: "Financement d’investissement",
   TRADE_FINANCE: 'Trade finance',
   CASH_INVESTMENT: 'Placement de trésorerie',
@@ -144,9 +144,15 @@ const labels: Record<string, string> = {
   'CASH_INVESTMENT_RULE': 'Placement de trésorerie',
 }
 
+let runtimeLabels: Record<string, string> = {}
+
+export const setRuntimeLabels = (values?: Record<string, string>) => {
+  runtimeLabels = values || {}
+}
+
 export const label = (value?: string | null) => {
   if (!value) return '—'
-  return labels[value] ?? value.replaceAll('_', ' ').toLocaleLowerCase('fr-FR').replace(/^./, (char) => char.toUpperCase())
+  return runtimeLabels[value] ?? defaultLabels[value] ?? value.replaceAll('_', ' ').toLocaleLowerCase('fr-FR').replace(/^./, (char) => char.toUpperCase())
 }
 
 export const formatPercent = (value?: number | null, digits = 0) =>

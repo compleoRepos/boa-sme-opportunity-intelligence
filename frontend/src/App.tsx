@@ -2,9 +2,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { configureApiAuth } from './api/client'
+import { setRuntimeLabels } from './api/format'
+import { useLabelCatalog } from './api/hooks'
 import { AuthProvider, useAuth } from './auth/AuthProvider'
 import { ProtectedRoute, RoleRoute, RuleStudioRoute } from './auth/ProtectedRoute'
-import { AuditPage, BackOfficeHomePage, EngineThresholdsPage, ModelsPage, SimulationsPage } from './features/backoffice/BackOfficePages'
+import { AuditPage, BackOfficeHomePage, EngineThresholdsPage, LabelsPage, ModelsPage, SimulationsPage } from './features/backoffice/BackOfficePages'
 import { BranchDashboardPage } from './features/branch/BranchDashboardPage'
 import { RmPortfolioPage } from './features/branch/RmPortfolioPage'
 import { CustomerSheetPage } from './features/customer/CustomerSheetPage'
@@ -38,9 +40,9 @@ const queryClient = new QueryClient({
 function ApiAuthBridge() {
   const auth = useAuth()
   const navigate = useNavigate()
-  useEffect(() => {
-    configureApiAuth(() => auth.token, () => navigate('/login', { replace: true }), () => auth.devPersonaHeader)
-  }, [auth.token, auth.devPersonaHeader, navigate])
+  configureApiAuth(() => auth.token, () => navigate('/login', { replace: true }), () => auth.devPersonaHeader)
+  const catalog = useLabelCatalog(false, auth.authenticated)
+  useEffect(() => setRuntimeLabels(auth.authenticated ? catalog.data?.labels : undefined), [auth.authenticated, catalog.data])
   return null
 }
 
@@ -85,6 +87,7 @@ function ApplicationRoutes() {
         <Route path="back-office/simulations" element={<RuleStudioRoute><SimulationsPage /></RuleStudioRoute>} />
         <Route path="back-office/modeles" element={<RuleStudioRoute><ModelsPage /></RuleStudioRoute>} />
         <Route path="back-office/audit" element={<RuleStudioRoute><AuditPage /></RuleStudioRoute>} />
+        <Route path="back-office/libelles" element={<RoleRoute roles={['ADMIN']}><LabelsPage /></RoleRoute>} />
         <Route path="rule-studio/*" element={<Navigate to="/back-office/regles" replace />} />
         <Route path="administration" element={<Navigate to="/back-office/seuils" replace />} />
         <Route path="*" element={<NotFoundPage />} />

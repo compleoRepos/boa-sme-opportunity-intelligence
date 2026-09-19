@@ -689,6 +689,44 @@ class RuleConfiguration(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     approved_by: Mapped[str] = mapped_column(String(120))
 
 
+class LabelCatalogEntry(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "label_catalog"
+    __table_args__ = (
+        UniqueConstraint("code", "locale"),
+        CheckConstraint("current_version > 0", name="positive_current_version"),
+        {"schema": "config"},
+    )
+    namespace: Mapped[str] = mapped_column(String(40))
+    code: Mapped[str] = mapped_column(String(100))
+    locale: Mapped[str] = mapped_column(String(10), default="fr-FR")
+    label: Mapped[str] = mapped_column(String(180))
+    current_version: Mapped[int] = mapped_column(Integer, default=1)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_by: Mapped[str] = mapped_column(String(120))
+    justification: Mapped[str] = mapped_column(Text)
+
+
+class LabelCatalogVersion(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "label_catalog_versions"
+    __table_args__ = (
+        UniqueConstraint("catalog_entry_id", "version"),
+        CheckConstraint("version > 0", name="positive_version"),
+        Index("ix_label_catalog_version_created", "catalog_entry_id", "created_at"),
+        {"schema": "config"},
+    )
+    catalog_entry_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("config.label_catalog.id", ondelete="RESTRICT")
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    label: Mapped[str] = mapped_column(String(180))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    created_by: Mapped[str] = mapped_column(String(120))
+    justification: Mapped[str] = mapped_column(Text)
+
+
 class Rule(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "rules"
     __table_args__ = (

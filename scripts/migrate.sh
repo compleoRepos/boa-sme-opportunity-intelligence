@@ -58,6 +58,9 @@ done
 compose exec -T postgres psql --set=ON_ERROR_STOP=1 --username "$POSTGRES_ADMIN_USER" --dbname "$POSTGRES_DB" <<'SQL'
 GRANT USAGE ON SCHEMA customer, analytics TO rule_management_service;
 GRANT SELECT ON ALL TABLES IN SCHEMA customer, analytics TO rule_management_service;
+GRANT USAGE ON SCHEMA config TO rule_management_service;
+GRANT SELECT, INSERT, UPDATE ON config.label_catalog TO rule_management_service;
+GRANT SELECT, INSERT ON config.label_catalog_versions TO rule_management_service;
 REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA customer, analytics, signal, rule FROM feature_store_service;
 REVOKE USAGE ON SCHEMA customer, analytics, signal, rule FROM feature_store_service;
 REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA customer, analytics, signal, rule, feature_store FROM ml_engine_service;

@@ -37,6 +37,8 @@ def upgrade():
         "scoring_policies",
         "scoring_policy_versions",
         "scoring_policy_audit_logs",
+        "label_catalog",
+        "label_catalog_versions",
     }
     owned = [
         table

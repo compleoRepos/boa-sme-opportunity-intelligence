@@ -334,6 +334,43 @@ async def json_body(request: Request) -> Any:
         raise Problem(400, "VALIDATION_ERROR", "The request body must be valid JSON.") from exc
 
 
+@app.get("/api/v1/labels", tags=["Labels"])
+async def label_catalog(
+    request: Request,
+    _principal: Principal = Depends(require_roles(*READ_ROLES)),
+) -> JSONResponse:
+    return await proxy(request, "rule-management", "labels")
+
+
+@app.get("/api/v1/admin/labels/{namespace}/{code}/versions", tags=["Labels"])
+async def label_catalog_versions(
+    namespace: str,
+    code: str,
+    request: Request,
+    _principal: Principal = Depends(require_roles("ADMIN")),
+) -> JSONResponse:
+    return await proxy(
+        request,
+        "rule-management",
+        f"labels/{namespace}/{code}/versions",
+    )
+
+
+@app.put("/api/v1/admin/labels/{namespace}/{code}", tags=["Labels"])
+async def update_label_catalog(
+    namespace: str,
+    code: str,
+    request: Request,
+    _principal: Principal = Depends(require_roles("ADMIN")),
+) -> JSONResponse:
+    return await proxy(
+        request,
+        "rule-management",
+        f"labels/{namespace}/{code}",
+        body=await json_body(request),
+    )
+
+
 @app.get("/api/v1/admin/portfolio-assignments", tags=["Portfolio synchronization"])
 async def portfolio_assignment_history(
     request: Request,

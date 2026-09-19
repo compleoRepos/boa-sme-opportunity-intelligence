@@ -12,6 +12,8 @@ import type {
   EngineInfo,
   Explanation,
   FinancialMetric,
+  LabelCatalogEntry,
+  LabelCatalogResponse,
   ListQuery,
   MlModel,
   Opportunity,
@@ -126,6 +128,23 @@ export const useEngine = () => useQuery({
   queryKey: ['admin', 'engine'],
   queryFn: () => apiRequest<EngineInfo>('/api/v1/admin/engine'),
 })
+
+export const useLabelCatalog = (includeInactive = false, enabled = true) => useQuery({
+  queryKey: ['labels', includeInactive],
+  queryFn: () => apiRequest<LabelCatalogResponse>(`/api/v1/labels${includeInactive ? '?includeInactive=true' : ''}`),
+  enabled,
+})
+
+export function useUpdateLabel(namespace: string, code: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { label: string; active: boolean; expectedVersion: number; justification: string }) => apiRequest<LabelCatalogEntry>(
+      `/api/v1/admin/labels/${encodeURIComponent(namespace)}/${encodeURIComponent(code)}`,
+      { method: 'PUT', body: JSON.stringify(input) },
+    ),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['labels'] }),
+  })
+}
 
 export function useCreateAction(opportunityId: string) {
   const queryClient = useQueryClient()

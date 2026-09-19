@@ -1,7 +1,7 @@
 # Contrats API-first — BOA SME Opportunity Intelligence
 
 **Statut :** contrat cible du MVP  
-**Version du contrat :** `1.4.0`
+**Version du contrat :** `1.5.0`
 **Préfixe public :** `/api/v1`  
 **Préfixe interne :** `/internal/v1`  
 **Format :** REST/JSON et XLSX, OpenAPI 3.0
@@ -1313,3 +1313,25 @@ Les chaînes qui pourraient être interprétées comme une formule Excel sont ne
 ## Référence des exports Excel
 
 [11]: ./lots/LOT-04-EXPORTS-EXCEL.md "Rapport de validation du lot 4 — exports Excel"
+
+## 20. Contrats implémentés — catalogue de libellés
+
+### 20.1 Lecture runtime
+
+`GET /api/v1/labels` est accessible aux rôles autorisés à utiliser le produit. La réponse contient la locale, un dictionnaire `code → libellé` optimisé pour l’interface et les métadonnées de chaque entrée. Le frontend charge ce dictionnaire après l’initialisation de l’authentification. Si le service est temporairement indisponible, il conserve son dictionnaire français embarqué.
+
+Le catalogue change uniquement le texte affiché. Il ne modifie jamais les codes stables tels que `OPEN`, `P1`, `TRADE_FINANCE` ou `CONTACT_CUSTOMER`. Les règles, filtres, historiques, exports et intégrations continuent d’échanger ces codes.
+
+### 20.2 Version administrée
+
+`PUT /api/v1/admin/labels/{namespace}/{code}` exige le rôle `ADMIN`. La charge utile contient `label`, `active`, `expectedVersion` et une `justification` de huit caractères au minimum. La version attendue est comparée sous verrou SQL. Une version obsolète retourne `409 LABEL_VERSION_CONFLICT` au lieu d’écraser la modification d’un autre administrateur. Une modification réelle incrémente `current_version`, met à jour l’entrée courante et ajoute une ligne immuable dans `config.label_catalog_versions`. Le rejeu du même texte et du même état est sans effet lorsque sa version attendue est courante.
+
+`GET /api/v1/admin/labels/{namespace}/{code}/versions` retourne l’historique en ordre décroissant. La migration `0013_label_catalog` installe des triggers PostgreSQL qui refusent `UPDATE`, `DELETE` et `TRUNCATE` sur l’historique. Comme le dictionnaire runtime est indexé par code, `(code, locale)` est unique en base, y compris entre namespaces. Le pilote fournit vingt libellés initiaux répartis entre types d’opportunité, actions, statuts, priorités et horizons.
+
+### 20.3 Interface Back Office
+
+La page `/back-office/libelles` est réservée à l’administrateur. Elle affiche les codes immuables, le texte courant, la version, l’état actif et la justification. Toute modification passe par un formulaire qui exige une justification. Le parcours E2E modifie puis restaure un libellé et vérifie les deux incréments de version.
+
+## Référence du catalogue de libellés
+
+[12]: ./lots/LOT-05-LIBELLES-ADMINISTRABLES.md "Rapport de validation du lot 5 — libellés administrables"

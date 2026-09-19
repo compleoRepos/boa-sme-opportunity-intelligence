@@ -3,12 +3,23 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastapi import Depends, Query, Request, status
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from boa_oi.models.entities import Customer, MetricSnapshot, Rule, RuleAuditLog, RuleVersion
+from boa_oi.models.entities import (
+    Customer,
+    LabelCatalogEntry,
+    LabelCatalogVersion,
+    MetricSnapshot,
+    Rule,
+    RuleAuditLog,
+    RuleVersion,
+)
 from boa_oi.platform import (
+    READ_ROLES,
     Principal,
+    Problem,
     create_service_app,
     decode_cursor,
     get_session,
@@ -51,6 +62,149 @@ RULE_READ_ROLES = (
 )
 RULE_AUTHOR_ROLES = ("BUSINESS_ANALYST", "ADMIN", "SERVICE")
 RULE_APPROVER_ROLES = ("RULE_APPROVER", "ADMIN", "SERVICE")
+
+
+class LabelUpdate(BaseModel):
+    label: str = Field(min_length=1, max_length=180)
+    active: bool = True
+    expectedVersion: int = Field(ge=1)
+    justification: str = Field(min_length=8, max_length=1_000)
+
+    @field_validator("label", "justification")
+    @classmethod
+    def non_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("must not be blank")
+        return stripped
+
+
+def _serialize_label(entry: LabelCatalogEntry) -> dict[str, Any]:
+    return {
+        "namespace": entry.namespace,
+        "code": entry.code,
+        "locale": entry.locale,
+        "label": entry.label,
+        "active": entry.active,
+        "version": entry.current_version,
+        "updatedAt": entry.updated_at.isoformat(),
+        "updatedBy": entry.updated_by,
+        "justification": entry.justification,
+    }
+
+
+@app.get(
+    "/internal/v1/labels",
+    dependencies=[Depends(require_roles(*READ_ROLES))],
+    tags=["Labels"],
+)
+def list_labels(
+    request: Request,
+    locale: str = "fr-FR",
+    include_inactive: Annotated[bool, Query(alias="includeInactive")] = False,
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    reject_unknown_filters(request, {"locale", "includeInactive"})
+    stmt = select(LabelCatalogEntry).where(LabelCatalogEntry.locale == locale)
+    if not include_inactive:
+        stmt = stmt.where(LabelCatalogEntry.active.is_(True))
+    entries = list(
+        session.scalars(stmt.order_by(LabelCatalogEntry.namespace, LabelCatalogEntry.code))
+    )
+    return {
+        "locale": locale,
+        "labels": {entry.code: entry.label for entry in entries},
+        "data": [_serialize_label(entry) for entry in entries],
+    }
+
+
+@app.get(
+    "/internal/v1/labels/{namespace}/{code}/versions",
+    dependencies=[Depends(require_roles("ADMIN"))],
+    tags=["Labels"],
+)
+def label_versions(
+    namespace: str,
+    code: str,
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    entry = session.scalar(
+        select(LabelCatalogEntry).where(
+            LabelCatalogEntry.namespace == namespace.upper(),
+            LabelCatalogEntry.code == code.upper(),
+            LabelCatalogEntry.locale == "fr-FR",
+        )
+    )
+    if entry is None:
+        raise not_found("Label")
+    versions = list(
+        session.scalars(
+            select(LabelCatalogVersion)
+            .where(LabelCatalogVersion.catalog_entry_id == entry.id)
+            .order_by(LabelCatalogVersion.version.desc())
+        )
+    )
+    return {
+        "data": [
+            {
+                "version": item.version,
+                "label": item.label,
+                "active": item.active,
+                "createdAt": item.created_at.isoformat(),
+                "createdBy": item.created_by,
+                "justification": item.justification,
+            }
+            for item in versions
+        ],
+        "meta": {"totalCount": len(versions)},
+    }
+
+
+@app.put("/internal/v1/labels/{namespace}/{code}", tags=["Labels"])
+def update_label(
+    namespace: str,
+    code: str,
+    payload: LabelUpdate,
+    session: Session = Depends(get_session),
+    principal: Principal = Depends(require_roles("ADMIN")),
+) -> dict[str, Any]:
+    entry = session.scalar(
+        select(LabelCatalogEntry)
+        .where(
+            LabelCatalogEntry.namespace == namespace.upper(),
+            LabelCatalogEntry.code == code.upper(),
+            LabelCatalogEntry.locale == "fr-FR",
+        )
+        .with_for_update()
+    )
+    if entry is None:
+        raise not_found("Label")
+    if entry.current_version != payload.expectedVersion:
+        raise Problem(
+            409,
+            "LABEL_VERSION_CONFLICT",
+            f"Label version {entry.current_version} is current; refresh before updating.",
+        )
+    if entry.label == payload.label and entry.active == payload.active:
+        return _serialize_label(entry)
+    actor = _principal(principal)
+    entry.current_version += 1
+    entry.label = payload.label
+    entry.active = payload.active
+    entry.updated_by = actor
+    entry.justification = payload.justification
+    session.add(
+        LabelCatalogVersion(
+            catalog_entry_id=entry.id,
+            version=entry.current_version,
+            label=payload.label,
+            active=payload.active,
+            created_by=actor,
+            justification=payload.justification,
+        )
+    )
+    session.flush()
+    return _serialize_label(entry)
 
 
 def _principal(principal: Principal) -> str:

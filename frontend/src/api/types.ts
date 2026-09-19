@@ -703,3 +703,31 @@ export interface RuleLifecycleInput {
   reason: string
   version?: number | string
 }
+
+
+export interface LabelCatalogEntry {
+  namespace: string
+  code: string
+  locale: string
+  label: string
+  active: boolean
+  version: number
+  updatedAt: string
+  updatedBy: string
+  justification: string
+}
+
+export interface LabelCatalogResponse {
+  locale: string
+  labels: Record<string, string>
+  data: LabelCatalogEntry[]
+}
+
+export interface LabelCatalogVersion {
+  version: number
+  label: string
+  active: boolean
+  createdAt: string
+  createdBy: string
+  justification: string
+}
