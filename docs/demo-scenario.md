@@ -32,3 +32,7 @@
 [1]: ./ux-architecture.md "Architecture UX"
 [2]: ./business-rules.md "Moteur déterministe d’intelligence d’opportunités"
 [3]: ../tests/e2e "Parcours E2E Playwright"
+
+## Vidéo de démonstration
+
+`scripts/record-demo.cjs` rejoue le parcours ci-dessus dans un Chromium piloté par Playwright (curseur visible, sous-titres injectés dans la page, 1440×900) et produit un fichier `.webm` par acte dans `.local-stack/video/`. Assemblage : convertir chaque segment en H.264 (`ffmpeg -i acteN.webm -c:v libx264 -crf 20 -pix_fmt yuv420p segN.mp4`), ajouter les cartons de titre et de fin, puis concaténer avec le demuxer `concat`. La base doit être dans l'état initial (aucune action commerciale, règles `RULE-*` de test supprimées) pour que le compteur « Actions à traiter » passe bien de 0 à 1.
