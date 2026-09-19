@@ -151,8 +151,8 @@
 .badge.warning { background: var(--amber-100); color: var(--amber-700); }
 .badge.danger { background: var(--red-100); color: var(--red-700); }
 .badge.info { background: var(--blue-100); color: var(--blue-700); }
-.badge.violet { background: var(--violet-100); color: var(--violet-600); }
-.badge.teal { background: var(--teal-100); color: var(--teal-600); }
+.badge.violet { background: var(--violet-100); color: var(--violet-700); }
+.badge.teal { background: var(--teal-100); color: var(--teal-700); }
 .badge.neutral { background: var(--ink-100); color: var(--ink-600); }
 .badge.outline { background: transparent; border-color: var(--border-strong); color: var(--ink-600); }
 .badge.navy { background: var(--navy-900); color: #fff; }
@@ -191,6 +191,7 @@
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-1);
+  min-width: 0;
 }
 
 .panel.flush {
@@ -414,6 +415,8 @@
   gap: var(--sp-1);
   border-bottom: 1px solid var(--border);
   position: relative;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .tabs.pill {
@@ -1558,4 +1561,42 @@
   border: 1px solid var(--border-strong);
   background: var(--surface);
   color: var(--ink-600);
+}
+
+@media (max-width: 600px) {
+  .panel-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .panel-head .panel-tools {
+    width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .panel-body {
+    padding-right: var(--sp-4);
+    padding-left: var(--sp-4);
+  }
+
+  .tip-bubble {
+    position: fixed;
+    right: var(--sp-4);
+    bottom: var(--sp-4);
+    left: var(--sp-4);
+    width: auto;
+    max-width: none;
+    transform: translateY(4px);
+  }
+
+  .tip:hover .tip-bubble,
+  .tip:focus-within .tip-bubble {
+    transform: translateY(0);
+  }
+
+  .tip-bubble::after {
+    display: none;
+  }
 }

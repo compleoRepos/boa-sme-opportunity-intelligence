@@ -1245,6 +1245,25 @@ body[data-demo-target="models"] [data-demo="models"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .sheet-identity {
+    width: 100%;
+    align-items: flex-start;
+  }
+
+  .sheet-head h1 {
+    overflow-wrap: anywhere;
+  }
+
+  .sheet-actions {
+    width: 100%;
+    max-width: none;
+    flex-wrap: wrap;
+  }
+
+  .sheet-actions .row {
+    flex-wrap: wrap;
+  }
+
   .breakdown-row {
     grid-template-columns: 100px 1fr auto;
   }

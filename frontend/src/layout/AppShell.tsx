@@ -5,6 +5,7 @@ import { useRelationshipManagerDashboard } from '../api/hooks'
 import { initials } from '../api/format'
 import { useAuth } from '../auth/AuthProvider'
 import { DemoLauncher } from '../features/demo/DemoGuide'
+import { useDialogA11y } from '../ui/useDialogA11y'
 import { useBreadcrumbs } from './breadcrumbs'
 
 export function AppShell() {
@@ -12,9 +13,15 @@ export function AppShell() {
   const navigate = useNavigate()
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [mobileViewport, setMobileViewport] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [search, setSearch] = useState('')
   const profileRef = useRef<HTMLDivElement>(null)
+  const mainRef = useRef<HTMLDivElement>(null)
+  const skipLinkRef = useRef<HTMLAnchorElement>(null)
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const mobileModal = mobileViewport && mobileOpen
+  const sidebarRef = useDialogA11y<HTMLElement>(() => setMobileOpen(false), { active: mobileModal, inertAppRoot: false })
   const isBranchManager = auth.hasRole('BRANCH_MANAGER')
   const isRm = auth.hasRole('RELATIONSHIP_MANAGER') && !isBranchManager
   const canBackOffice = auth.hasRole('ADMIN') || auth.hasRole('BUSINESS_ANALYST') || auth.hasRole('RULE_APPROVER') || auth.hasRole('DATA_ANALYST')
@@ -22,6 +29,43 @@ export function AppShell() {
   const crumbs = useBreadcrumbs()
 
   useEffect(() => { setMobileOpen(false); setProfileOpen(false) }, [location.pathname])
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 860px)')
+    const update = () => setMobileViewport(media.matches)
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+  useEffect(() => {
+    if (!mobileModal) return
+    const main = mainRef.current
+    const skipLink = skipLinkRef.current
+    const previousMainAriaHidden = main?.getAttribute('aria-hidden')
+    const previousMainInert = main?.inert ?? false
+    const previousSkipAriaHidden = skipLink?.getAttribute('aria-hidden')
+    const previousSkipInert = skipLink?.inert ?? false
+    if (main) {
+      main.inert = true
+      main.setAttribute('aria-hidden', 'true')
+    }
+    if (skipLink) {
+      skipLink.inert = true
+      skipLink.setAttribute('aria-hidden', 'true')
+    }
+    return () => {
+      if (main) {
+        main.inert = previousMainInert
+        if (previousMainAriaHidden == null) main.removeAttribute('aria-hidden')
+        else main.setAttribute('aria-hidden', previousMainAriaHidden)
+      }
+      if (skipLink) {
+        skipLink.inert = previousSkipInert
+        if (previousSkipAriaHidden == null) skipLink.removeAttribute('aria-hidden')
+        else skipLink.setAttribute('aria-hidden', previousSkipAriaHidden)
+      }
+      menuButtonRef.current?.focus()
+    }
+  }, [mobileModal])
   useEffect(() => {
     if (!profileOpen) return
     const onClick = (event: MouseEvent) => { if (!profileRef.current?.contains(event.target as Node)) setProfileOpen(false) }
@@ -68,8 +112,9 @@ export function AppShell() {
   }
 
   return <div className="app">
-    {mobileOpen && <button className="sidebar-scrim" aria-label="Fermer le menu" onClick={() => setMobileOpen(false)} />}
-    <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
+    <a ref={skipLinkRef} className="skip-link" href="#main">Aller au contenu principal</a>
+    {mobileOpen && <div className="sidebar-scrim" aria-hidden="true" onClick={() => setMobileOpen(false)} />}
+    <aside ref={sidebarRef} id="primary-navigation" className={`sidebar ${mobileOpen ? 'open' : ''}`} role={mobileViewport ? 'dialog' : undefined} aria-modal={mobileViewport && mobileOpen ? true : undefined} aria-label={mobileViewport ? 'Menu principal' : undefined} inert={mobileViewport && !mobileOpen ? true : undefined}>
       <div className="brand">
         <span className="brand-mark" aria-hidden="true">BOA</span>
         <div><strong>BANK OF AFRICA</strong><small>SME Opportunity Intelligence</small></div>
@@ -86,9 +131,9 @@ export function AppShell() {
       </div>
     </aside>
 
-    <div className="main">
+    <div ref={mainRef} className="main">
       <header className="topbar">
-        <button type="button" className="btn icon menu-btn" onClick={() => setMobileOpen(true)} aria-label="Ouvrir le menu"><Menu size={18} /></button>
+        <button ref={menuButtonRef} type="button" className="btn icon menu-btn" onClick={() => setMobileOpen(true)} aria-label="Ouvrir le menu" aria-controls="primary-navigation" aria-expanded={mobileOpen}><Menu size={18} /></button>
         <nav className="crumbs" aria-label="Fil d’Ariane">
           {crumbs.map((crumb, index) => <span key={`${crumb.label}-${index}`} className="row" style={{ gap: 6 }}>
             {index > 0 && <ChevronRight size={14} />}
@@ -114,7 +159,7 @@ export function AppShell() {
           </div>}
         </div>
       </header>
-      <main className="content" id="main"><Outlet /></main>
+      <main className="content" id="main" tabIndex={-1}><Outlet /></main>
     </div>
   </div>
 }

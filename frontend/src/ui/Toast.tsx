@@ -1,5 +1,6 @@
 import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react'
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 type ToastKind = 'success' | 'error' | 'info'
 interface ToastItem { id: number; kind: ToastKind; title: string; detail?: string }
@@ -19,9 +20,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const api = useMemo(() => ({ push }), [push])
   return <ToastContext.Provider value={api}>
     {children}
-    <div className="toast-stack" aria-live="polite" aria-atomic="false">
-      {items.map((item) => { const Icon = icons[item.kind]; return <div className={`toast ${item.kind}`} key={item.id} role="status"><Icon size={18} /><div><strong>{item.title}</strong>{item.detail && <span>{item.detail}</span>}</div><button type="button" onClick={() => dismiss(item.id)} aria-label="Fermer la notification"><X size={14} /></button></div> })}
-    </div>
+    {createPortal(<div className="toast-stack" aria-live="polite" aria-atomic="false">
+      {items.map((item) => { const Icon = icons[item.kind]; return <div className={`toast ${item.kind}`} key={item.id} role="status"><Icon size={18} /><div><strong>{item.title}</strong>{item.detail && <span>{item.detail}</span>}</div><button type="button" onClick={() => dismiss(item.id)} aria-label="Fermer la notification" tabIndex={document.body.classList.contains('dialog-open') ? -1 : 0}><X size={14} /></button></div> })}
+    </div>, document.body)}
   </ToastContext.Provider>
 }
 

@@ -59,7 +59,10 @@ test('cockpit CC : dashboard → fiche PME → opportunité → action → dashb
   await page.locator('#choice-form textarea').fill('Contact réalisé dans le parcours E2E')
   await page.getByRole('button', { name: 'Enregistrer' }).click()
   await expect(page.locator('.toast.success')).toContainText('Action enregistrée')
-  await drawer.getByRole('tab', { name: /Historique/ }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(1)
+  const historyTab = drawer.getByRole('tab', { name: /Historique/ })
+  await historyTab.focus()
+  await historyTab.press('Enter')
   await expect(drawer.locator('.timeline')).toContainText('Contact réalisé dans le parcours E2E')
   await page.keyboard.press('Escape')
 

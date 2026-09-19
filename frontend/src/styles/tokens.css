@@ -42,8 +42,10 @@
   --red-600: #c0392b;
   --red-100: #fbe3e0;
   --violet-600: #6d5ac7;
+  --violet-700: #513da8;
   --violet-100: #ebe7fa;
   --teal-600: #0f8a8a;
+  --teal-700: #086466;
   --teal-100: #dcf3f3;
 
   /* Surfaces */
@@ -54,8 +56,8 @@
   --border: #e2e8f0;
   --border-strong: #cbd5e1;
   --text: var(--ink-900);
-  --text-muted: var(--ink-500);
-  --text-faint: var(--ink-400);
+  --text-muted: var(--ink-600);
+  --text-faint: var(--ink-600);
   --text-inverse: #ffffff;
   --accent: var(--blue-600);
   --accent-hover: var(--blue-700);
@@ -63,11 +65,11 @@
   --focus-ring: 0 0 0 3px rgba(47, 114, 230, 0.35);
 
   /* Priorités & confiance */
-  --p1: var(--red-600);
+  --p1: var(--red-700);
   --p1-soft: var(--red-100);
-  --p2: var(--amber-600);
+  --p2: var(--amber-700);
   --p2-soft: var(--amber-100);
-  --p3: var(--blue-600);
+  --p3: var(--blue-700);
   --p3-soft: var(--blue-100);
   --p4: var(--ink-500);
   --p4-soft: var(--ink-100);

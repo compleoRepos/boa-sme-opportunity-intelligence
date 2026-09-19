@@ -6,7 +6,7 @@ import { useCustomers, useEngine, useProducts } from '../../api/hooks'
 import { useRuleAudit, useRuleLifecycle, useRuleSimulations, useRuleVersions, useSimulateRule, useStudioRule, useTestRule, useValidateRule } from '../../api/ruleStudioHooks'
 import type { RuleLifecycleInput, RuleSimulationResult, RuleStatus, RuleTestResult } from '../../api/types'
 import { useAuth } from '../../auth/AuthProvider'
-import { Badge, Button, EmptyState, ErrorState, Modal, Panel, SkeletonStack, Stepper, Tabs, useToast } from '../../ui'
+import { Badge, Button, EmptyState, ErrorState, Modal, Panel, SkeletonStack, Stepper, Tabs, tabId, useToast } from '../../ui'
 import { ReadableRule } from './RuleBlocks'
 import { LIFECYCLE, LIFECYCLE_LABELS, countConditions } from './ruleModel'
 import { SimulationForm, SimulationProgress, SimulationResults } from './SimulationPanel'
@@ -92,8 +92,9 @@ export function RuleDetailPage() {
       </Panel>
     </div>
 
-    <Tabs value={tab} onChange={(id) => setTab(id as typeof tab)} ariaLabel="Outils de la règle" items={[{ id: 'simulation', label: 'Simulation & impact', icon: <Beaker size={14} />, count: simulations.data?.simulations?.length }, { id: 'test', label: 'Tester sur une PME', icon: <ShieldCheck size={14} /> }, { id: 'history', label: 'Versions & audit', icon: <RotateCcw size={14} />, count: versions.data?.data.length }]} />
+    <Tabs value={tab} onChange={(id) => setTab(id as typeof tab)} ariaLabel="Outils de la règle" panelId="rule-tools-panel" items={[{ id: 'simulation', label: 'Simulation & impact', icon: <Beaker size={14} />, count: simulations.data?.simulations?.length }, { id: 'test', label: 'Tester sur une PME', icon: <ShieldCheck size={14} /> }, { id: 'history', label: 'Versions & audit', icon: <RotateCcw size={14} />, count: versions.data?.data.length }]} />
 
+    <div id="rule-tools-panel" role="tabpanel" aria-labelledby={tabId('rule-tools-panel', tab)}>
     {tab === 'simulation' && <Panel eyebrow="Simulation historique" title="Impact estimé sur le portefeuille" id="simulation" tools={isAnalyst && ['VALIDATED', 'SIMULATED'].includes(status) ? <SimulationForm rule={item} asOf={engine.data?.lastRunAt} pending={simulate.isPending} onSubmit={(input) => simulate.mutate(input, { onError: (error) => toast.push('error', 'Simulation refusée', error.message) })} /> : <span className="muted" style={{ fontSize: 12 }}>{status === 'DRAFT' ? 'Validez la règle avant de simuler.' : 'Dernière simulation enregistrée'}</span>}>
       {simulate.isPending ? <SimulationProgress /> : simulate.isError ? <ErrorState error={simulate.error} compact /> : <SimulationResults result={lastSimulation} />}
     </Panel>}
@@ -106,6 +107,7 @@ export function RuleDetailPage() {
       <Panel eyebrow="Versions" title="Historique des versions" id="versions">{versions.isPending ? <SkeletonStack rows={2} kind="text" /> : !versions.data?.data.length ? <EmptyState compact title="Aucune version" /> : <div className="timeline">{versions.data.data.map((version) => <article key={String(version.version)} className={['ACTIVE', 'PUBLISHED'].includes(version.status) ? 'done' : ''}><strong>Version {version.version} <Badge value={version.status}>{LIFECYCLE_LABELS[version.status] || version.status}</Badge></strong><small>{formatDate(version.createdAt, true)} · {version.createdBy || '—'}</small>{version.reason && <p>{version.reason}</p>}{isApprover && String(version.version) !== String(item.version) && <Button size="sm" variant="ghost" icon={<RotateCcw size={13} />} onClick={() => setDialog({ action: 'rollback', version: version.version })}>Restaurer cette version</Button>}</article>)}</div>}</Panel>
       <Panel eyebrow="Audit" title="Journal des changements" id="audit">{audit.isPending ? <SkeletonStack rows={2} kind="text" /> : !audit.data?.data.length ? <EmptyState compact title="Aucune trace d’audit" /> : <div className="timeline">{audit.data.data.map((entry) => <article key={entry.id}><strong><Badge value={entry.action} /> version {entry.ruleVersion}</strong><small>{formatDate(entry.timestamp, true)} par {entry.userId}</small>{entry.reason && <p>{entry.reason}</p>}{(entry.oldValue !== undefined || entry.newValue !== undefined) && <details><summary className="muted" style={{ fontSize: 12, cursor: 'pointer' }}>Valeurs auditées</summary><pre className="mono" style={{ whiteSpace: 'pre-wrap', fontSize: 11 }}>{safeJson({ avant: entry.oldValue, après: entry.newValue })}</pre></details>}</article>)}</div>}</Panel>
     </div>}
+    </div>
 
     {dialog && <LifecycleDialog action={dialog.action} version={dialog.version} currentVersion={activeVersion?.version} newVersion={item.version} impact={lastSimulation} pending={lifecycle[dialog.action].isPending} error={lifecycle[dialog.action].error} onClose={() => { lifecycle[dialog.action].reset(); setDialog(undefined) }} onConfirm={(input) => run(dialog.action, input)} />}
   </>

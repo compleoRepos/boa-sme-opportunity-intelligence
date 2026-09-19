@@ -8,7 +8,7 @@ import { useAuth } from '../../auth/AuthProvider'
 import { ActivityChart } from '../../charts/ActivityChart'
 import { Sparkline } from '../../charts/Sparkline'
 import { SERIES } from '../../charts/theme'
-import { Badge, Button, Delta, EmptyState, ErrorState, Panel, PriorityBadge, Ring, Segmented, Skeleton, SkeletonStack, Tabs, Tooltip } from '../../ui'
+import { Badge, Button, Delta, EmptyState, ErrorState, Panel, PriorityBadge, Ring, Segmented, Skeleton, SkeletonStack, Tabs, tabId, Tooltip } from '../../ui'
 import { ActionChoiceGrid } from './ActionPanel'
 import { OpportunityDrawer } from './OpportunityDrawer'
 import { PropensityDrawer } from './PropensityDrawer'
@@ -124,11 +124,13 @@ export function CustomerSheetPage() {
           </div>}
         </Panel>
 
-        <Panel eyebrow="Activité" title={mode === 'flows' ? 'Encaissements et décaissements' : mode === 'volume' ? 'Activité transactionnelle' : 'Flux internationaux'} id="activity" tools={<div className="row" style={{ gap: 8 }}><Tabs pill value={mode} onChange={(id) => setMode(id as Mode)} items={[{ id: 'flows', label: 'Flux' }, { id: 'volume', label: 'Volume' }, { id: 'international', label: 'International' }]} /><Segmented value={period} onChange={setPeriod} options={PERIODS.map((item) => ({ value: item.value, label: item.label }))} ariaLabel="Période" /></div>}>
+        <Panel eyebrow="Activité" title={mode === 'flows' ? 'Encaissements et décaissements' : mode === 'volume' ? 'Activité transactionnelle' : 'Flux internationaux'} id="activity" tools={<div className="row" style={{ gap: 8 }}><Tabs pill value={mode} onChange={(id) => setMode(id as Mode)} panelId="activity-chart-panel" items={[{ id: 'flows', label: 'Flux' }, { id: 'volume', label: 'Volume' }, { id: 'international', label: 'International' }]} /><Segmented value={period} onChange={setPeriod} options={PERIODS.map((item) => ({ value: item.value, label: item.label }))} ariaLabel="Période" /></div>}>
+          <div id="activity-chart-panel" role="tabpanel" aria-labelledby={tabId('activity-chart-panel', mode)}>
           {activity.isPending ? <Skeleton kind="block" style={{ height: 240 }} /> : activity.isError ? <ErrorState error={activity.error} compact /> : <>
             <ActivityChart points={activity.data?.points || []} granularity={activity.data?.granularity || selectedPeriod.granularity} mode={mode} />
             <div className="legend" style={{ marginTop: 8 }}>{mode === 'flows' ? <><span><i style={{ background: SERIES.inflow }} /> Encaissements</span><span><i style={{ background: SERIES.outflow }} /> Décaissements</span></> : mode === 'volume' ? <span><i style={{ background: SERIES.transactionCount }} /> Transactions par {selectedPeriod.granularity === 'DAY' ? 'jour' : selectedPeriod.granularity === 'WEEK' ? 'semaine' : 'mois'}</span> : <span><i style={{ background: SERIES.internationalAmount }} /> Montant international</span>}<span className="faint">Source : transaction-service (agrégation SQL)</span></div>
           </>}
+          </div>
         </Panel>
 
         {primary ? <Panel eyebrow="Pourquoi cette opportunité ?" title={<>Chaîne d’évidence — {label(primary.opportunityType)}</>} id="why" tools={<Button size="sm" variant="soft" onClick={() => openOpportunity(primary.opportunityId)} icon={<ArrowRight size={14} />}>Voir l’opportunité</Button>}>
@@ -141,8 +143,8 @@ export function CustomerSheetPage() {
         </Panel>}
 
         <Panel flush id="details">
-          <div style={{ padding: '0 20px' }}><Tabs value={tab} onChange={(id) => setTab(id as typeof tab)} ariaLabel="Détails" items={[{ id: 'actions', label: 'Historique des actions', count: actions.data?.data.length }, { id: 'positions', label: 'Comptes & produits', count: (accounts.data?.data.length ?? 0) + (products.data?.data.length ?? 0) }, { id: 'transactions', label: 'Dernières transactions' }, { id: 'signals', label: 'Signaux', count: signals.data?.data.length }]} /></div>
-          <div className="panel-body">
+          <div style={{ padding: '0 20px' }}><Tabs value={tab} onChange={(id) => setTab(id as typeof tab)} ariaLabel="Détails" panelId="customer-details-panel" items={[{ id: 'actions', label: 'Historique des actions', count: actions.data?.data.length }, { id: 'positions', label: 'Comptes & produits', count: (accounts.data?.data.length ?? 0) + (products.data?.data.length ?? 0) }, { id: 'transactions', label: 'Dernières transactions' }, { id: 'signals', label: 'Signaux', count: signals.data?.data.length }]} /></div>
+          <div className="panel-body" id="customer-details-panel" role="tabpanel" aria-labelledby={tabId('customer-details-panel', tab)}>
             {tab === 'actions' && (actions.isPending ? <SkeletonStack rows={3} kind="text" /> : !actions.data?.data.length ? <EmptyState compact title="Aucune action enregistrée" message="Les actions commerciales apparaîtront ici avec leur résultat." /> : <div className="timeline">{actions.data.data.map((action) => <article key={action.actionId} className={action.outcome ? 'done' : ''}><strong>{label(action.actionType)} {action.outcome && <Badge value={action.outcome} />}</strong><small>{formatDate(action.createdAt, true)} · {action.assignedTo || '—'}{action.dueAt ? ` · échéance ${formatDate(action.dueAt)}` : ''}</small>{action.note && <p>{action.note}</p>}</article>)}</div>)}
             {tab === 'positions' && <div className="grid cols-2">
               <div className="stack"><p className="eyebrow">Comptes</p>{accounts.isPending ? <SkeletonStack rows={2} kind="text" /> : !accounts.data?.data.length ? <p className="faint">Aucun compte.</p> : accounts.data.data.map((account) => <div className="row between position-row" key={account.accountId}><span><CreditCard size={14} /> <strong>{label(account.accountType)}</strong><small className="muted"> · {account.accountId}</small></span><span className="num"><strong>{formatMoney(account.balance?.available, account.currency)}</strong> <Badge value={account.status} /></span></div>)}</div>

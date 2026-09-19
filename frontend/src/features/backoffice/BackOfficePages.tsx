@@ -7,7 +7,7 @@ import { useRuleAudit, useRuleSimulations, useStudioRules } from '../../api/rule
 import type { LabelCatalogEntry, MlModel, NotificationDigestSubscription, RuleConfig, RuleLifecyclePolicy, RuleParameter } from '../../api/types'
 import { BreakdownBars } from '../../charts/BreakdownBars'
 import { CHART, OPPORTUNITY_COLORS, PRIORITY_COLORS } from '../../charts/theme'
-import { Badge, Button, EmptyState, ErrorState, Kpi, Modal, Panel, SkeletonStack, Tabs, useToast } from '../../ui'
+import { Badge, Button, EmptyState, ErrorState, Kpi, Modal, Panel, SkeletonStack, Tabs, tabId, useToast } from '../../ui'
 import { LIFECYCLE_LABELS } from '../rules/ruleModel'
 import { SimulationResults } from '../rules/SimulationPanel'
 
@@ -135,8 +135,8 @@ export function SimulationsPage() {
   return <>
     <header className="page-head"><div><p className="eyebrow accent">Simulations</p><h1>Historique des simulations</h1><p className="subtitle">Chaque simulation est persistée avec sa période, sa population et son résultat. Rien n’est recalculé côté navigateur.</p></div><div className="page-actions"><select className="select" aria-label="Règle" value={current || ''} onChange={(event) => { setRuleId(event.target.value); setIndex(0) }}>{rules.data?.data.map((rule) => <option key={rule.ruleId} value={rule.ruleId}>{rule.name} · v{rule.version}</option>)}</select>{current && <Button onClick={() => navigate(`/back-office/regles/${current}`)} icon={<GitBranch size={14} />}>Ouvrir la règle</Button>}</div></header>
     {simulations.isPending ? <SkeletonStack rows={3} /> : simulations.isError ? <ErrorState error={simulations.error} compact /> : !entries.length ? <EmptyState icon={<FlaskConical />} title="Aucune simulation enregistrée" message="Lancez une simulation depuis la règle (statut validée) pour mesurer son impact." action={current ? <Link className="btn primary sm" to={`/back-office/regles/${current}`}>Aller à la règle</Link> : undefined} /> : <>
-      <Tabs pill value={String(index)} onChange={(id) => setIndex(Number(id))} items={entries.map((entry, position) => ({ id: String(position), label: `${formatDate(entry.createdAt, true)} · v${entry.ruleVersion ?? '—'}` }))} />
-      {selected && <SimulationResults result={selected} />}
+      <Tabs pill value={String(index)} onChange={(id) => setIndex(Number(id))} panelId="simulation-history-panel" items={entries.map((entry, position) => ({ id: String(position), label: `${formatDate(entry.createdAt, true)} · v${entry.ruleVersion ?? '—'}` }))} />
+      {selected && <div id="simulation-history-panel" role="tabpanel" aria-labelledby={tabId('simulation-history-panel', String(index))}><SimulationResults result={selected} /></div>}
     </>}
   </>
 }

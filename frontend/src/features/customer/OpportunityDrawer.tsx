@@ -8,7 +8,7 @@ import type { ActivityPoint, Explanation, Opportunity } from '../../api/types'
 import { useAuth } from '../../auth/AuthProvider'
 import { ChartTooltip } from '../../charts/ChartTooltip'
 import { CHART, SERIES, axisProps } from '../../charts/theme'
-import { Badge, Drawer, EmptyState, ErrorState, PriorityBadge, Ring, SkeletonStack, Tabs } from '../../ui'
+import { Badge, Drawer, EmptyState, ErrorState, PriorityBadge, Ring, SkeletonStack, tabId, Tabs } from '../../ui'
 import { ActionChoiceGrid } from './ActionPanel'
 
 type SignalRow = Explanation['signals'][number]
@@ -57,8 +57,9 @@ export function OpportunityDrawer({ opportunityId, customerId, customerName, ini
         <ActionChoiceGrid opportunity={{ ...item, customerName: customerName || item.customerName }} customerId={customerId} compact />
       </section>}
 
-      <Tabs value={tab} onChange={(id) => setTab(id as typeof tab)} ariaLabel="Détail de l’opportunité" items={[{ id: 'signals', label: 'Signaux & évidence', icon: <Radar size={14} />, count: signals.length || item.why?.length }, { id: 'confidence', label: 'Règle & confiance', icon: <ShieldCheck size={14} /> }, { id: 'history', label: 'Historique', icon: <History size={14} />, count: actions.data?.data.length }]} />
+      <Tabs value={tab} onChange={(id) => setTab(id as typeof tab)} ariaLabel="Détail de l’opportunité" panelId="opportunity-tabpanel" items={[{ id: 'signals', label: 'Signaux & évidence', icon: <Radar size={14} />, count: signals.length || item.why?.length }, { id: 'confidence', label: 'Règle & confiance', icon: <ShieldCheck size={14} /> }, { id: 'history', label: 'Historique', icon: <History size={14} />, count: actions.data?.data.length }]} />
 
+      <div id="opportunity-tabpanel" role="tabpanel" aria-labelledby={tabId('opportunity-tabpanel', tab)} tabIndex={0}>
       {tab === 'signals' && <section className="stack">
         {explanation.isPending ? <SkeletonStack rows={3} /> : explanation.isError ? <ErrorState error={explanation.error} compact /> : !signals.length ? <EmptyState title="Aucun signal détaillé" message={item.why?.join(' · ') || 'Le moteur n’a retourné aucun signal.'} compact /> : <>
           <div className="signal-tabs">{signals.map((signal) => <button type="button" key={signal.signalId} className={`signal-tab ${active?.signalId === signal.signalId ? 'active' : ''}`} onClick={() => setSelectedSignal(signal.signalId)} aria-pressed={active?.signalId === signal.signalId}><span>{label(signal.type)}</span><b className={`num ${signal.value >= 0 ? 'up' : 'down'}`}>{signal.value >= 0 ? '+' : ''}{formatPercent(signal.value, 0)}</b><small>seuil {formatPercent(signal.threshold, 0)} · {label(signal.period)}</small></button>)}</div>
@@ -82,6 +83,7 @@ export function OpportunityDrawer({ opportunityId, customerId, customerName, ini
       {tab === 'history' && <section>
         {actions.isPending ? <SkeletonStack rows={3} kind="text" /> : actions.isError ? <ErrorState error={actions.error} compact /> : !actions.data?.data.length ? <EmptyState title="Aucune action" message="Aucune suite commerciale n’a encore été enregistrée sur cette opportunité." compact /> : <div className="timeline">{actions.data.data.map((action) => <article key={action.actionId} className={action.outcome ? 'done' : ''}><strong>{label(action.actionType)}{action.outcome ? <Badge value={action.outcome} className="ml" /> : null}</strong><small>{formatDate(action.createdAt, true)} · {action.assignedTo || action.createdBy || '—'}{action.dueAt ? ` · échéance ${formatDate(action.dueAt)}` : ''}</small>{action.note && <p>{action.note}</p>}</article>)}</div>}
       </section>}
+      </div>
     </>}
   </Drawer>
 }
