@@ -328,9 +328,16 @@ Les schémas ci-dessous sont les exemples normatifs abrégés réutilisés par l
   "countryCode": "MA",
   "description": "Règlement facture 2026-091",
   "sourceSystem": "MOCK_CORE",
-  "externalReference": "CORE-88421"
+  "externalReference": "CORE-88421",
+  "categoryVersion": "existing-synthetic-v1",
+  "importBatchId": "55fc37c1-0e3e-4b4c-80d9-5036c699b0a2",
+  "sourceRecordHash": "sha256-hex"
 }
 ```
+
+`categoryVersion`, `importBatchId` et `sourceRecordHash` sont renseignés pour les
+transactions passées par l'ingestion gouvernée. Ils restent `null` pour les lignes
+historiques antérieures à la migration `0016`; aucun backfill métier n'est inventé.
 
 ### 8.4 FinancialMetric
 
@@ -677,21 +684,48 @@ paths:
       parameters: [PageSize, Cursor, CustomerId, AccountId, FromDate, ToDate, TransactionType, Direction, Currency, Category, International, MinAmount, MaxAmount]
       responses:
         '200': { $ref: '#/components/responses/TransactionPage' }
-  /transactions/import:
+  /imports/transactions:
     post:
       operationId: importTransactions
       security: [{ serviceOAuth2: [integration:write] }]
       parameters: [CorrelationId, IdempotencyKey]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ImportBatch' } } } }
       responses:
-        '202': { description: Import accepted }
+        '202': { description: Import exécuté avec manifeste, compteurs et qualité }
+        '422': { description: Contrat ou version invalide }
         '409': { $ref: '#/components/responses/Conflict' }
+  /imports/transactions/{jobId}:
+    get:
+      operationId: getTransactionImport
+      security: [{ serviceOAuth2: [integration:write] }]
+      responses:
+        '200': { description: Manifeste, qualité, complétude et fraîcheur du lot }
+  /imports/transactions/{jobId}/rejections:
+    get:
+      operationId: getTransactionImportRejections
+      security: [{ serviceOAuth2: [integration:write] }]
+      responses:
+        '200': { description: Rejets/quarantaines minimisés et sans payload brut }
+  /transaction-categories:
+    get: { operationId: listTransactionCategories }
+    post: { operationId: createTransactionCategory }
 components:
   schemas:
-    ImportBatch: { type: object, required: [sourceSystem, transactions], properties: { sourceSystem: { type: string }, externalBatchId: { type: string }, transactions: { type: array, maxItems: 10000, items: { $ref: '#/components/schemas/Transaction' } } } }
+    ImportBatch: { type: object, additionalProperties: false, required: [contractVersion, sourceSystem, externalBatchId, transactions], properties: { contractVersion: { type: string, enum: ['1.0'] }, sourceSystem: { type: string }, externalBatchId: { type: string }, sourceWatermark: { type: string, nullable: true }, producedAt: { type: string, format: date-time, nullable: true }, expectedRowCount: { type: integer, minimum: 0, nullable: true }, transactions: { type: array, maxItems: 25000, items: { $ref: '#/components/schemas/Transaction' } } } }
 ```
 
-`GET /transactions` est strictement en lecture pour les consommateurs métier. L’import est réservé à `banking-integration-service` et à une tâche d’administration autorisée.
+`GET /transactions` est strictement en lecture pour les consommateurs métier. L'import
+est réservé à `banking-integration-service` et à une tâche d'administration autorisée.
+Le contrat `1.0` refuse les champs inconnus, impose les dates-heures zonées et conserve
+un hash canonique SHA-256. Une catégorie absente ou inactive du catalogue versionné
+place uniquement la ligne concernée en quarantaine; elle n'est jamais visible dans
+`transaction.transactions`. Les compteurs `received`, `accepted`, `duplicate`,
+`rejected` et `quarantined` sont persistés dans le même manifeste. La fraîcheur reste
+`UNKNOWN` sans timestamp source; avec un timestamp, le délai est mesuré mais aucun seuil
+n'est déduit sans validation BOA.
+
+Cette gouvernance est **IMPLÉMENTÉE et PROUVÉE pour le domaine Transaction**. Son
+extension aux imports Customer, Account et Product est **NON IMPLÉMENTÉE** dans ce lot.
 
 ### 10.4 Banking Integration Service
 
@@ -730,9 +764,17 @@ paths:
         '200': { description: Produits Trade Finance normalisés }
 components:
   schemas:
-    ImportRequest: { type: object, required: [fromDate, toDate], properties: { fromDate: { type: string, format: date }, toDate: { type: string, format: date }, customerIds: { type: array, items: { type: string } }, source: { type: string, enum: [CORE_BANKING, PAYMENTS, TRADE_FINANCE, CRM] } } }
-    JobAccepted: { type: object, required: [jobId, status], properties: { jobId: { type: string }, status: { type: string, enum: [ACCEPTED] }, acceptedAt: { type: string, format: date-time } } }
+    ImportRequest: { type: object, additionalProperties: false, required: [fromDate, toDate], properties: { contractVersion: { type: string, enum: ['1.0'], default: '1.0' }, fromDate: { type: string, format: date }, toDate: { type: string, format: date }, customerIds: { type: array, items: { type: string } }, sourceWatermark: { type: string, nullable: true }, producedAt: { type: string, format: date-time, nullable: true } } }
+    JobAccepted: { type: object, required: [jobId, status, counts], properties: { jobId: { type: string }, status: { type: string, enum: [COMPLETED, PARTIAL, RETRYABLE_FAILED] }, counts: { type: object }, quality: { type: object }, freshness: { type: object } } }
 ```
+
+Le service réserve et committe le manifeste avant le fan-out. Une panne avant tout
+appel aval donne `RETRYABLE_FAILED`; une panne après un ou plusieurs succès donne
+`PARTIAL` et `reconciliationRequired: true`. Un succès partiel n'est jamais publié
+comme `COMPLETED`. Chaque réponse aval doit confirmer `status: COMPLETED`, un `jobId`
+et un compteur `imported` valide; le domaine Transaction doit en plus fournir un compteur
+`accepted` identique. Ce mécanisme est une orchestration rejouable, **pas** une transaction
+distribuée ni une garantie exactly-once interservices.
 
 Les composants d’implémentation sont `CoreBankingAdapter`, `PaymentAdapter`, `TradeFinanceAdapter`, `CRMAdapter` et `ProductAdapter`. Les implémentations MVP sont `MockCoreBankingAdapter`, `MockPaymentAdapter`, `MockTradeFinanceAdapter` et `MockCRMAdapter`. Le contrat ne contient pas de branche `if mock`; le choix est injecté par configuration.
 
@@ -988,7 +1030,7 @@ components:
 | Signal Service | Analytics Service | `GET /internal/v1/metrics` | Détection des événements | Détection différée en cas d’indisponibilité |
 | Analytics Service | Transaction Service | `GET /internal/v1/transactions` | Agrégation des mouvements | `DEPENDENCY_UNAVAILABLE` ou job en retry |
 | Analytics Service | Account Service | `GET /internal/v1/accounts/{id}/balances` | Solde et utilisation | Métrique marquée incomplète |
-| Transaction Service | Banking Integration | `POST /internal/v1/imports/transactions` | Import normalisé | Job `FAILED` avec erreur corrélée |
+| Banking Integration | Transaction Service | `POST /internal/v1/imports/transactions` | Import normalisé gouverné | Manifeste `RETRYABLE_FAILED` ou `PARTIAL`; jamais de faux `COMPLETED` |
 | Banking Integration | Mock/BOA adapters | interfaces adapter | Données Core, paiements, Trade, CRM | Timeout et circuit breaker |
 | Action Service | Opportunity Service | `GET /internal/v1/opportunities/{id}` | Validation de l’existence et état | `404` ou `409` |
 | Action Service | Customer Service | `GET /internal/v1/customers/{id}` | Validation du périmètre client | `404` hors périmètre |

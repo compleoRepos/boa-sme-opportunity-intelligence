@@ -27,10 +27,14 @@ Les identifiants sont des UUID générés côté application. Les identifiants f
 | `signal` | Signal Detection Service | Signaux, preuves et versions de règles | `signal_rules`, `signals`, `signal_evidence` |
 | `opportunity` | Opportunity Service / Opportunity Engine | Recommandations calculées, explications et priorisation | `opportunity_rules`, `opportunities`, `opportunity_evidence`, `opportunity_recommendations`, `engine_runs` |
 | `action` | Action / Notification Service | Actions RM, rendez-vous, résultats et boucle de feedback | `opportunity_actions`, `action_outcomes`, `customer_responses` |
-| `integration` | Banking Integration Service | Import, idempotence, source et provenance adapter | `source_systems`, `import_batches`, `source_records`, `outbox_events` |
+| `integration` | Banking Integration Service et manifestes d'ingestion partagés | Import, idempotence, quarantaine et outbox | `import_batches`, `import_rejections`, `outbox_messages`; `source_systems` et `source_records` restent des cibles non implémentées |
 | `audit` | API Gateway et services métier | Audit immuable des accès et décisions | `audit_logs`, `decision_audit` |
 
-Les références interservices sont des identifiants opaques et stables. Les clés étrangères inter-schémas et les lectures SQL d’un schéma tiers sont interdites dans les migrations métier ; le service propriétaire reste la seule source de vérité. Les contrats d’API doivent être la frontière d’intégration future.
+Les références interservices sont des identifiants opaques et stables. Les lectures SQL
+directes des faits métier d'un autre service restent interdites. L'exception livrée par
+`0016` est le manifeste technique partagé : `transaction.transactions.import_batch_id`
+référence `integration.import_batches`, avec des droits SQL minimaux et explicites pour
+le Transaction Service. Les contrats d'API demeurent la frontière des données métier.
 
 ## 3. Modèle relationnel détaillé
 
@@ -55,7 +59,7 @@ Le modèle ne stocke pas de données personnelles inutiles. Le générateur util
 |---|---|---|
 | `account.accounts` | `id`, `account_ref`, `customer_id`, `account_type`, `currency`, `opened_on`, `status`, `source_system_id` | PK; unique `account_ref`; FK client; `account_type` dans `CURRENT`, `SAVINGS`, `CREDIT`; devise ISO; un compte appartient à un seul client |
 | `account.credit_lines` | `id`, `account_id`, `facility_type`, `approved_limit`, `currency`, `valid_from`, `valid_to`, `status` | PK; FK compte; limite positive; pas de chevauchement de lignes actives de même type; absence de ligne signifie absence de capacité connue, pas décision de crédit |
-| `account.account_balances` | `id`, `account_id`, `as_of_date`, `closing_balance`, `available_balance`, `currency`, `source_record_id` | PK; unique `(account_id, as_of_date)`; devise identique au compte; solde quotidien de référence; `as_of_date` dans la période d’import |
+| `account.account_balances` | `id`, `account_id`, `as_of_date`, `closing_balance`, `available_balance`, `currency` | PK; unique `(account_id, as_of_date)`; la provenance gouvernée par ligne reste **NON IMPLÉMENTÉE** pour Account |
 
 Les balances servent à l’analyse quotidienne et à la reconstitution des fenêtres. Les métriques agrégées ne remplacent pas cette source : elles doivent toujours pouvoir être recalculées.
 
@@ -64,10 +68,19 @@ Les balances servent à l’analyse quotidienne et à la reconstitution des fen�
 | Table | Colonnes essentielles | Clés et contraintes |
 |---|---|---|
 | `transaction.counterparties` | `id`, `counterparty_ref_hash`, `display_name_synthetic`, `country_code`, `counterparty_type`, `is_supplier` | PK; unicité sur le hash de référence; contrepartie synthétique; `counterparty_type` dans `SUPPLIER`, `CUSTOMER`, `BANK`, `OTHER` |
-| `transaction.transactions` | `id`, `transaction_ref`, `account_id`, `booked_at`, `value_date`, `direction`, `amount`, `currency`, `transaction_type`, `category`, `counterparty_id`, `is_international`, `country_code`, `status`, `source_record_id` | PK; unique `(source_system_id, transaction_ref)`; FK compte et provenance; `amount > 0`; `direction` dans `CREDIT`, `DEBIT`; `status` dans `BOOKED`, `REVERSED`, `PENDING`; la date de valeur est non nulle |
-| `transaction.transaction_tags` | `transaction_id`, `tag_code`, `confidence` | PK composite; tags contrôlés (`SUPPLIER_PAYMENT`, `IMPORT`, `EXPORT`, `INVESTMENT`, `SALARY`, etc.); confiance entre 0 et 1 |
+| `transaction.transactions` | `id`, `transaction_ref`, `customer_id`, `account_id`, `booked_at`, `value_date`, `direction`, `amount`, `currency`, `transaction_type`, `category`, `is_international`, `country_code`, `status`, `source_system`, `import_batch_id`, `source_record_hash`, `category_version` | PK; unique `(source_system, transaction_ref)`; FK du lot vers `integration.import_batches`; `amount > 0`; `direction` dans `CREDIT`, `DEBIT`; les lignes gouvernées conservent lot, hash source et version de catégorie; les lignes historiques peuvent laisser ces trois champs à `null` |
+| `config.transaction_categories` | `category_code`, `version`, `label`, `active`, `provenance`, `checksum`, `reason`, `created_at`, `created_by` | unique `(category_code, version)`; une seule version active par code; provenance limitée à `SYNTHETIC_POC`, `BOA_APPROVED`, `EXTERNAL_CONTRACT`; les trois entrées initiales sont explicitement synthétiques et non approuvées BOA |
+| `integration.import_batches` | identité source/lot, version de contrat, hash, watermark, timestamps, compteurs, statuts qualité/fraîcheur, `quality_json` | claim atomique unique `(source_system, batch_ref)`; compteurs non négatifs; états terminaux `COMPLETED`, `QUARANTINED`, `REJECTED` et états d'orchestration partielle documentés |
+| `integration.import_rejections` | `batch_id`, domaine, numéro/référence/hash de ligne, code motif, champ, détail minimisé, statut, corrélation | unique `(batch_id, domain, row_number)`; aucun payload brut; une ligne quarantainée n'est pas écrite dans `transaction.transactions` |
+| `transaction.transaction_tags` | cible future : `transaction_id`, `tag_code`, `confidence` | **NON IMPLÉMENTÉ**; ne pas confondre ce modèle cible avec le catalogue de catégories livré en `0016` |
 
-Les paiements fournisseurs sont identifiés par catégorie, direction et contrepartie ; les flux internationaux reposent sur `is_international` et le pays, non sur un texte libre. Une transaction annulée reste stockée et n’entre pas dans les métriques comptabilisées.
+Les paiements fournisseurs sont identifiés par catégorie et direction; les flux
+internationaux reposent sur `is_international` et le pays, non sur un texte libre. Le
+contrat Transaction `1.0` applique une acceptation partielle explicite : ligne valide
+écrite, doublon compté, catégorie inconnue/inactive mise en quarantaine. La fraîcheur
+est `UNKNOWN` sans horodatage source; lorsqu'un horodatage existe, le délai est mesuré
+sans seuil inventé. Les imports Customer, Account et Product n'utilisent pas encore ce
+manifeste commun : leur généralisation reste **NON IMPLÉMENTÉE**.
 
 ### 3.4 Catalogue et produits détenus
 
@@ -75,7 +88,7 @@ Les paiements fournisseurs sont identifiés par catégorie, direction et contrep
 |---|---|---|
 | `product.products` | `id`, `product_code`, `name`, `category`, `active` | PK; unique `product_code`; les règles ne référencent jamais un nom en dur |
 | `product.product_versions` | `id`, `product_id`, `version`, `eligibility_rules_json`, `target_segments_json`, `currencies_json`, `valid_from`, `valid_to` | PK; unique `(product_id, version)`; une seule version active à une date; JSON validé par schéma applicatif |
-| `product.customer_products` | `id`, `customer_id`, `product_id`, `status`, `opened_on`, `closed_on`, `utilization_ratio`, `last_activity_at`, `source_record_id` | PK; FK client/produit; unique conditionnelle pour une détention active; ratio entre 0 et 1 lorsqu’il est fourni; `closed_on >= opened_on` |
+| `product.customer_products` | `id`, `customer_id`, `product_id`, `status`, `opened_on`, `utilization_ratio` | PK; FK produit; la provenance gouvernée par ligne et les contraintes métier supplémentaires restent **NON IMPLÉMENTÉES** pour Product |
 
 Le seed catalogue comprend notamment `INVESTMENT_FINANCING`, `WORKING_CAPITAL_FACILITY`, `OVERDRAFT`, `TRADE_FINANCE`, `CASH_MANAGEMENT`, `TERM_DEPOSIT` et `LIQUIDITY_INVESTMENT`. Les produits existants sont générés avant l’exécution du moteur ; ils servent à détecter un gap ou une sous-utilisation.
 
@@ -118,10 +131,11 @@ La chaîne de feedback est donc `recommendation → RM action → customer respo
 
 | Table | Colonnes essentielles | Contraintes et usage |
 |---|---|---|
-| `integration.source_systems` | `id`, `code`, `adapter_type`, `contract_version`, `active` | Référentiel des adapters `MOCK_CORE_BANKING`, `MOCK_PAYMENTS`, `MOCK_TRADE_FINANCE`, `MOCK_CRM`, `MOCK_PRODUCT` |
-| `integration.import_batches` | `id`, `source_system_id`, `batch_ref`, `started_at`, `completed_at`, `input_hash`, `row_count`, `status`, `correlation_id` | Unique `(source_system_id, batch_ref)`; statut et hash rendent l’import rejouable et vérifiable |
-| `integration.source_records` | `id`, `import_batch_id`, `source_entity`, `source_key`, `payload_hash`, `payload_json`, `received_at` | Unique `(source_system_id, source_entity, source_key)`; payload synthétique conservé pour la provenance, avec rétention configurable |
-| `integration.outbox_events` | `id`, `event_type`, `aggregate_type`, `aggregate_id`, `payload_json`, `occurred_at`, `published_at`, `attempt_count` | Écriture transactionnelle avec l’agrégat; événements `TransactionImported`, `SignalDetected`, `OpportunityCreated`, `OpportunityAccepted`, `OpportunityDismissed`, `CustomerContacted`, `OpportunityConverted` |
+| `integration.source_systems` | cible future : `id`, `code`, `adapter_type`, `contract_version`, `active` | **NON IMPLÉMENTÉ**; les sources sont aujourd'hui des codes contrôlés dans les contrats et manifests |
+| `integration.import_batches` | `id`, `source_system`, `batch_ref`, `contract_version`, `external_batch_id`, `input_hash`, watermark/timestamps, compteurs, `quality_status`, `freshness_status`, `quality_json`, `status`, `correlation_id` | Unique `(source_system, batch_ref)`; claim atomique, hash rejouable, compteurs et qualité persistés; aucune conservation de payload brut |
+| `integration.import_rejections` | `batch_id`, `domain`, `row_number`, `source_record_ref`, `row_hash`, `reason_code`, `field_name`, `safe_details_json`, `status`, timestamps | Quarantaine minimisée; `safe_details_json` est allowlisté et ne contient pas le payload source complet |
+| `integration.source_records` | cible future éventuelle | **NON IMPLÉMENTÉ**; aucun `payload_json` source n'est conservé par le lot `0016` |
+| `integration.outbox_messages` | `id`, `event_type`, `aggregate_type`, `aggregate_id`, `payload_json`, `occurred_at`, `published_at`, `attempt_count`, statut/erreur | Outbox effectivement persistée; la livraison exactly-once n'est pas revendiquée |
 | `audit.audit_logs` | `id`, `occurred_at`, `actor_subject_id`, `service_name`, `action`, `resource_type`, `resource_id`, `correlation_id`, `request_id`, `result`, `metadata_json` | Append-only; pas de token ni secret; partitionnement temporel possible |
 | `audit.decision_audit` | `id`, `engine_run_id`, `opportunity_id`, `engine_version`, `rule_version`, `generated_at`, `input_reference`, `signal_ids_json`, `metric_snapshot_ids_json`, `confidence_components_json`, `decision_hash` | Append-only; `decision_hash` détecte une altération; une décision doit être reconstituable sans consulter l’interface |
 
@@ -135,14 +149,14 @@ Les index sont créés selon les accès des APIs et du moteur, sans indexer chaq
 | `customer.customer_relationships` | `(rm_subject_id, is_primary, valid_to)`; `(customer_id, is_primary)` |
 | `account.accounts` | `(customer_id, status)`; `(account_ref)` unique |
 | `account.account_balances` | `(account_id, as_of_date DESC)`; `(as_of_date)` |
-| `transaction.transactions` | `(account_id, value_date DESC, id)`; `(value_date, direction)`; `(category, value_date)`; partial `(is_international, value_date) WHERE is_international`; `(source_record_id)` |
+| `transaction.transactions` | `(customer_id, value_date)`; `(account_id, value_date)`; `(customer_id, is_international, value_date)`; `(customer_id, category, value_date)`; `(import_batch_id)` |
 | `product.customer_products` | `(customer_id, status)`; `(product_id, status)`; unique active conditionnelle |
 | `analytics.metric_snapshots` | `(customer_id, as_of_date DESC, window_days)`; `(as_of_date, metric_version)` |
 | `signal.signals` | `(customer_id, detected_at DESC)`; `(signal_type, detected_at DESC)`; `(severity, status)`; unique idempotence |
 | `opportunity.opportunities` | `(status, priority_level, priority_score DESC, generated_at DESC)`; `(customer_id, generated_at DESC)`; `(opportunity_type, status)`; `(valid_until)` |
 | `opportunity.opportunity_evidence` | `(opportunity_id, position)`; `(signal_id)`; `(metric_snapshot_id)` |
 | `action.opportunity_actions` | `(opportunity_id, created_at DESC)`; `(actor_subject_id, created_at DESC)`; `(action_type, performed_at)` |
-| `integration.source_records` | `(source_system_id, source_entity, source_key)` unique; `(import_batch_id)` |
+| `integration.source_records` | **NON IMPLÉMENTÉ**; aucun index ni table à ce nom |
 | `audit.audit_logs` | `(resource_type, resource_id, occurred_at DESC)`; `(actor_subject_id, occurred_at DESC)`; `(correlation_id)` |
 
 Les listes d’opportunités, clients, signaux et transactions sont paginées par curseur `(date, id)` plutôt que par `OFFSET` profond. Les agrégations sont calculées par Analytics et servies depuis `analytics`, afin de ne pas charger des millions de transactions dans le dashboard.
@@ -191,7 +205,7 @@ Le volume transactionnel est réaliste mais reste exécutable localement. La fou
 
 ### 6.2 Génération en plusieurs passes
 
-La première passe crée les référentiels, les 500 clients, les RM et les affectations. La seconde crée les comptes, les lignes existantes et le catalogue produit. La troisième génère les contreparties récurrentes et les transactions quotidiennes. Les soldes sont dérivés de l’ordre chronologique des transactions, avec une réserve initiale et des contrôles de non-négativité adaptés aux comptes autorisés. La quatrième crée les détentions produits. La dernière passe charge les `import_batches`, `source_records` et événements d’import, puis vérifie les invariants.
+La première passe crée les référentiels, les 500 clients, les RM et les affectations. La seconde crée les comptes, les lignes existantes et le catalogue produit. La troisième génère les contreparties récurrentes et les transactions quotidiennes. Les soldes sont dérivés de l’ordre chronologique des transactions, avec une réserve initiale et des contrôles de non-négativité adaptés aux comptes autorisés. La quatrième crée les détentions produits. La dernière passe écrit les manifests/checkpoints `import_batches` effectivement utilisés et vérifie les invariants. `integration.source_records` reste **NON IMPLÉMENTÉ**.
 
 Le générateur applique des profils par secteur : l’industrie et le BTP ont davantage de paiements fournisseurs et de montants unitaires élevés ; l’import/export a davantage de transactions internationales ; la distribution et le commerce ont une fréquence élevée et une saisonnalité ; les services et la technologie ont des flux plus réguliers ; l’agriculture a une saisonnalité marquée. Ces profils modifient les faits observés, jamais les résultats attendus directement.
 
@@ -223,7 +237,7 @@ Le pipeline local `demo-data-generator` suit les étapes suivantes :
 1. **Initialisation.** Vérifier la version de schéma, le seed, la période et l’absence de données réelles. Émettre un manifeste avec `seed`, commit, période, paramètres et hash de configuration.
 2. **Référentiels.** Insérer secteurs, segments, RM, catalogue produit, versions de règles et systèmes sources avec des opérations idempotentes.
 3. **Clients et comptes.** Créer les 500 PME, affecter un RM, créer les comptes et lignes, puis enregistrer la provenance synthétique.
-4. **Faits bancaires.** Générer contreparties, transactions et balances dans des batches bornés. Chaque ligne possède un `source_record_id`, un hash et un `correlation_id` d’import.
+4. **Faits bancaires.** Générer contreparties, transactions et balances dans des batches bornés. Le seed direct ne prétend pas produire de `source_record_id`. Les transactions acceptées par le contrat gouverné `1.0` portent `import_batch_id`, `source_record_hash` et `category_version`; les lignes historiques/seed peuvent laisser ce lineage à `null`.
 5. **Contrôles de qualité.** Vérifier unicité des références, continuité des dates, cohérence devise-compte, balance dérivée, bornes de montants, proportions par secteur et couverture des 12 mois.
 6. **Calcul analytique.** Produire les métriques 7, 30, 90, 180 et 365 jours. Comparer période courante, période précédente et baseline historique ou saisonnière. Enregistrer le watermark d’entrée et la version de calcul.
 7. **Détection des signaux.** Évaluer les règles versionnées, créer les signaux idempotents et leurs preuves, puis publier `SignalDetected` dans l’outbox.

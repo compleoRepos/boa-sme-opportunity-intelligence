@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "1.1",
+  "runId": "ingestion-governance-20260919T234054Z",
+  "generatedAt": "2026-09-19T23:40:54.337378+00:00",
+  "gitCommit": "c8235f8533adbf966961d2ff9113bb13c3ac5847",
+  "sourceRevision": {
+    "baseCommit": "c8235f8533adbf966961d2ff9113bb13c3ac5847",
+    "worktreeDirty": true,
+    "testedSourceDigestSha256": "089160525c7f1c07a8ae5e3d93149efaf708e4d74cb14fb5bc411adaeb336c43",
+    "testedSourceFiles": [
+      "backend/src/boa_oi/ingestion.py",
+      "backend/src/boa_oi/models/entities.py",
+      "backend/src/boa_oi/transaction_api.py",
+      "database/migrations/versions/0001_initial.py",
+      "database/migrations/versions/0016_ingestion_governance.py",
+      "scripts/migrate.sh",
+      "scripts/validate-ingestion-governance.sh",
+      "scripts/validate_ingestion_governance.py"
+    ],
+    "digestMethod": "sha256(concatenated sha256sum output in listed order)"
+  },
+  "scope": {
+    "domain": "TRANSACTION",
+    "database": "isolated PostgreSQL",
+    "dataKind": "DETERMINISTIC_SYNTHETIC_TECHNICAL_FIXTURE",
+    "notProved": [
+      "BOA source-system integration",
+      "BOA data quality or freshness",
+      "production throughput, availability or SLO",
+      "governed ingestion for Customer, Account and Product domains"
+    ]
+  },
+  "checks": [
+    {
+      "name": "partial-acceptance-and-quarantine",
+      "status": "PASS"
+    },
+    {
+      "name": "redacted-rejection-evidence",
+      "status": "PASS"
+    },
+    {
+      "name": "idempotent-replay-and-conflict",
+      "status": "PASS"
+    },
+    {
+      "name": "strict-contract-and-filter-validation",
+      "status": "PASS"
+    },
+    {
+      "name": "versioned-category-catalog",
+      "status": "PASS"
+    },
+    {
+      "name": "source-scoped-transaction-identity",
+      "status": "PASS"
+    },
+    {
+      "name": "concurrent-atomic-claim",
+      "status": "PASS"
+    },
+    {
+      "name": "postgres-lineage-and-counts",
+      "status": "PASS"
+    }
+  ],
+  "databaseCounts": {
+    "transactions": 5,
+    "manifests": 4,
+    "quarantinedRows": 1,
+    "catalogEntries": 4,
+    "receipts": 4
+  },
+  "lineageRows": 5,
+  "status": "PASS",
+  "disclaimer": "Technical evidence on deterministic synthetic data. Freshness is measured without a BOA-approved threshold. No production, ML-performance or credit-decision claim."
+}

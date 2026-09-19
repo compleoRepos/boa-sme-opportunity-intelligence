@@ -130,6 +130,10 @@ GRANT USAGE ON SCHEMA customer TO opportunity_service;
 GRANT SELECT ON customer.customers, customer.relationship_managers, customer.portfolio_assignments TO opportunity_service;
 GRANT USAGE ON SCHEMA integration TO analytics_service;
 GRANT SELECT, INSERT, UPDATE ON integration.import_batches TO analytics_service;
+GRANT USAGE ON SCHEMA integration, config TO transaction_service;
+GRANT SELECT, INSERT, UPDATE ON integration.import_batches TO transaction_service;
+GRANT SELECT, INSERT, UPDATE ON integration.import_rejections TO transaction_service;
+GRANT SELECT, INSERT, UPDATE ON config.transaction_categories TO transaction_service;
 GRANT USAGE ON SCHEMA customer, opportunity, action, ml TO portfolio_service;
 GRANT SELECT ON ALL TABLES IN SCHEMA customer, opportunity, action, ml TO portfolio_service;
 SQL

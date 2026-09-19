@@ -186,6 +186,7 @@ class Transaction(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         Index("ix_tx_account_date", "account_id", "value_date"),
         Index("ix_tx_customer_int_date", "customer_id", "is_international", "value_date"),
         Index("ix_tx_customer_category_date", "customer_id", "category", "value_date"),
+        Index("ix_transactions_import_batch", "import_batch_id"),
         {"schema": "transaction"},
     )
     transaction_ref: Mapped[str] = mapped_column(String(80))
@@ -202,6 +203,35 @@ class Transaction(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     country_code: Mapped[str] = mapped_column(String(2))
     status: Mapped[str] = mapped_column(String(20), default="BOOKED")
     source_system: Mapped[str] = mapped_column(String(40), default="MOCK_PAYMENTS")
+    import_batch_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("integration.import_batches.id")
+    )
+    source_record_hash: Mapped[str | None] = mapped_column(String(64))
+    category_version: Mapped[str | None] = mapped_column(String(30))
+
+
+class TransactionCategory(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "transaction_categories"
+    __table_args__ = (
+        UniqueConstraint("category_code", "version"),
+        Index("ix_transaction_categories_active", "category_code", "active"),
+        CheckConstraint(
+            "provenance IN ('SYNTHETIC_POC','BOA_APPROVED','EXTERNAL_CONTRACT')",
+            name="provenance",
+        ),
+        {"schema": "config"},
+    )
+    category_code: Mapped[str] = mapped_column(String(40))
+    version: Mapped[str] = mapped_column(String(30))
+    label: Mapped[str] = mapped_column(String(120))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    provenance: Mapped[str] = mapped_column(String(30))
+    checksum: Mapped[str] = mapped_column(String(64))
+    reason: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    created_by: Mapped[str] = mapped_column(String(120))
 
 
 class Product(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -907,6 +937,53 @@ class ImportBatch(Base, UUIDPrimaryKeyMixin):
     row_count: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(20))
     correlation_id: Mapped[str] = mapped_column(String(100))
+    contract_version: Mapped[str | None] = mapped_column(String(20))
+    external_batch_id: Mapped[str | None] = mapped_column(String(120))
+    source_watermark: Mapped[str | None] = mapped_column(String(120))
+    produced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    expected_row_count: Mapped[int | None] = mapped_column(Integer)
+    received_row_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    accepted_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    duplicate_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    rejected_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    quarantined_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    quality_status: Mapped[str] = mapped_column(
+        String(20), default="UNKNOWN", server_default="UNKNOWN"
+    )
+    freshness_status: Mapped[str] = mapped_column(
+        String(20), default="UNKNOWN", server_default="UNKNOWN"
+    )
+    freshness_lag_seconds: Mapped[int | None] = mapped_column(Integer)
+    quality_json: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
+
+
+class ImportRejectedRecord(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "import_rejections"
+    __table_args__ = (
+        UniqueConstraint("batch_id", "domain", "row_number"),
+        Index("ix_import_rejections_batch_status", "batch_id", "status"),
+        CheckConstraint("status IN ('QUARANTINED','RESOLVED','DISMISSED')", name="status"),
+        {"schema": "integration"},
+    )
+    batch_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("integration.import_batches.id", ondelete="RESTRICT")
+    )
+    domain: Mapped[str] = mapped_column(String(40))
+    row_number: Mapped[int] = mapped_column(Integer)
+    source_record_ref: Mapped[str | None] = mapped_column(String(120))
+    row_hash: Mapped[str] = mapped_column(String(64))
+    reason_code: Mapped[str] = mapped_column(String(80))
+    field_name: Mapped[str | None] = mapped_column(String(80))
+    safe_details_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(20), default="QUARANTINED")
+    correlation_id: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class OutboxMessage(Base, UUIDPrimaryKeyMixin):
