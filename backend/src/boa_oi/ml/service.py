@@ -30,14 +30,20 @@ def model_from_record(record: ModelRegistry) -> LogisticModel:
 def active_model(session: Session, model_version: str | None = None) -> ModelRegistry:
     stmt = select(ModelRegistry)
     if model_version is None:
-        stmt = stmt.where(ModelRegistry.status == "ACTIVE")
+        stmt = stmt.where(ModelRegistry.status.in_(("CHAMPION", "ACTIVE")))
     else:
         stmt = stmt.where(ModelRegistry.model_version == model_version)
     record = session.scalar(stmt.order_by(ModelRegistry.model_version.desc()))
     if record is None:
         raise not_found("Model")
-    if model_version is None and record.status != "ACTIVE":
+    if model_version is None and record.status not in {"CHAMPION", "ACTIVE"}:
         raise Problem(409, "ACTIVE_MODEL_UNAVAILABLE", "No active model is available.")
+    if model_version is not None and record.status not in {"CHAMPION", "ACTIVE"}:
+        raise Problem(
+            409,
+            "MODEL_NOT_APPROVED_FOR_INFERENCE",
+            "Only the approved champion model can be used for inference.",
+        )
     return record
 
 
@@ -46,6 +52,7 @@ def score_materialization(
     feature_record: FeatureMaterialization,
     *,
     model_version: str | None = None,
+    prediction_trace_id: str | None = None,
 ) -> PropensityScoreRecord:
     model_record = active_model(session, model_version)
     model = model_from_record(model_record)
@@ -98,6 +105,7 @@ def score_materialization(
         top_factors_json=[_contribution_payload(item) for item in score.top_factors],
         training_dataset_version=model_record.training_dataset_version,
         deployment_mode=model_record.deployment_mode,
+        prediction_trace_id=prediction_trace_id or str(feature_record.id),
         created_by="ml-engine-service",
     )
     record.score = Decimal(str(score.propensity))
@@ -109,6 +117,7 @@ def score_materialization(
     record.top_factors_json = [_contribution_payload(item) for item in score.top_factors]
     record.training_dataset_version = model_record.training_dataset_version
     record.deployment_mode = model_record.deployment_mode
+    record.prediction_trace_id = prediction_trace_id or str(feature_record.id)
     session.add(record)
     session.flush()
     return record
@@ -134,6 +143,7 @@ def _contribution_payload(item: FeatureContribution) -> dict[str, Any]:
 def serialize_model(record: ModelRegistry) -> dict[str, Any]:
     return {
         "modelVersion": record.model_version,
+        "modelId": record.model_id,
         "scoreType": record.score_type,
         "algorithm": record.algorithm,
         "status": record.status,
@@ -145,6 +155,21 @@ def serialize_model(record: ModelRegistry) -> dict[str, Any]:
         "validationMetrics": record.validation_metrics_json,
         "trainingDatasetVersion": record.training_dataset_version,
         "trainingCodeVersion": record.training_code_version,
+        "trainingPeriod": {
+            "from": record.training_period_from.isoformat()
+            if record.training_period_from
+            else None,
+            "to": record.training_period_to.isoformat() if record.training_period_to else None,
+        },
+        "validationPeriod": {
+            "from": record.validation_period_from.isoformat()
+            if record.validation_period_from
+            else None,
+            "to": record.validation_period_to.isoformat() if record.validation_period_to else None,
+        },
+        "hyperparameters": record.hyperparameters_json,
+        "approvedBy": record.approved_by,
+        "approvedAt": record.approved_at.isoformat() if record.approved_at else None,
         "deploymentMode": record.deployment_mode,
         "productionPerformanceClaim": False,
         "automaticTraining": False,
@@ -168,7 +193,7 @@ def serialize_score(record: PropensityScoreRecord) -> dict[str, Any]:
         "topFactors": record.top_factors_json,
         "trainingDatasetVersion": record.training_dataset_version,
         "deploymentMode": record.deployment_mode,
-        "traceId": str(record.id),
+        "traceId": record.prediction_trace_id,
         "scoredAt": record.created_at.isoformat(),
     }
 

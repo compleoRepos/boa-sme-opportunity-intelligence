@@ -31,6 +31,12 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from database.seed.naming import (
+    customer_name,
+    relationship_manager_index,
+    relationship_manager_name,
+)
+
 SEED = "boa-sme-oi-2026-v1"
 START_DATE = date(2025, 10, 1)
 END_DATE = date(2026, 9, 30)
@@ -241,7 +247,7 @@ def seed(database_url: str, batch_size: int = 1000) -> dict:
             row = {
                 "id": deterministic_uuid("rm", index),
                 "subject_id": f"rm-{index:02d}",
-                "display_name": f"Synthetic RM {index:02d}",
+                "display_name": relationship_manager_name(index),
                 "branch_code": f"BR-{(index - 1) // 5 + 1:02d}",
                 "created_by": "demo-data-generator",
             }
@@ -332,13 +338,13 @@ def seed(database_url: str, batch_size: int = 1000) -> dict:
             customer = {
                 "id": customer_id,
                 "customer_ref": ref,
-                "legal_name": f"Synthetic {sector.title()} Enterprise {index:05d}",
+                "legal_name": customer_name(index, sector),
                 "sector_code": sector,
                 "segment_code": "SMALL" if index % 3 else "MEDIUM",
                 "scenario_code": scenario,
                 "incorporated_on": date(2000 + index % 20, index % 12 + 1, index % 27 + 1),
                 "status": "ACTIVE",
-                "rm_id": rms[(index - 1) % len(rms)]["id"],
+                "rm_id": rms[relationship_manager_index(index, len(rms)) - 1]["id"],
                 "created_by": "demo-data-generator",
             }
             session.execute(

@@ -32,6 +32,7 @@ from boa_oi.platform import (
     require_roles,
 )
 from boa_oi.technical.ids import deterministic_uuid
+from boa_oi.technical.reference import branch_label
 
 app = create_service_app(
     "customer-service", "SME customer reference data and relationship ownership."
@@ -86,10 +87,13 @@ def serialize(customer: Customer, rm: RelationshipManager | None = None) -> dict
         "segment": customer.segment_code,
         "country": "MA",
         "branchId": rm.branch_code if rm else None,
+        "branchName": branch_label(rm.branch_code) if rm else None,
         "relationshipManagerId": rm.subject_id if rm else None,
         "relationshipManagerName": rm.display_name if rm else None,
         "status": customer.status,
-        "incorporatedOn": customer.incorporated_on.isoformat(),
+        "incorporatedOn": (
+            customer.incorporated_on.isoformat() if customer.incorporated_on else None
+        ),
         "createdAt": customer.created_at.isoformat() if customer.created_at else None,
         "updatedAt": customer.updated_at.isoformat() if customer.updated_at else None,
     }

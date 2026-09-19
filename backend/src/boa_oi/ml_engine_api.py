@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import date
+from datetime import date, datetime, time, timezone
 from typing import Annotated, Any
 
 from fastapi import Depends, Query, Request
@@ -13,12 +13,16 @@ from boa_oi.features import FEATURE_SET_VERSION
 from boa_oi.features.service import materialize_customer
 from boa_oi.http_clients import service_request
 from boa_oi.ml.service import active_model, score_materialization, serialize_model, serialize_score
+from boa_oi.mlops.routes import router as ml_governance_router
 from boa_oi.models.entities import (
     ActionOutcome,
     FeatureMaterialization,
+    ModelRegistry,
+    Opportunity,
     OpportunityAction,
     OutcomeLabelSnapshot,
 )
+from boa_oi.operations.api import router as operations_router
 from boa_oi.platform import (
     READ_ROLES,
     Problem,
@@ -33,6 +37,8 @@ app = create_service_app(
     "ml-engine-service",
     "Deterministic CPU-only logistic sales propensity scoring with per-feature explanations.",
 )
+app.include_router(ml_governance_router)
+app.include_router(operations_router)
 PREFIX = "/internal/v1/ml"
 ML_SCORE_ROLES = ("DATA_ANALYST", "ADMIN", "SERVICE")
 
@@ -85,6 +91,7 @@ async def _score_customer(
             feature_set_version=str(feature_payload["featureSetVersion"]),
             values_json=feature_payload["values"],
             sources_json=feature_payload["sources"],
+            lineage_json=feature_payload["lineage"],
             checksum=str(feature_payload["checksum"]),
             created_by="feature-store-service",
         )
@@ -100,6 +107,7 @@ async def _score_customer(
         session,
         features,
         model_version=payload.modelVersion,
+        prediction_trace_id=correlation_id(http_request),
     )
     return serialize_score(score)
 
@@ -145,6 +153,27 @@ async def score_batch(
             "scoreType": "SALES_PROPENSITY",
         },
     }
+
+
+@app.get(
+    f"{PREFIX}/models",
+    dependencies=[Depends(require_roles(*READ_ROLES))],
+    tags=["Model Registry"],
+)
+def list_models(session: Session = Depends(get_session)) -> dict[str, Any]:
+    """Registre complet des modèles (actifs, candidats, retirés) pour l'écran de gouvernance ML."""
+    records = list(
+        session.scalars(select(ModelRegistry).order_by(ModelRegistry.model_version.desc()))
+    )
+    data = [
+        {
+            **serialize_model(record),
+            "createdAt": record.created_at.isoformat(),
+            "updatedAt": record.updated_at.isoformat(),
+        }
+        for record in records
+    ]
+    return {"data": data, "meta": {"totalCount": len(data), "scoreType": "SALES_PROPENSITY"}}
 
 
 @app.get(
@@ -194,13 +223,24 @@ def outcome_snapshots(
     data = [
         {
             "snapshotVersion": item.snapshot_version,
+            "datasetVersion": item.dataset_version,
             "customerId": item.customer_ref,
+            "opportunityId": item.opportunity_ref,
+            "opportunityType": item.opportunity_type,
+            "actionId": str(item.action_id) if item.action_id else None,
             "scoreType": item.score_type,
             "observationAsOf": item.observation_as_of.isoformat(),
+            "observedAt": item.observed_at.isoformat(),
             "labelAvailableFrom": item.label_available_from.isoformat(),
             "outcomeLabel": item.outcome_label,
             "outcomeValue": item.outcome_value,
+            "source": item.source,
             "sourceReference": item.source_reference,
+            "maturityStatus": (
+                "MATURE"
+                if item.label_available_from <= datetime.now(timezone.utc).date()
+                else "IMMATURE"
+            ),
         }
         for item in records
     ]
@@ -229,18 +269,30 @@ def materialize_outcomes(
             "INVALID_LABEL_WINDOW",
             "labelAvailableFrom must be after observationAsOf.",
         )
-    terminal = {"CONVERTED": True, "REJECTED": False, "NOT_RELEVANT": False}
+    labels: dict[str, tuple[str, bool | None]] = {
+        "CONTACTED": ("CONTACTED", None),
+        "MEETING_SCHEDULED": ("INTERESTED", None),
+        "OFFER_CREATED": ("OFFER_CREATED", None),
+        "CONVERTED": ("CONVERTED", True),
+        "REJECTED": ("NOT_INTERESTED", False),
+        "NOT_RELEVANT": ("REVIEW_LATER", None),
+    }
     rows = session.execute(
-        select(ActionOutcome, OpportunityAction)
+        select(ActionOutcome, OpportunityAction, Opportunity)
         .join(OpportunityAction, OpportunityAction.id == ActionOutcome.action_id)
+        .join(Opportunity, Opportunity.id == OpportunityAction.opportunity_id)
         .where(
-            ActionOutcome.outcome_type.in_(tuple(terminal)),
-            ActionOutcome.recorded_at < payload.labelAvailableFrom,
+            ActionOutcome.outcome_type.in_(tuple(labels)),
+            ActionOutcome.recorded_at
+            >= datetime.combine(payload.observationAsOf, time.min, tzinfo=timezone.utc),
+            ActionOutcome.recorded_at
+            < datetime.combine(payload.labelAvailableFrom, time.min, tzinfo=timezone.utc),
         )
         .order_by(ActionOutcome.recorded_at, ActionOutcome.id)
     ).all()
     materialized_customers: set[str] = set()
-    for outcome, action in rows:
+    for outcome, action, opportunity in rows:
+        outcome_label, outcome_value = labels[outcome.outcome_type]
         existing = session.scalar(
             select(OutcomeLabelSnapshot).where(
                 OutcomeLabelSnapshot.snapshot_version == payload.snapshotVersion,
@@ -258,16 +310,30 @@ def materialize_outcomes(
                 payload.labelAvailableFrom,
             ),
             snapshot_version=payload.snapshotVersion,
+            dataset_version=payload.snapshotVersion,
             customer_id=action.customer_id,
             customer_ref=action.customer_ref,
+            opportunity_id=opportunity.id,
+            opportunity_ref=opportunity.opportunity_ref,
+            opportunity_type=opportunity.opportunity_type,
+            action_id=action.id,
             score_type="SALES_PROPENSITY",
             observation_as_of=payload.observationAsOf,
+            observed_at=outcome.recorded_at,
             label_available_from=payload.labelAvailableFrom,
-            outcome_label="COMMERCIAL_CONVERSION",
-            outcome_value=terminal[outcome.outcome_type],
+            outcome_label=outcome_label,
+            outcome_value=outcome_value,
             source_reference=f"action-outcome:{outcome.id}",
+            source="COMMERCIAL_OUTCOME",
         )
-        record.outcome_value = terminal[outcome.outcome_type]
+        record.dataset_version = payload.snapshotVersion
+        record.opportunity_id = opportunity.id
+        record.opportunity_ref = opportunity.opportunity_ref
+        record.opportunity_type = opportunity.opportunity_type
+        record.action_id = action.id
+        record.observed_at = outcome.recorded_at
+        record.outcome_label = outcome_label
+        record.outcome_value = outcome_value
         record.source_reference = f"action-outcome:{outcome.id}"
         session.add(record)
         materialized_customers.add(action.customer_ref)

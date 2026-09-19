@@ -64,6 +64,10 @@ REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA customer, analytics, signal, rule,
 REVOKE USAGE ON SCHEMA customer, analytics, signal, rule, feature_store FROM ml_engine_service;
 GRANT USAGE ON SCHEMA action TO ml_engine_service;
 GRANT SELECT ON ALL TABLES IN SCHEMA action TO ml_engine_service;
+GRANT USAGE ON SCHEMA opportunity TO ml_engine_service;
+GRANT SELECT ON opportunity.opportunities TO ml_engine_service;
+GRANT USAGE ON SCHEMA audit TO opportunity_service;
+GRANT SELECT, INSERT ON audit.audit_logs TO opportunity_service;
 GRANT USAGE ON SCHEMA customer, opportunity, action, ml TO portfolio_service;
 GRANT SELECT ON ALL TABLES IN SCHEMA customer, opportunity, action, ml TO portfolio_service;
 SQL

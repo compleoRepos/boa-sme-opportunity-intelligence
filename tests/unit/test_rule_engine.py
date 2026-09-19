@@ -184,8 +184,8 @@ def test_sales_propensity_changes_priority_and_preserves_prediction_trace():
             "traceId": f"trace-{value}",
         }
 
-    low = rerank_with_propensity(candidate, score(0.1))
-    high = rerank_with_propensity(candidate, score(0.9))
+    low = rerank_with_propensity(candidate, score(0.1), rules_weight=0.65, ml_weight=0.35)
+    high = rerank_with_propensity(candidate, score(0.9), rules_weight=0.65, ml_weight=0.35)
     assert high.priority_score > low.priority_score
     assert high.priority_score != candidate.priority_score
     ml_component = next(

@@ -1,6 +1,7 @@
 import Keycloak, { type KeycloakProfile, type KeycloakTokenParsed } from 'keycloak-js'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react'
-import type { Role } from '../api/types'
+import type { DevPersona, Role } from '../api/types'
+import { DEV_PERSONAS, PERSONA_STORAGE_KEY, personaHeader } from './personas'
 
 type BoaToken = KeycloakTokenParsed & {
   preferred_username?: string
@@ -20,6 +21,12 @@ interface AuthContextValue {
   login: (redirectPath?: string) => Promise<void>
   logout: () => Promise<void>
   hasRole: (role: Role) => boolean
+  /** Mode démonstration sans Keycloak : persona active et bascule. */
+  devMode: boolean
+  persona?: DevPersona
+  personas: DevPersona[]
+  selectPersona: (id: string) => void
+  devPersonaHeader?: string
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -40,9 +47,19 @@ function extractRoles(token?: BoaToken) {
   return knownRoles.filter((role) => all.includes(role))
 }
 
+function storedPersona(): DevPersona | undefined {
+  try {
+    const id = window.localStorage.getItem(PERSONA_STORAGE_KEY)
+    return DEV_PERSONAS.find((item) => item.id === id)
+  } catch {
+    return undefined
+  }
+}
+
 export function AuthProvider({ children }: PropsWithChildren) {
+  const [persona, setPersona] = useState<DevPersona | undefined>(() => (authDisabled ? storedPersona() : undefined))
   const [initialized, setInitialized] = useState(authDisabled)
-  const [authenticated, setAuthenticated] = useState(authDisabled)
+  const [authenticated, setAuthenticated] = useState(() => authDisabled && Boolean(storedPersona()))
   const [token, setToken] = useState<string>()
   const [profile, setProfile] = useState<KeycloakProfile>()
   const [parsed, setParsed] = useState<BoaToken>()
@@ -97,6 +114,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return () => window.clearInterval(timer)
   }, [authenticated])
 
+  const selectPersona = useCallback((id: string) => {
+    const next = DEV_PERSONAS.find((item) => item.id === id)
+    if (!next) return
+    try { window.localStorage.setItem(PERSONA_STORAGE_KEY, next.id) } catch { /* stockage indisponible */ }
+    setPersona(next)
+    setAuthenticated(true)
+  }, [])
+
   const login = useCallback(async (redirectPath?: string) => {
     if (authDisabled) return
     const destination = new URL(redirectPath || '/', window.location.origin).toString()
@@ -105,6 +130,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   const logout = useCallback(async () => {
     if (authDisabled) {
+      try { window.localStorage.removeItem(PERSONA_STORAGE_KEY) } catch { /* stockage indisponible */ }
+      setPersona(undefined)
+      setAuthenticated(false)
       window.location.assign('/login')
       return
     }
@@ -113,23 +141,29 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   const roles = useMemo(() => {
     if (authDisabled) {
+      if (persona) return persona.roles
       const configured = (import.meta.env.VITE_DEV_ROLES || 'RELATIONSHIP_MANAGER').split(',')
       return knownRoles.filter((role) => configured.includes(role))
     }
     return extractRoles(parsed)
-  }, [parsed])
+  }, [parsed, persona])
 
   const value = useMemo<AuthContextValue>(() => ({
     initialized,
     authenticated,
     token,
-    username: parsed?.preferred_username || profile?.username || 'utilisateur',
-    displayName: parsed?.name || [profile?.firstName, profile?.lastName].filter(Boolean).join(' ') || parsed?.preferred_username || 'Chargé d’affaires',
+    username: persona?.username || parsed?.preferred_username || profile?.username || 'utilisateur',
+    displayName: persona?.displayName || parsed?.name || [profile?.firstName, profile?.lastName].filter(Boolean).join(' ') || parsed?.preferred_username || 'Chargé d’affaires',
     roles,
     login,
     logout,
     hasRole: (role) => roles.includes(role),
-  }), [initialized, authenticated, token, parsed, profile, roles, login, logout])
+    devMode: authDisabled,
+    persona,
+    personas: DEV_PERSONAS,
+    selectPersona,
+    devPersonaHeader: persona ? personaHeader(persona) : undefined,
+  }), [initialized, authenticated, token, parsed, profile, roles, login, logout, persona, selectPersona])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

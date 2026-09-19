@@ -202,11 +202,13 @@ async def _materialize_from_services(
         feature_set_version=feature_set_version,
         values_json=vector.values,
         sources_json=list(vector.sources),
+        lineage_json=list(vector.lineage),
         checksum=vector.checksum,
         created_by="feature-store-service",
     )
     record.values_json = vector.values
     record.sources_json = list(vector.sources)
+    record.lineage_json = list(vector.lineage)
     record.checksum = vector.checksum
     session.add(record)
     session.flush()

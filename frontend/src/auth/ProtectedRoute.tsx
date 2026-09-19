@@ -1,12 +1,11 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import type { Role } from '../api/types'
-import { LoadingState } from '../components/UI'
 import { useAuth } from './AuthProvider'
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const auth = useAuth()
   const location = useLocation()
-  if (!auth.initialized) return <div className="center-screen"><LoadingState label="Vérification de votre session…" /></div>
+  if (!auth.initialized) return <div className="center-screen"><p className="muted">Vérification de votre session…</p></div>
   if (!auth.authenticated) return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
   return children
 }

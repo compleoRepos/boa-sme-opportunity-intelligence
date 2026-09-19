@@ -1,5 +1,7 @@
 # Rapport de validation d’intégration ML
 
+> **Rapport historique.** Cette photographie précède l’ajout du fallback `RULES_ONLY`, de la Scoring Policy persistée, du workflow MLOps, du monitoring et de la readiness. Pour l’état courant, utiliser [`finalization-status-2026-09-19.md`](./finalization-status-2026-09-19.md).
+
 **Produit :** BOA SME Opportunity Intelligence
 **Date d’exécution :** 19 septembre 2026
 **Branche :** `feat/ml-integration-validation`

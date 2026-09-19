@@ -6,6 +6,7 @@ import type {
   RuleAuditEntry,
   RuleDefinition,
   RuleLifecycleInput,
+  RuleSimulationHistoryEntry,
   RuleSimulationInput,
   RuleSimulationResult,
   RuleTestResult,
@@ -42,6 +43,12 @@ export const useRuleVersions = (ruleId?: string) => useQuery({
 export const useRuleAudit = (ruleId?: string) => useQuery({
   queryKey: ['rule-studio', 'rule', ruleId, 'audit'],
   queryFn: () => apiRequest<ApiPage<RuleAuditEntry>>(`/api/v1/rules/${ruleId}/audit?pageSize=100&sort=-timestamp`),
+  enabled: Boolean(ruleId),
+})
+
+export const useRuleSimulations = (ruleId?: string) => useQuery({
+  queryKey: ['rule-studio', 'rule', ruleId, 'simulations'],
+  queryFn: () => apiRequest<{ ruleId: string; simulations: RuleSimulationHistoryEntry[] }>(`/api/v1/rules/${ruleId}/simulations`),
   enabled: Boolean(ruleId),
 })
 
@@ -97,7 +104,10 @@ export function useSimulateRule(ruleId: string) {
       body: JSON.stringify(input),
       idempotencyKey: `rule-simulate-${ruleId}-${crypto.randomUUID()}`,
     }),
-    onSuccess: () => invalidateRule(queryClient, ruleId),
+    onSuccess: () => {
+      invalidateRule(queryClient, ruleId)
+      void queryClient.invalidateQueries({ queryKey: ['rule-studio', 'rule', ruleId, 'simulations'] })
+    },
   })
 }
 

@@ -22,6 +22,7 @@ from boa_oi.models.entities import (
     FeatureMaterialization,
     MetricSnapshot,
     ModelRegistry,
+    Opportunity,
     OpportunityAction,
     OutcomeLabelSnapshot,
     PropensityScoreRecord,
@@ -229,6 +230,7 @@ def memory_factory():
         Signal.__mapper__.local_table,
         Rule.__mapper__.local_table,
         RuleVersion.__mapper__.local_table,
+        Opportunity.__mapper__.local_table,
         OpportunityAction.__mapper__.local_table,
         ActionOutcome.__mapper__.local_table,
     ]
@@ -240,6 +242,7 @@ def memory_factory():
             "rule",
             "feature_store",
             "ml",
+            "opportunity",
             "action",
         ):
             connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS '{schema}'")
@@ -336,12 +339,35 @@ def seed_api_data(factory) -> None:
                 created_by="unit-test",
             )
         )
+        opportunity_id = deterministic_uuid("opportunity-row", "OPP-INTEGRATION-001")
+        session.add(
+            Opportunity(
+                id=opportunity_id,
+                opportunity_ref="OPP-INTEGRATION-001",
+                customer_id=customer_id,
+                customer_ref="SME-00125",
+                customer_name="Synthetic SME 125",
+                opportunity_type="GROWTH_FINANCING",
+                status="CONVERTED",
+                horizon="1-3_MONTHS",
+                confidence_score=Decimal("0.82"),
+                confidence_level="HIGH",
+                confidence_components_json=[],
+                priority_score=Decimal("84"),
+                priority_level="P1",
+                priority_components_json=[],
+                generated_at=datetime(2026, 9, 30, tzinfo=timezone.utc),
+                rule_id=deterministic_uuid("rule", "OPP-INTEGRATION-001"),
+                deduplication_key="SME-00125:GROWTH_FINANCING:2026-09-30:v1",
+                created_by="unit-test",
+            )
+        )
         action_id = deterministic_uuid("action", "ACT-INTEGRATION-001")
         session.add(
             OpportunityAction(
                 id=action_id,
                 action_ref="ACT-INTEGRATION-001",
-                opportunity_id=deterministic_uuid("opportunity-row", "OPP-INTEGRATION-001"),
+                opportunity_id=opportunity_id,
                 opportunity_ref="OPP-INTEGRATION-001",
                 customer_id=customer_id,
                 customer_ref="SME-00125",
@@ -414,6 +440,8 @@ def test_internal_materialize_score_batch_model_and_outcome_endpoints(monkeypatc
     rule_source = next(item for item in feature["sources"] if item["sourceType"] == "RULE_STUDIO")
     assert rule_source["activeRuleVersions"] == ["RULE-ML-INTEGRATION:v1"]
     assert rule_source["matchedRuleVersions"] == ["RULE-ML-INTEGRATION:v1"]
+    assert {item["featureName"] for item in feature["lineage"]} == set(FEATURE_ORDER)
+    assert all(item["featureTimestamp"] <= item["observationAsOf"] for item in feature["lineage"])
 
     ml_client = TestClient(ml_app)
     scored = ml_client.post(
@@ -433,7 +461,11 @@ def test_internal_materialize_score_batch_model_and_outcome_endpoints(monkeypatc
         json={"customerIds": ["SME-00125"], "asOf": AS_OF.isoformat()},
     )
     assert batch.status_code == 200
-    assert batch.json()["data"][0] == body
+    batch_body = batch.json()["data"][0]
+    assert {key: value for key, value in batch_body.items() if key != "traceId"} == {
+        key: value for key, value in body.items() if key != "traceId"
+    }
+    assert batch_body["traceId"] != body["traceId"]
 
     registry = ml_client.get("/internal/v1/ml/models/active").json()
     assert registry["status"] == "ACTIVE"
@@ -459,8 +491,10 @@ def test_internal_materialize_score_batch_model_and_outcome_endpoints(monkeypatc
     assert materialized_labels.json()["trainingReady"] is False
     outcomes = ml_client.get("/internal/v1/ml/outcomes/snapshots").json()
     assert outcomes["data"][0]["snapshotVersion"] == "labels-synthetic-v1"
-    assert outcomes["data"][0]["outcomeLabel"] == "COMMERCIAL_CONVERSION"
+    assert outcomes["data"][0]["outcomeLabel"] == "CONVERTED"
     assert outcomes["data"][0]["outcomeValue"] is True
+    assert outcomes["data"][0]["datasetVersion"] == "labels-synthetic-v1"
+    assert outcomes["data"][0]["source"] == "COMMERCIAL_OUTCOME"
     assert outcomes["meta"]["purpose"] == "FUTURE_LABEL_SNAPSHOT_ONLY"
     assert outcomes["meta"]["automaticTraining"] is False
 

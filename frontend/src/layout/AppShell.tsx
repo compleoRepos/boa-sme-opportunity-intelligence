@@ -1,61 +1,120 @@
-import { useState } from 'react'
-import { Activity, BriefcaseBusiness, Building2, ChevronDown, ClipboardCheck, GitBranch, LayoutDashboard, LogOut, Menu, PackageSearch, Settings2, ShieldCheck, X } from 'lucide-react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { Activity, BriefcaseBusiness, Building2, ChevronDown, ChevronRight, ClipboardCheck, Cpu, Database, FlaskConical, GitBranch, LayoutDashboard, LogOut, Menu, PackageSearch, Search, ShieldCheck, UserRound, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useRelationshipManagerDashboard } from '../api/hooks'
+import { initials } from '../api/format'
 import { useAuth } from '../auth/AuthProvider'
-
-const globalNavigation = [
-  { to: '/', label: 'Vue d’ensemble', icon: LayoutDashboard, end: true },
-  { to: '/opportunites', label: 'Opportunités', icon: BriefcaseBusiness },
-  { to: '/clients', label: 'Clients', icon: Building2 },
-  { to: '/signaux', label: 'Signaux', icon: Activity },
-  { to: '/actions', label: 'Actions', icon: ClipboardCheck },
-  { to: '/produits', label: 'Catalogue', icon: PackageSearch },
-]
-
-const commercialNavigation = [
-  { to: '/', label: 'Vue d’ensemble', icon: LayoutDashboard, end: true },
-  { to: '/clients', label: 'Portefeuille PME', icon: Building2 },
-]
+import { DemoLauncher } from '../features/demo/DemoGuide'
+import { useBreadcrumbs } from './breadcrumbs'
 
 export function AppShell() {
-  const { displayName, username, roles, hasRole, logout } = useAuth()
+  const auth = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
-  const initials = displayName.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()
-  const canUseRuleStudio = hasRole('BUSINESS_ANALYST') || hasRole('RULE_APPROVER') || hasRole('ADMIN')
-  const isBranchManager = hasRole('BRANCH_MANAGER')
-  const isCommercial = isBranchManager || hasRole('RELATIONSHIP_MANAGER')
-  const navigation = isCommercial ? commercialNavigation : globalNavigation
-  const roleLabel = isBranchManager ? 'Responsable d’agence' : hasRole('RELATIONSHIP_MANAGER') ? 'Chargé de clientèle PME' : roles[0]?.replaceAll('_', ' ') || username
+  const [search, setSearch] = useState('')
+  const profileRef = useRef<HTMLDivElement>(null)
+  const isBranchManager = auth.hasRole('BRANCH_MANAGER')
+  const isRm = auth.hasRole('RELATIONSHIP_MANAGER') && !isBranchManager
+  const canBackOffice = auth.hasRole('ADMIN') || auth.hasRole('BUSINESS_ANALYST') || auth.hasRole('RULE_APPROVER') || auth.hasRole('DATA_ANALYST')
+  const dashboard = useRelationshipManagerDashboard(isRm)
+  const crumbs = useBreadcrumbs()
 
-  return <div className="app-shell">
+  useEffect(() => { setMobileOpen(false); setProfileOpen(false) }, [location.pathname])
+  useEffect(() => {
+    if (!profileOpen) return
+    const onClick = (event: MouseEvent) => { if (!profileRef.current?.contains(event.target as Node)) setProfileOpen(false) }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [profileOpen])
+
+  const roleLabel = isBranchManager ? 'Responsable d’agence' : isRm ? 'Chargé de clientèle PME' : auth.hasRole('ADMIN') || auth.hasRole('BUSINESS_ANALYST') ? 'Digital Factory · Back office' : auth.hasRole('RULE_APPROVER') ? 'Approbation des règles' : canBackOffice ? 'Analyse de données' : auth.roles[0]?.replaceAll('_', ' ') || auth.username
+  const priorities = dashboard.data?.kpis.highPriorityCustomers
+  const actionsDue = dashboard.data?.kpis.actionsDue
+
+  const navigation = useMemo(() => {
+    const items: Array<{ to: string; label: string; icon: typeof LayoutDashboard; end?: boolean; count?: number; section?: string }> = []
+    if (isRm) {
+      items.push({ to: '/', label: 'Mon portefeuille', icon: LayoutDashboard, end: true, count: priorities, section: 'Portefeuille PME' })
+      items.push({ to: '/clients', label: 'Mes PME', icon: Building2 })
+      items.push({ to: '/actions', label: 'Mes actions', icon: ClipboardCheck, count: actionsDue })
+    } else if (isBranchManager) {
+      items.push({ to: '/', label: 'Pilotage agence', icon: LayoutDashboard, end: true, section: 'Agence' })
+      items.push({ to: '/clients', label: 'PME de l’agence', icon: Building2 })
+      items.push({ to: '/actions', label: 'Actions & résultats', icon: ClipboardCheck })
+    } else {
+      items.push({ to: '/', label: 'Vue d’ensemble', icon: LayoutDashboard, end: true, section: 'Intelligence commerciale' })
+      items.push({ to: '/opportunites', label: 'Opportunités', icon: BriefcaseBusiness })
+      items.push({ to: '/clients', label: 'Clients PME', icon: Building2 })
+      items.push({ to: '/signaux', label: 'Signaux', icon: Activity })
+      items.push({ to: '/actions', label: 'Actions', icon: ClipboardCheck })
+      items.push({ to: '/produits', label: 'Catalogue', icon: PackageSearch })
+    }
+    if (canBackOffice) {
+      items.push({ to: '/back-office', label: 'Back office métier', icon: Database, end: true, section: 'Gouvernance' })
+      items.push({ to: '/back-office/regles', label: 'Rule Studio', icon: GitBranch })
+      items.push({ to: '/back-office/simulations', label: 'Simulations', icon: FlaskConical })
+      items.push({ to: '/back-office/modeles', label: 'ML Governance', icon: Cpu })
+      items.push({ to: '/back-office/audit', label: 'Audit', icon: ShieldCheck })
+    }
+    return items
+  }, [isRm, isBranchManager, canBackOffice, priorities, actionsDue])
+
+  const submitSearch = (event: FormEvent) => {
+    event.preventDefault()
+    if (!search.trim()) return
+    navigate(`/clients?q=${encodeURIComponent(search.trim())}`)
+  }
+
+  return <div className="app">
     {mobileOpen && <button className="sidebar-scrim" aria-label="Fermer le menu" onClick={() => setMobileOpen(false)} />}
     <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
       <div className="brand">
-        <div className="brand-mark" aria-hidden="true"><span>BOA</span></div>
+        <span className="brand-mark" aria-hidden="true">BOA</span>
         <div><strong>BANK OF AFRICA</strong><small>SME Opportunity Intelligence</small></div>
-        <button type="button" className="mobile-close" onClick={() => setMobileOpen(false)} aria-label="Fermer"><X /></button>
+        <button type="button" className="btn icon sm mobile-close" onClick={() => setMobileOpen(false)} aria-label="Fermer" style={{ marginLeft: 'auto', color: '#fff' }}><X size={16} /></button>
       </div>
-      <div className="scope-label">{isBranchManager ? 'PILOTAGE COMMERCIAL AGENCE' : 'MON PORTEFEUILLE PME'}</div>
-      <nav className="sidebar-nav" aria-label="Navigation principale">
-        {navigation.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} onClick={() => setMobileOpen(false)}><Icon size={19} /><span>{label}</span></NavLink>)}
-        {canUseRuleStudio && <><div className="scope-label nav-separator">RÈGLES MÉTIER</div><NavLink to="/rule-studio" onClick={() => setMobileOpen(false)}><GitBranch size={19} /><span>Rule Studio</span></NavLink></>}
-        {hasRole('ADMIN') && <><div className="scope-label nav-separator">GOUVERNANCE</div><NavLink to="/administration" onClick={() => setMobileOpen(false)}><Settings2 size={19} /><span>Administration</span></NavLink></>}
+      <nav aria-label="Navigation principale">
+        {navigation.map((item, index) => <div key={item.to}>
+          {item.section && (index === 0 || navigation[index - 1]?.section !== item.section) && <div className="sidebar-section">{item.section}</div>}
+          <div className="nav"><NavLink to={item.to} end={item.end}><item.icon size={18} /><span>{item.label}</span>{item.count != null && item.count > 0 && <span className="count">{item.count}</span>}</NavLink></div>
+        </div>)}
       </nav>
-      <div className="sidebar-notice"><ShieldCheck size={18} /><div><strong>Données synthétiques</strong><span>Aucune décision de crédit</span></div></div>
+      <div className="sidebar-footer">
+        <div className="env-badge"><ShieldCheck size={16} /><div>Environnement de démonstration<span>Données synthétiques · aucune décision de crédit</span></div></div>
+      </div>
     </aside>
-    <div className="app-main">
+
+    <div className="main">
       <header className="topbar">
-        <button type="button" className="menu-button" onClick={() => setMobileOpen(true)} aria-label="Ouvrir le menu"><Menu /></button>
-        <div className="topbar-context"><span>{isBranchManager ? 'Vue agence consolidée' : 'Mon portefeuille PME'}</span><strong>Intelligence commerciale</strong></div>
-        <div className="profile-wrap">
-          <button type="button" className="profile-button" onClick={() => setProfileOpen((value) => !value)} aria-expanded={profileOpen} aria-haspopup="menu" aria-label={`Menu du profil de ${displayName}`}>
-            <span className="avatar">{initials}</span><span className="profile-copy"><strong>{displayName}</strong><small>{roleLabel}</small></span><ChevronDown size={16} />
+        <button type="button" className="btn icon menu-btn" onClick={() => setMobileOpen(true)} aria-label="Ouvrir le menu"><Menu size={18} /></button>
+        <nav className="crumbs" aria-label="Fil d’Ariane">
+          {crumbs.map((crumb, index) => <span key={`${crumb.label}-${index}`} className="row" style={{ gap: 6 }}>
+            {index > 0 && <ChevronRight size={14} />}
+            {crumb.to && index < crumbs.length - 1 ? <Link to={crumb.to}>{crumb.label}</Link> : <strong>{crumb.label}</strong>}
+          </span>)}
+        </nav>
+        <div className="topbar-spacer" />
+        <form className="search global-search" onSubmit={submitSearch} role="search"><Search size={16} /><input className="input sm" placeholder="Rechercher une PME (nom, identifiant)…" aria-label="Rechercher une PME" value={search} onChange={(event) => setSearch(event.target.value)} /></form>
+        {auth.devMode && <DemoLauncher />}
+        <div className="profile" ref={profileRef}>
+          <button type="button" className="profile-btn" onClick={() => setProfileOpen((open) => !open)} aria-expanded={profileOpen} aria-haspopup="menu">
+            <span className="avatar">{initials(auth.displayName)}</span>
+            <span><strong>{auth.displayName}</strong><small>{roleLabel}</small></span>
+            <ChevronDown size={14} />
           </button>
-          {profileOpen && <div className="profile-menu"><div><strong>{displayName}</strong><span>{username}</span></div><button type="button" onClick={() => void logout()}><LogOut size={16} /> Se déconnecter</button></div>}
+          {profileOpen && <div className="profile-menu" role="menu">
+            <div className="menu-head"><strong>{auth.displayName}</strong><span>{auth.username} · {auth.roles.map((role) => role.replaceAll('_', ' ').toLowerCase()).join(', ')}</span></div>
+            {auth.devMode && <>
+              <div className="menu-label">Persona de démonstration</div>
+              {auth.personas.map((persona) => <button type="button" role="menuitem" key={persona.id} className={auth.persona?.id === persona.id ? 'active' : ''} onClick={() => { auth.selectPersona(persona.id); navigate('/') }}><UserRound size={15} />{persona.label}<small className="muted" style={{ marginLeft: 'auto' }}>{persona.roles[0]?.replaceAll('_', ' ').toLowerCase()}</small></button>)}
+            </>}
+            <button type="button" role="menuitem" onClick={() => void auth.logout()}><LogOut size={15} /> Se déconnecter</button>
+          </div>}
         </div>
       </header>
-      <main className="content"><Outlet /></main>
+      <main className="content" id="main"><Outlet /></main>
     </div>
   </div>
 }

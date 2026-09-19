@@ -167,12 +167,14 @@ def materialize_customer(
         feature_set_version=feature_set_version,
         values_json=vector.values,
         sources_json=list(vector.sources),
+        lineage_json=list(vector.lineage),
         checksum=vector.checksum,
         created_by="feature-store-service",
     )
     record.customer_ref = customer.customer_ref
     record.values_json = vector.values
     record.sources_json = list(vector.sources)
+    record.lineage_json = list(vector.lineage)
     record.checksum = vector.checksum
     session.add(record)
     session.flush()
@@ -186,6 +188,7 @@ def vector_from_record(record: FeatureMaterialization) -> FeatureVector:
         feature_set_version=record.feature_set_version,
         values={name: float(value) for name, value in record.values_json.items()},
         sources=tuple(record.sources_json),
+        lineage=tuple(record.lineage_json),
         checksum=record.checksum,
     )
 
@@ -197,6 +200,7 @@ def serialize_feature(record: FeatureMaterialization) -> dict[str, Any]:
         "featureSetVersion": record.feature_set_version,
         "values": record.values_json,
         "sources": record.sources_json,
+        "lineage": record.lineage_json,
         "checksum": record.checksum,
     }
 

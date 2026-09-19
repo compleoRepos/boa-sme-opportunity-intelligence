@@ -2,33 +2,34 @@
 
 **Date :** 19 septembre 2026
 
-Le produit est un **POC d’intelligence commerciale PME** exécutable sur CPU avec Docker Compose. Il combine Analytics, Signal Service, Rule Studio, Feature Store, un modèle logistique de propension commerciale et Opportunity Service. Il ne prend aucune décision de crédit et ne dépend d’aucun LLM ou GPU.
+BOA SME Opportunity Intelligence est un **POC d’intelligence commerciale PME** exécutable sur CPU. Il combine Analytics, Signals, Rule Studio, Feature Store point-in-time, modèle logistique de propension, Scoring Policy gouvernée, Opportunity Engine, dashboards CC/agence et actions/outcomes. Il ne prend aucune décision de crédit et ne dépend d’aucun LLM, GPU ou appel IA externe.
 
-## Implémenté et validé
+## Statut technique
 
 | Capacité | Statut |
 |---|---|
-| Microservices FastAPI, PostgreSQL, Keycloak et Gateway | **PASS** |
-| Frontend React/TypeScript authentifié | **PASS** |
-| Rule Studio versionné avec simulation, séparation auteur/approbateur, activation, désactivation et rollback | **PASS** |
-| Feature Store `sales-features-v2` alimenté par Analytics, Signals et Rule Engine via HTTP | **PASS** |
-| ML Engine CPU avec score, contributions et versions persistées | **PASS — POC synthétique** |
-| Influence du score sur la priorité Opportunity, pondération POC 35 % ML / 65 % règles | **PASS** |
+| Stack Docker Compose, PostgreSQL, Keycloak, Gateway et frontend premium | **PASS — 20/20 services sains** |
+| Rule Studio versionné, simulation, séparation auteur/approbateur et rollback | **PASS** |
+| Feature Store alimenté par Analytics, Signals et Rule Engine via HTTP | **PASS** |
+| ML Engine CPU avec lignée, score, contributions et versions | **PASS — POC synthétique** |
+| Scoring Policy versionnée, approuvée, active et restaurable | **PASS** |
+| Fallback ML indisponible → `RULES_ONLY` sans score ancien ou inventé | **PASS** |
+| Retour automatique au mode `HYBRID_ML` après récupération | **PASS** |
+| Model Registry, approbation, champion, retrait et rollback | **PASS — SOCLE MLOps** |
+| Monitoring drift/opérationnel persistant et readiness prudente | **PASS — SOCLE** |
 | Dashboard CC limité à son portefeuille | **PASS** |
-| Dashboard responsable d’agence consolidé et limité à ses branches | **PASS** |
-| Fiche PME, opportunités, actions et outcomes | **PASS** |
-| Outcomes matérialisables comme futurs labels versionnés, sans auto-entraînement | **PASS** |
-| Quatre parcours Playwright authentifiés desktop/mobile | **PASS** |
-| Batch de 500 PME synthétiques | **PASS** |
+| Dashboard agence consolidé et limité à ses branches/CC | **PASS** |
+| Outcomes matérialisés comme futurs labels avec maturité | **PASS — `trainingReady=false`** |
+| Migration base vierge `0001` → `0008_training_status` | **PASS** |
+| Suite navigateur complète | **PASS — 8/8** |
+| Tests backend/frontend et build | **PASS — 119 backend, 15 frontend** |
 
-Les preuves et limites détaillées sont disponibles dans [`ml-integration-status.md`](./ml-integration-status.md).
+## Positionnement et limites
 
-## Non implémenté
+Le modèle actif et les challengers restent en mode **`POC_ASSISTIVE`** sur données synthétiques. Aucune précision, AUC, calibration, uplift ou performance commerciale de production n’est revendiquée. `FINANCIAL_STRESS_SIGNAL` reste un signal relationnel à examiner par un humain.
 
-L’entraînement et la validation sur données BOA réelles, la calibration, le monitoring de drift opérationnel, le fallback automatique `RULES_ONLY`, la gouvernance juridique/DPO, le déploiement AWS, la haute disponibilité, les sauvegardes testées, les secrets de production et l’intégration aux SI bancaires réels ne sont pas implémentés.
+La production est **BLOCKED**. Les données et labels BOA réels, la validation indépendante du modèle, l’homologation DPO/Sécurité, les adaptateurs CBS/CRM/Payments/Trade, la haute disponibilité, la restauration testée, les secrets/TLS de production et les choix cloud restent à réaliser et approuver. Aucun déploiement AWS n’a été créé.
 
-Le LLM est **non implémenté par choix** : il reste une possibilité architecturale future, hors du score, de l’éligibilité et de la priorisation.
+Le rapport de référence est [`finalization-status-2026-09-19.md`](./finalization-status-2026-09-19.md). La gouvernance des données et la cible d’industrialisation sont détaillées dans [`industrialization-governance.md`](./industrialization-governance.md).
 
-## Positionnement
-
-Le modèle actif `sales-propensity-logit-poc-v1` utilise le dataset `synthetic-demo-20260918-v1` et le Feature Set `sales-features-v2` en mode `POC_ASSISTIVE`. Aucune performance prédictive ou commerciale de production n’est revendiquée. `FINANCIAL_STRESS_SIGNAL` reste un signal relationnel à examiner par le chargé de clientèle.
+Le LLM est **non implémenté par choix** et reste une possibilité architecturale future hors score, éligibilité, priorisation et décision métier.

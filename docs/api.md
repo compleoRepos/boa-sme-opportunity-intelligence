@@ -531,6 +531,19 @@ Réponse `201` : ressource `Action`. Une transition invalide, par exemple `MARK_
 
 Le Customer 360 peut être composé par le Gateway ou un endpoint d’agrégation interne. Chaque service conserve néanmoins son contrat de domaine séparé. Une réponse d’agrégation partielle indique explicitement `partial: true` et les sections indisponibles; elle ne fabrique pas de valeurs par défaut.
 
+### 9.3 bis Séries d’activité et registre ML (ajouts UI premium)
+
+| Méthode | Route | Autorisation | Notes |
+|---|---|---|---|
+| `GET` | `/api/v1/customers/{customerId}/activity` | `transactions:read` | Série agrégée par `granularity` (`DAY`, `WEEK`, `MONTH`), `fromDate`, `toDate` : `inflow`, `outflow`, `net`, `transactionCount`, `supplierPayments`, `internationalAmount`, `internationalCount` par période. Sommes SQL sur les transactions importées, aucune valeur synthétisée. |
+| `GET` | `/api/v1/ml/models` | lecture | Registre complet des modèles de propension (statut, features, coefficients, métriques, dataset). |
+| `GET` | `/api/v1/ml/models/active` | lecture | Modèle actif. |
+| `GET` | `/api/v1/ml/models/{modelVersion}` | lecture | Une version. |
+
+Le dashboard agence (`/api/v1/dashboards/branch`) expose en plus `opportunitiesByType`, `opportunitiesBySector`, `opportunitiesByProduct`, `opportunitiesByPriority`, `opportunitiesByRelationshipManager`, `opportunityTimeline`, `actionsByType`, `outcomes`, `actionTimeline`. Les lignes de portefeuille (`/api/v1/dashboards/me`) portent `branchName`, `segment` et, pour chaque opportunité ouverte, `why`, `recommendedProducts`, `priorityScore`, `priorityLevel`, `generatedAt`.
+
+**Persona de développement.** Lorsque `BOA_AUTH_DISABLED=true`, le header `X-Dev-Principal` (JSON : `subject`, `username`, `roles`, `branchIds`, `relationshipManagerIds`) remplace le jeton pour rejouer un périmètre. Il est propagé par le Gateway aux services et ignoré dès que l’authentification OIDC est active.
+
 ### 9.4 Comptes et soldes
 
 | Méthode | Route | Autorisation | Paramètres |

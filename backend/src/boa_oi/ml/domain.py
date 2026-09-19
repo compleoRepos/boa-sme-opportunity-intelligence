@@ -5,7 +5,16 @@ from dataclasses import dataclass
 from typing import Any, Final, Literal, Mapping
 
 SCORE_TYPE: Final = "SALES_PROPENSITY"
-ModelStatus = Literal["CHALLENGER", "ACTIVE", "RETIRED"]
+ModelStatus = Literal[
+    "REGISTERED",
+    "VALIDATING",
+    "SUBMITTED",
+    "APPROVED",
+    "CHALLENGER",
+    "CHAMPION",
+    "ACTIVE",
+    "RETIRED",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,7 +41,16 @@ class LogisticModel:
             raise ValueError("coefficients must exactly match the feature order")
         if any(not math.isfinite(value) for value in self.coefficients.values()):
             raise ValueError("all coefficients must be finite")
-        if self.status not in {"CHALLENGER", "ACTIVE", "RETIRED"}:
+        if self.status not in {
+            "REGISTERED",
+            "VALIDATING",
+            "SUBMITTED",
+            "APPROVED",
+            "CHALLENGER",
+            "CHAMPION",
+            "ACTIVE",
+            "RETIRED",
+        }:
             raise ValueError("unsupported model status")
 
 
