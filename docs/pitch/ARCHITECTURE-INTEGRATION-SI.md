@@ -11,7 +11,7 @@ L’architecture proposée conserve `api-gateway` comme seul point d’entrée d
 
 Le dépôt démontre un flux HTTP de données synthétiques vers `banking-integration-service`, puis vers les services propriétaires `customer-service`, `account-service`, `transaction-service` et `product-service`. Il démontre aussi une synchronisation d’affectation portefeuille datée, idempotente, auditée et propagée par outbox. Ces preuves sont fonctionnelles et locales ; elles ne constituent pas un raccordement au SI bancaire ni une mesure de production. Voir [`architecture/data-flow.md`](../../architecture/data-flow.md), [`architecture/architecture.md`](../../architecture/architecture.md) et [`docs/finalization-status-2026-09-19.md`](../finalization-status-2026-09-19.md).
 
-Le produit est une aide commerciale explicable. **Aucune décision de crédit, d’octroi, de refus, de limite ou de tarification n’est prise.** `FINANCIAL_STRESS_SIGNAL` reste un signal relationnel destiné à l’examen humain. Le ML classique est **CPU-only**, limité à un mode `POC_ASSISTIVE` / shadow tant que les labels BOA matures ne sont pas disponibles et validés. **Aucun LLM et aucun GPU ne sont requis.**
+Le produit est une aide commerciale explicable. **Aucune décision de crédit, d’octroi, de refus, de limite ou de tarification n’est prise.** `FINANCIAL_STRESS_SIGNAL` reste un signal relationnel destiné à l’examen humain. Le ML classique est **CPU-only** et verrouillé en `POC_SHADOW`; la priorité reste `RULES_ONLY` tant que les labels historiques BOA matures et la validation indépendante ne sont pas disponibles. **Aucun LLM et aucun GPU ne sont requis.**
 
 Les éléments non démontrés dans le dépôt, notamment les systèmes sources réels, les cadences, les volumes cibles, les coûts, les seuils de service, les durées de conservation et les exigences de production, portent explicitement la mention **HYPOTHÈSE À VALIDER AVEC BOA**.
 
@@ -30,7 +30,7 @@ Les éléments non démontrés dans le dépôt, notamment les systèmes sources 
 | Idempotence portefeuille | **IMPLÉMENTÉ / PROUVÉ** | La clé `Idempotency-Key`, le `batchRef`, le `sourceEventId` et le hash de contenu évitent les doubles traitements et détectent les réutilisations contradictoires. | [`backend/src/boa_oi/customer_api.py`](../../backend/src/boa_oi/customer_api.py) |
 | Historisation portefeuille | **IMPLÉMENTÉ / PROUVÉ** | Les affectations sont bornées par `validFrom` et `validTo`; les événements hors ordre et les corrections historiques sont rejetés plutôt qu’appliqués silencieusement. | [`backend/src/boa_oi/customer_api.py`](../../backend/src/boa_oi/customer_api.py), [`docs/lots/LOT-03-SYNCHRONISATION-PORTEFEUILLE.md`](../lots/LOT-03-SYNCHRONISATION-PORTEFEUILLE.md) |
 | Événements | **IMPLÉMENTÉ / PROUVÉ** | Les services écrivent des événements dans une outbox locale avec corrélation et causation. Aucun broker permanent n’est requis par le MVP. | [`architecture/data-flow.md`](../../architecture/data-flow.md), [`docs/deployment.md`](../deployment.md) |
-| ML | **IMPLÉMENTÉ / PROUVÉ dans le POC** | La chaîne Feature Store → ML Engine → Opportunity fonctionne sur données synthétiques, en inférence CPU et avec une traçabilité de version. | [`docs/finalization-status-2026-09-19.md`](../finalization-status-2026-09-19.md), [`docs/ml-integration-status.md`](../ml-integration-status.md) |
+| ML | **IMPLÉMENTÉ / PROUVÉ dans le POC shadow** | La chaîne Feature Store → ML Engine persiste un score versionné et traçable ; Opportunity conserve l’observation séparée mais sa priorité reste issue des règles. | [`docs/ml-engine.md`](../ml-engine.md), [`LOT-10-ML-SHADOW-GOUVERNE.md`](../lots/LOT-10-ML-SHADOW-GOUVERNE.md) |
 | Raccordement aux SI BOA réels | **NON IMPLÉMENTÉ** | Aucun raccordement réel au Core Banking, au CRM, aux paiements, au Trade Finance ou à un entrepôt BOA n’est démontré. | [`docs/finalization-status-2026-09-19.md`](../finalization-status-2026-09-19.md) |
 | Annuaire, plateforme d’intégration et SIEM BOA | **NON IMPLÉMENTÉ** | Les composants locaux ne prouvent pas la connexion à l’annuaire, à la plateforme d’intégration, au SIEM ou au coffre de secrets BOA. | [`docs/security.md`](../security.md), [`docs/finalization-status-2026-09-19.md`](../finalization-status-2026-09-19.md) |
 
@@ -300,7 +300,7 @@ Le pilote ne peut démarrer avec des données BOA qu’après les conditions sui
 | Rejets et réconciliation | Runbook, propriétaires, quarantaine, reprise et rapprochement acceptés | **NON IMPLÉMENTÉ / À VALIDER** |
 | Observabilité et audit | Logs corrélés, métriques, traces, export SIEM et conservation approuvés | **NON IMPLÉMENTÉ / À VALIDER** |
 | Raccordements réels | Adaptateurs testés sur environnement non productif BOA et validation des mappings | **NON IMPLÉMENTÉ** |
-| ML | Mode `POC_ASSISTIVE` / shadow confirmé, absence de décision de crédit, données et labels BOA non utilisés pour un entraînement non approuvé | Socle POC **PROUVÉ** ; usage BOA **À VALIDER** |
+| ML | `POC_SHADOW` et `RULES_ONLY` confirmés ; blockers d’activation persistés ; absence de décision de crédit ; aucun entraînement BOA revendiqué | Socle POC **PROUVÉ** ; toute influence ML **BLOQUÉE / À VALIDER** |
 | Continuité | Sauvegarde, restauration, haute disponibilité et objectifs de reprise définis | **NON IMPLÉMENTÉ / À VALIDER** |
 
 ### 10.2 Déroulement contrôlé proposé

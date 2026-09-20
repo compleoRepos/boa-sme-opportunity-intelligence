@@ -546,8 +546,16 @@ Le Customer 360 peut être composé par le Gateway ou un endpoint d’agrégatio
 | `GET` | `/api/v1/ml/models` | lecture | Registre complet des modèles de propension (statut, features, coefficients, métriques, dataset). |
 | `GET` | `/api/v1/ml/models/active` | lecture | Modèle actif. |
 | `GET` | `/api/v1/ml/models/{modelVersion}` | lecture | Une version. |
+| `POST` | `/api/v1/admin/ml/outcomes/materialize` | `DATA_ANALYST`, `ADMIN`, `SERVICE` | Matérialise des labels candidats avec définition, cible, horizon, population, snapshot feature et fenêtre de disponibilité. |
+| `GET` | `/api/v1/admin/ml/outcomes/snapshots` | `DATA_ANALYST`, `ADMIN`, `SERVICE` | Liste les labels candidats ; `trainingReady=false` tant que les historiques BOA gouvernés manquent. |
+| `POST` | `/api/v1/admin/ml/datasets/manifests` | `DATA_ANALYST`, `ADMIN`, `SERVICE` | Persiste un manifest point-in-time hashé et ses blockers. |
+| `GET` | `/api/v1/admin/ml/datasets/manifests` | `DATA_ANALYST`, `ADMIN`, `SERVICE` | Liste les manifests et statuts `BLOCKED`/`CANDIDATE`. |
+| `POST` | `/api/v1/admin/ml/governance/evaluation/metrics` | `DATA_ANALYST`, `ADMIN` ; `SERVICE` sur route interne seulement | Persiste une évaluation descriptive avec Brier/ECE. Les tableaux fournis étant déclaratifs et non résolus depuis les snapshots, le blocker `DECLARATIVE_EVALUATION_INPUT_NOT_LINKED_TO_SNAPSHOTS` est systématique ; aucun claim de production. |
+| `POST` | `/api/v1/admin/ml/governance/evaluation/labels` | `DATA_ANALYST`, `ADMIN` ; `SERVICE` sur route interne seulement | Évalue la maturité sans rendre les labels training-ready, persiste un audit corrélé et refuse les rôles commerciaux. |
 
 Le dashboard agence (`/api/v1/dashboards/branch`) expose en plus `opportunitiesByType`, `opportunitiesBySector`, `opportunitiesByProduct`, `opportunitiesByPriority`, `opportunitiesByRelationshipManager`, `opportunityTimeline`, `actionsByType`, `outcomes`, `actionTimeline`. Les lignes de portefeuille (`/api/v1/dashboards/me`) portent `branchName`, `segment` et, pour chaque opportunité ouverte, `why`, `recommendedProducts`, `priorityScore`, `priorityLevel`, `generatedAt`.
+
+Une méthode de calibration `PLATT` ou `ISOTONIC` sans référence de preuve est refusée. Même avec une référence, l’API actuelle conserve `calibration.status=NOT_VALIDATED`; elle enregistre la méthode demandée sans la présenter comme appliquée. La promotion vérifie les objets persistés et reste bloquée tant qu’aucun manifest/évaluation BOA `VALIDATED` n’existe.
 
 **Persona de développement.** Lorsque `BOA_AUTH_DISABLED=true`, le header `X-Dev-Principal` (JSON : `subject`, `username`, `roles`, `branchIds`, `relationshipManagerIds`) remplace le jeton pour rejouer un périmètre. Il est propagé par le Gateway aux services et ignoré dès que l’authentification OIDC est active.
 
@@ -1137,9 +1145,9 @@ Le MVP utilise HTTP et outbox locale. Un broker est une évolution future, pas u
 
 ---
 
-## 16. Contrats cibles — dashboards, features et propension
+## 16. Contrats dashboards, features et propension
 
-Ces routes sont des extensions futures. Elles conservent `/api/v1`, FastAPI/OpenAPI, Keycloak, curseurs opaques et erreurs normalisées. Elles ne sont pas requises par le MVP actuel avant acceptation ML.
+Cette section mêle contrats implémentés et cibles explicitement indiquées. Les routes de score, labels candidats, manifests et évaluation shadow sont implémentées ; les registres externes spécialisés et l’activation hybride restent des cibles non livrées.
 
 ### 16.1 Dashboards et portefeuilles
 
@@ -1193,7 +1201,7 @@ GET  /api/v1/admin/ml/monitoring/models/{modelId}/performance
 POST /internal/v1/ml/monitoring/recompute
 ```
 
-La politique contient mode, type, poids, gates, fallback, version, checksum et approbations. En `ML_SHADOW`, le bloc ML d’explication est réservé au monitoring/audit et ne change pas le classement opérationnel. En `HYBRID_RERANK`, seules les candidates règles sont réordonnées. `HYBRID_CANDIDATE` est refusé dans le MVP initial.
+La policy active livrée porte `RULES_ONLY`, poids règles `1` et ML `0`. En `POC_SHADOW`, le bloc ML d’explication est réservé au monitoring/audit et ne change pas le classement opérationnel. Une policy hybride peut être simulée et revue, mais son activation retourne `409 ML_SHADOW_POLICY_REQUIRED`. `HYBRID_RERANK` et `HYBRID_CANDIDATE` ne sont pas activables dans le MVP.
 
 Le monitoring indique population, référence, fenêtre, méthode, seuils, statut `OK/WARNING/BLOCKING`, versions et maturité des outcomes. Les APIs dataset exposent des manifestes gouvernés, pas un export brut au navigateur. `SIMULATED` et `NOT_REPORTED` sont exclus par défaut.
 

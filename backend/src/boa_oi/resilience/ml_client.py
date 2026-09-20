@@ -13,6 +13,7 @@ from typing import Any
 
 
 class FallbackMode(StrEnum):
+    POC_SHADOW = "POC_SHADOW"
     HYBRID_ML = "HYBRID_ML"
     RULES_ONLY = "RULES_ONLY"
 
@@ -249,7 +250,7 @@ class ResilientMLClient:
         clock: Callable[[], datetime] | None = None,
         monotonic: Callable[[], float] | None = None,
         audit_sink: AuditSink | None = None,
-        default_mode: FallbackMode | str = FallbackMode.HYBRID_ML,
+        default_mode: FallbackMode | str = FallbackMode.POC_SHADOW,
     ) -> None:
         if timeout <= 0 or not math.isfinite(timeout):
             raise ValueError("timeout must be finite and positive")
@@ -384,7 +385,11 @@ class ResilientMLClient:
                 return await self._failed(selected_mode, cause, attempts, request)
             self.circuit_breaker.record_success()
             event = AuditEvent(
-                event_type="ML_SCORE_ACCEPTED",
+                event_type=(
+                    "ML_SHADOW_SCORE_OBSERVED"
+                    if selected_mode is FallbackMode.POC_SHADOW
+                    else "ML_SCORE_ACCEPTED"
+                ),
                 occurred_at=self._now().isoformat(),
                 mode=selected_mode,
                 circuit_state=self.circuit_breaker.state,
@@ -397,7 +402,7 @@ class ResilientMLClient:
             return MLScoreResult(
                 score=value,
                 mode=selected_mode,
-                used_ml=True,
+                used_ml=selected_mode is FallbackMode.HYBRID_ML,
                 cause=None,
                 audit_event=event,
                 attempts=attempts,
@@ -603,7 +608,7 @@ class ResilientMLClient:
         try:
             return FallbackMode(value)
         except ValueError as exc:
-            raise ValueError("mode must be HYBRID_ML or RULES_ONLY") from exc
+            raise ValueError("mode must be POC_SHADOW, HYBRID_ML or RULES_ONLY") from exc
 
     @staticmethod
     def _safe_metadata(value: Any) -> dict[str, Any]:

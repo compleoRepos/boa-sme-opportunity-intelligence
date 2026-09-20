@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, cast
 
@@ -7,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from boa_oi.features import FEATURE_ORDER
+from boa_oi.ml.governance import POC_SHADOW
 from boa_oi.models.entities import FeatureMaterialization, ModelRegistry, PropensityScoreRecord
 from boa_oi.platform import Problem, not_found
 from boa_oi.technical.ids import deterministic_uuid
@@ -55,6 +57,12 @@ def score_materialization(
     prediction_trace_id: str | None = None,
 ) -> PropensityScoreRecord:
     model_record = active_model(session, model_version)
+    if model_record.deployment_mode != POC_SHADOW:
+        raise Problem(
+            409,
+            "ML_SHADOW_MODE_REQUIRED",
+            "Inference is restricted to POC_SHADOW until BOA historical labels are available.",
+        )
     model = model_from_record(model_record)
     if tuple(feature_record.values_json) != FEATURE_ORDER:
         raise Problem(
@@ -96,7 +104,7 @@ def score_materialization(
         score=score.propensity,
         threshold=score.threshold,
         above_threshold=score.above_threshold,
-        calibration=score.calibration,
+        score_band=score.score_band,
         segment=score.segment,
         model_version=score.model_version,
         feature_set_version=score.feature_version,
@@ -104,20 +112,41 @@ def score_materialization(
         contributions_json=[_contribution_payload(item) for item in score.contributions],
         top_factors_json=[_contribution_payload(item) for item in score.top_factors],
         training_dataset_version=model_record.training_dataset_version,
-        deployment_mode=model_record.deployment_mode,
+        deployment_mode="POC_SHADOW",
         prediction_trace_id=prediction_trace_id or str(feature_record.id),
+        target_outcome=model_record.target_outcome,
+        horizon_days=model_record.horizon_days,
+        opportunity_type="ANY_COMMERCIAL_OPPORTUNITY",
+        score_interpretation="RANKING_ONLY",
+        feature_snapshot_id=feature_record.id,
+        feature_watermark=feature_record.checksum,
+        valid_until=feature_record.as_of_date,
+        contract_version=model_record.contract_version,
+        dataset_manifest_hash=model_record.dataset_manifest_hash,
+        artifact_checksum=model_record.artifact_checksum,
         created_by="ml-engine-service",
     )
     record.score = Decimal(str(score.propensity))
     record.threshold = Decimal(str(score.threshold))
     record.above_threshold = score.above_threshold
-    record.calibration = score.calibration
+    record.score_band = score.score_band
     record.segment = score.segment
     record.contributions_json = [_contribution_payload(item) for item in score.contributions]
     record.top_factors_json = [_contribution_payload(item) for item in score.top_factors]
     record.training_dataset_version = model_record.training_dataset_version
-    record.deployment_mode = model_record.deployment_mode
+    record.deployment_mode = "POC_SHADOW"
     record.prediction_trace_id = prediction_trace_id or str(feature_record.id)
+    record.target_outcome = model_record.target_outcome
+    record.horizon_days = model_record.horizon_days
+    record.opportunity_type = "ANY_COMMERCIAL_OPPORTUNITY"
+    record.score_interpretation = "RANKING_ONLY"
+    record.feature_snapshot_id = feature_record.id
+    record.feature_watermark = feature_record.checksum
+    record.valid_until = feature_record.as_of_date
+    record.contract_version = model_record.contract_version
+    record.dataset_manifest_hash = model_record.dataset_manifest_hash
+    record.artifact_checksum = model_record.artifact_checksum
+    record.updated_at = datetime.now(timezone.utc)
     session.add(record)
     session.flush()
     return record
@@ -171,6 +200,13 @@ def serialize_model(record: ModelRegistry) -> dict[str, Any]:
         "approvedBy": record.approved_by,
         "approvedAt": record.approved_at.isoformat() if record.approved_at else None,
         "deploymentMode": record.deployment_mode,
+        "targetOutcome": record.target_outcome,
+        "horizonDays": record.horizon_days,
+        "scoreInterpretation": record.score_interpretation,
+        "calibrationStatus": record.calibration_status,
+        "datasetManifestHash": record.dataset_manifest_hash,
+        "artifactChecksum": record.artifact_checksum,
+        "contractVersion": record.contract_version,
         "productionPerformanceClaim": False,
         "automaticTraining": False,
     }
@@ -184,7 +220,8 @@ def serialize_score(record: PropensityScoreRecord) -> dict[str, Any]:
         "propensity": float(record.score),
         "threshold": float(record.threshold),
         "aboveThreshold": record.above_threshold,
-        "calibration": record.calibration,
+        "scoreBand": record.score_band,
+        "calibrationStatus": "NOT_VALIDATED",
         "segment": record.segment,
         "modelVersion": record.model_version,
         "featureVersion": record.feature_set_version,
@@ -193,8 +230,20 @@ def serialize_score(record: PropensityScoreRecord) -> dict[str, Any]:
         "topFactors": record.top_factors_json,
         "trainingDatasetVersion": record.training_dataset_version,
         "deploymentMode": record.deployment_mode,
+        "targetOutcome": record.target_outcome,
+        "horizonDays": record.horizon_days,
+        "opportunityType": record.opportunity_type,
+        "scoreInterpretation": record.score_interpretation,
+        "featureSnapshotId": str(record.feature_snapshot_id)
+        if record.feature_snapshot_id
+        else None,
+        "featureWatermark": record.feature_watermark,
+        "validUntil": record.valid_until.isoformat() if record.valid_until else None,
+        "contractVersion": record.contract_version,
+        "datasetManifestHash": record.dataset_manifest_hash,
+        "artifactChecksum": record.artifact_checksum,
         "traceId": record.prediction_trace_id,
-        "scoredAt": record.created_at.isoformat(),
+        "scoredAt": record.updated_at.isoformat(),
     }
 
 

@@ -5,7 +5,7 @@ import type { Opportunity } from '../../api/types'
 import { FactorChart } from '../../charts/FactorChart'
 import { Badge, Drawer, ErrorState, PriorityBadge, Ring, SkeletonStack } from '../../ui'
 
-/** Exploration du score : facteurs, modèle, combinaison règles + ML. Aucun LLM. */
+/** Exploration du score shadow et de la priorité RULES_ONLY. Aucun LLM. */
 export function PropensityDrawer({ customerId, customerName, opportunity, onClose }: { customerId: string; customerName?: string; opportunity?: Opportunity; onClose: () => void }) {
   const propensity = useCustomerPropensity(customerId)
   const data = propensity.data
@@ -17,7 +17,7 @@ export function PropensityDrawer({ customerId, customerName, opportunity, onClos
           <p className="eyebrow">Propension</p>
           <strong style={{ fontSize: 28, letterSpacing: '-0.02em' }} className="num">{formatPercent(data.score, 0)}</strong>
           <span className="muted">{opportunity ? label(opportunity.opportunityType) : data.scoreMeaning || 'Intérêt commercial estimé'}</span>
-          <div className="row" style={{ gap: 6 }}><PriorityBadge level={data.priorityLevel} /><Badge tone="violet">POC assistif</Badge></div>
+          <div className="row" style={{ gap: 6 }}><PriorityBadge level={data.priorityLevel} /><Badge tone="violet">POC shadow</Badge></div>
         </div>
       </section>
 
@@ -27,14 +27,13 @@ export function PropensityDrawer({ customerId, customerName, opportunity, onClos
       </section>
 
       <section className="stack">
-        <p className="eyebrow">Combinaison gouvernée</p>
+        <p className="eyebrow">Séparation gouvernée</p>
         <div className="combo">
-          <div className="combo-part"><Cpu size={16} /><div><strong>ML</strong><span className="num">{formatPercent(data.combination.mlScore, 0)} × {formatPercent(data.combination.mlWeight)}</span></div></div>
-          <span className="combo-op">+</span>
-          <div className="combo-part"><GitBranch size={16} /><div><strong>Règles métier</strong><span className="num">{formatPercent(data.combination.rulesScore, 0)} × {formatPercent(data.combination.rulesWeight)}</span></div></div>
-          <span className="combo-op">=</span>
-          <div className="combo-part result"><div><strong>Priorité combinée</strong><span className="num">{formatPercent((data as { combination: { combinedPriorityScore?: number } }).combination.combinedPriorityScore ?? data.score, 0)}</span></div></div>
+          <div className="combo-part"><Cpu size={16} /><div><strong>ML observé</strong><span className="num">{formatPercent(data.combination.mlScore, 0)} · lecture seule</span></div></div>
+          <div className="combo-part"><GitBranch size={16} /><div><strong>Règles métier</strong><span className="num">{formatPercent(data.combination.rulesScore, 0)} × 100 %</span></div></div>
+          <div className="combo-part result"><div><strong>Priorité RULES_ONLY</strong><span className="num">{formatPercent(data.combination.combinedPriorityScore ?? 0, 0)}</span></div></div>
         </div>
+        <p className="muted" style={{ fontSize: 12 }}>{data.combination.summary}</p>
       </section>
 
       <dl className="kv">

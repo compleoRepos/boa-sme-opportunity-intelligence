@@ -2,9 +2,9 @@
 
 MVP d’intelligence commerciale pour portefeuilles PME, composé de microservices FastAPI, PostgreSQL, Keycloak, React et Docker Compose.
 
-Le produit combine des **règles métier versionnées** et un **score de propension commerciale ML CPU-ready** en mode **POC assistif**. Il ne prend aucune décision de crédit. Le LLM reste une extension architecturale future et n’est ni appelé ni requis par le runtime.
+Le produit combine des **règles métier versionnées** et un **score de propension commerciale ML CPU-ready** observé en mode **`POC_SHADOW`**. La priorité opérationnelle reste exclusivement `RULES_ONLY` tant que les labels historiques BOA matures et les validations indépendantes ne sont pas disponibles. Il ne prend aucune décision de crédit. Le LLM reste une extension architecturale future et n’est ni appelé ni requis par le runtime.
 
-> État : POC technique gouverné et résilient validé en mode `POC_ASSISTIVE` sur 500 PME synthétiques. Le fallback `RULES_ONLY`, la Scoring Policy, le registre MLOps, le monitoring, la readiness prudente et l’UX premium sont intégrés. Cette validation ne vaut ni performance ML de production ni autorisation de déploiement bancaire. Voir le [rapport final PASS/BLOCKED/NON IMPLÉMENTÉ](docs/finalization-status-2026-09-19.md).
+> État : POC technique gouverné validé en mode `POC_SHADOW` sur données locales/synthétiques. Le score est persisté avec sa lignée mais ne modifie ni l’éligibilité ni la priorité des opportunités. Les manifests point-in-time, évaluations descriptives et blockers d’activation sont persistés ; `trainingReady=false`, la calibration reste `NOT_VALIDATED` et la production reste `BLOCKED`. Cette validation ne vaut ni performance ML de production ni autorisation de déploiement bancaire.
 
 ## Démarrage Docker
 
@@ -30,7 +30,7 @@ Les règles Rule Studio de démonstration (`database/seed/rule-studio.json`) se 
 ./scripts/validate-ml-integration.sh
 ```
 
-La seconde commande vérifie les services Docker, la lignée Rule Studio/Signals/Feature Store/ML/Opportunity, les versions de modèle et de features, les futurs labels, l’absence de dépendance LLM/GPU et le moindre privilège SQL du chemin d’inférence. La suite complète couvre aussi le fallback et sa récupération, la Scoring Policy versionnée, le workflow MLOps, le monitoring persistant, le RBAC et huit parcours Playwright authentifiés.
+La seconde commande vérifie les services Docker, la lignée Rule Studio/Signals/Feature Store/ML, l’absence d’influence du score shadow sur Opportunity/Portfolio, la Scoring Policy active `RULES_ONLY`, les labels candidats, le manifest point-in-time bloqué, l’évaluation descriptive sans claim de production, l’absence de dépendance LLM/GPU et le moindre privilège SQL. Elle produit une preuve JSON sous `docs/evidence/ml/`.
 
 ## Documentation
 

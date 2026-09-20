@@ -67,6 +67,6 @@ export function BranchDashboardPage() {
       <Panel eyebrow="Répartition" title="Opportunités par CC" id="by-rm"><BreakdownBars items={data.opportunitiesByRelationshipManager} nameKey="relationshipManagerId" labelFor={(item) => item.relationshipManagerName || item.relationshipManagerId || '—'} colorFor={() => CHART.blue} onSelect={(id) => navigate(`/agence/cc/${encodeURIComponent(id)}`)} /></Panel>
     </section>
 
-    <div className="notice neutral"><TrendingUp size={16} /><div><strong>Pilotage commercial uniquement</strong>Les priorités, propensions et conversions ordonnent le travail de l’agence. Elles ne déclenchent aucune décision de crédit. Types : {data.opportunitiesByType?.map((item) => label(item.opportunityType)).join(', ') || '—'}.</div></div>
+    <div className="notice neutral"><TrendingUp size={16} /><div><strong>Pilotage commercial uniquement</strong>Les priorités issues des règles ordonnent le travail de l’agence. Les propensions restent observées en shadow, sans effet sur cet ordre. Aucune de ces informations ne déclenche une décision de crédit. Types : {data.opportunitiesByType?.map((item) => label(item.opportunityType)).join(', ') || '—'}.</div></div>
   </>
 }

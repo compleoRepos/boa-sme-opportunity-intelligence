@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
 WEIGHTS = {"rules": "0.65", "propensity": "0.35"}
+RULES_ONLY_WEIGHTS = {"rules": "1", "ml": "0"}
 
 
 def test_draft_has_identity_weights_author_and_creation_audit():
@@ -49,7 +50,7 @@ def test_weights_must_be_non_negative_finite_and_normalized():
 
 def test_workflow_is_strict_and_emits_audit_events():
     version = ScoringPolicyVersion.create_draft(
-        policy_id="P", weights=WEIGHTS, author_id="author", now=T0
+        policy_id="P", weights=RULES_ONLY_WEIGHTS, author_id="author", now=T0
     )
     with pytest.raises(InvalidPolicyTransition):
         version.publish(actor_id="approver", at=T0)
@@ -108,7 +109,7 @@ def test_approval_requires_reason_and_is_retained_through_publish():
 
 def test_effectivity_window_is_half_open_and_disable_requires_reason():
     version = ScoringPolicyVersion.create_draft(
-        policy_id="P", weights=WEIGHTS, author_id="a", now=T0
+        policy_id="P", weights=RULES_ONLY_WEIGHTS, author_id="a", now=T0
     )
     version = version.simulate(actor_id="a", simulation_id="sim", at=T0).submit(actor_id="a", at=T0)
     version = version.approve(actor_id="b", reason="review", at=T0).publish(actor_id="b", at=T0)
@@ -127,7 +128,9 @@ def test_effectivity_window_is_half_open_and_disable_requires_reason():
 
 
 def test_new_version_is_immutable_and_starts_draft():
-    policy = ScoringPolicy.create_draft(policy_id="P", weights=WEIGHTS, author_id="a", at=T0)
+    policy = ScoringPolicy.create_draft(
+        policy_id="P", weights=RULES_ONLY_WEIGHTS, author_id="a", at=T0
+    )
     active = policy.transition(PolicyStatus.SIMULATED, actor_id="a", simulation_id="sim", at=T0)
     active = active.transition(PolicyStatus.SUBMITTED, actor_id="a", at=T0)
     active = active.transition(PolicyStatus.APPROVED, actor_id="b", reason="ok", at=T0)
@@ -146,13 +149,15 @@ def test_new_version_is_immutable_and_starts_draft():
 
 
 def test_aggregate_rollback_disables_current_and_reactivates_target_without_rewriting_history():
-    policy = ScoringPolicy.create_draft(policy_id="P", weights=WEIGHTS, author_id="a", at=T0)
+    policy = ScoringPolicy.create_draft(
+        policy_id="P", weights=RULES_ONLY_WEIGHTS, author_id="a", at=T0
+    )
     policy = policy.transition(PolicyStatus.SIMULATED, actor_id="a", simulation_id="sim-1", at=T0)
     policy = policy.transition(PolicyStatus.SUBMITTED, actor_id="a", at=T0)
     policy = policy.transition(PolicyStatus.APPROVED, actor_id="b", reason="review 1", at=T0)
     policy = policy.transition(PolicyStatus.PUBLISHED, actor_id="b", at=T0)
     policy = policy.transition(PolicyStatus.ACTIVE, actor_id="ops", at=T0)
-    policy = policy.add_version(weights={"rules": 0.5, "propensity": 0.5}, author_id="a", at=T0)
+    policy = policy.add_version(weights=RULES_ONLY_WEIGHTS, author_id="a", at=T0)
     policy = policy.transition(PolicyStatus.SIMULATED, actor_id="a", simulation_id="sim-2", at=T0)
     policy = policy.transition(PolicyStatus.SUBMITTED, actor_id="a", at=T0)
     policy = policy.transition(PolicyStatus.APPROVED, actor_id="c", reason="review 2", at=T0)
@@ -179,6 +184,18 @@ def test_rollback_rejects_unknown_or_current_target():
         policy.rollback(target_version=1, actor_id="ops", reason="no-op", at=T0)
     with pytest.raises(DomainError, match="unknown"):
         policy.rollback(target_version=9, actor_id="ops", reason="missing", at=T0)
+
+
+def test_hybrid_policy_can_be_simulated_but_not_activated_without_boa_labels():
+    version = ScoringPolicyVersion.create_draft(
+        policy_id="P", weights=WEIGHTS, author_id="a", now=T0
+    )
+    version = version.simulate(actor_id="a", simulation_id="sim", at=T0)
+    version = version.submit(actor_id="a", at=T0)
+    version = version.approve(actor_id="b", reason="review", at=T0)
+    version = version.publish(actor_id="b", at=T0)
+    with pytest.raises(DomainError, match="RULES_ONLY"):
+        version.activate(actor_id="ops", at=T0)
 
 
 def test_model_is_frozen_and_policy_history_matches_policy_id():

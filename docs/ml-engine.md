@@ -1,7 +1,7 @@
 # ML Engine CPU-ready — architecture cible et contrats de gouvernance
 
 **Produit :** BOA SME Opportunity Intelligence  
-**Statut :** architecture implémentée en POC assistif sur données synthétiques ; aucune performance de production revendiquée
+**Statut :** architecture implémentée en `POC_SHADOW` sur données locales/synthétiques ; priorité opérationnelle `RULES_ONLY` ; aucune performance de production revendiquée
 **Auteur :** Manus AI  
 **Périmètre :** propension commerciale, fusion avec les règles, explicabilité, audit et gouvernance
 
@@ -22,16 +22,16 @@ Analytics + Rule Engine
   → client PME
 ```
 
-Cette chaîne n’est pas une fusion de responsabilités. **Analytics** reste propriétaire des métriques. **Signal Service** et **Rule Engine** restent propriétaires des signaux et évaluations déterministes. Le **Feature Store** matérialise des snapshots point-in-time à partir de ces sorties. Le **ML Engine** ne fait que charger un modèle approuvé et produire un score contractuel. **Opportunity Service** applique les garde-fous, la politique de fusion, la déduplication, l’explication et la recommandation finale.
+Cette chaîne n’est pas une fusion de responsabilités. **Analytics** reste propriétaire des métriques. **Signal Service** et **Rule Engine** restent propriétaires des signaux et évaluations déterministes. Le **Feature Store** matérialise des snapshots point-in-time à partir de ces sorties. Le **ML Engine** produit un score contractuel observé en shadow. **Opportunity Service** applique les garde-fous, la déduplication, l’explication et la recommandation issue des règles ; le score ML est conservé pour l’audit et l’évaluation mais ne modifie pas la priorité.
 
-Le runtime local sert un modèle logistique déterministe `sales-propensity-logit-poc-v1` sur CPU. Il consomme le Feature Set `sales-features-v2`, qui intègre les sorties Analytics, Signal Service et Rule Studio. Opportunity Service utilise le score dans un reranking **POC assistif** traçable. Ce mode démontre l’intégration technique ; il ne constitue pas une activation de production et ne satisfait pas, à lui seul, les portes G2/G3 de [`ml-acceptance.md`](./ml-acceptance.md).
+Le runtime local sert un modèle logistique déterministe `sales-propensity-logit-poc-v1` sur CPU. Il consomme le Feature Set `sales-features-v2`, qui intègre les sorties Analytics, Signal Service et Rule Studio. Chaque score porte `POC_SHADOW`, `RANKING_ONLY`, `NOT_VALIDATED`, le modèle, le feature set, le dataset déclaré, le snapshot et son checksum. Opportunity Service conserve l’observation mais persiste une priorité `RULES_ONLY` avec poids règles `1` et ML `0`. Ce mode démontre l’intégration technique ; il ne constitue pas une activation de production et ne satisfait pas les portes G2/G3 de [`ml-acceptance.md`](./ml-acceptance.md).
 
 ## 2. Invariants non négociables
 
 1. Le score est une propension à un **outcome commercial défini**, sur un horizon défini et pour un type d’opportunité défini.
 2. Le mot « propension » ne doit jamais être remplacé par « risque », « solvabilité », « défaut », « crédit » ou une formulation équivalente.
 3. Le modèle ne lit ni transactions brutes, ni texte libre, ni tables d’un autre service. Il reçoit un `FeatureSnapshot` versionné.
-4. Une prédiction sans versions de modèle, features, contrat de score, politique de fusion et audit est invalide.
+4. Une prédiction sans versions de modèle, features, snapshot, dataset déclaré, contrat de score et audit est invalide.
 5. Un modèle ne s’auto-promeut pas, ne s’auto-réentraîne pas et ne modifie pas une règle.
 6. L’indisponibilité du ML ne bloque pas le chemin déterministe. La politique configurée revient à `RULES_ONLY` ou suspend le lot ; elle ne fabrique jamais un score.
 7. Le runtime est **CPU-only**. Une image, un artefact ou une configuration qui exige CUDA, un GPU ou un service cloud d’inférence est hors périmètre.
@@ -49,7 +49,7 @@ Le runtime local sert un modèle logistique déterministe `sales-propensity-logi
 | Feature Registry | Contrat sémantique et usage autorisé de chaque feature | définitions, versions, statut et lineage | accepter une feature sans propriétaire ni finalité |
 | ML Engine | Validation du contrat, chargement CPU et inférence | exécutions et prédictions techniques | persister l’opportunité ou appliquer les permissions utilisateur |
 | Model Registry | Cycle de vie, artefacts, approbations et métriques | métadonnées et checksums des modèles | promotion automatique selon une seule métrique |
-| Opportunity Service | Fusion, garde-fous, priorité, explication et audit | opportunités et décisions de fusion | appeler un LLM ou interpréter le score comme risque |
+| Opportunity Service | Garde-fous, priorité `RULES_ONLY`, explication et audit du score shadow séparé | opportunités et décisions de priorité | appliquer un poids ML avant franchissement des gates ou interpréter le score comme risque |
 | Customer Service | Agence, CC, portefeuille et affectations temporelles | périmètre organisationnel | déléguer l’autorisation au seul frontend |
 | Action Service | Actions et outcomes commerciaux | feedback observé | réécrire la prédiction historique |
 
@@ -251,9 +251,9 @@ Toute activation future exige une décision d’architecture séparée et ne peu
 
 ## 12. Limites de l’incrément ML MVP
 
-Le premier incrément est limité à un modèle logistique de démonstration alimenté par un dataset synthétique versionné, servi en batch CPU et exécuté en `POC_ASSISTIVE`. Il réutilise PostgreSQL pour les snapshots et registres. Il ne fournit ni streaming, ni GPU, ni entraînement en ligne, ni auto-ML, ni auto-réentraînement, ni promotion automatique, ni causalité, ni optimisation de crédit, ni génération de texte.
+Le premier incrément est limité à un modèle logistique de démonstration alimenté par un dataset synthétique déclaré, servi en batch CPU et exécuté en `POC_SHADOW`. Il réutilise PostgreSQL pour les snapshots, manifests, évaluations descriptives et registres. Les outcomes locaux sont des **labels candidats uniquement** ; ils ne rendent pas le dataset training-ready. Il ne fournit ni entraînement BOA démontré, ni calibration validée, ni streaming, ni GPU, ni entraînement en ligne, ni auto-ML, ni auto-réentraînement, ni promotion automatique, ni causalité, ni optimisation de crédit, ni génération de texte.
 
-`HYBRID_RERANK` n’est activable qu’après une période shadow, une comparaison au champion règles, une validation de drift, une revue par segment et une acceptation formelle. `HYBRID_CANDIDATE` est hors MVP initial. Le système déterministe existant reste le fallback et la source d’opportunités pendant toute la phase shadow.
+`HYBRID_RERANK` n’est pas activable par l’implémentation courante. Le gate de promotion ne fait pas confiance aux seuls champs de la requête : il résout en base le manifest, tous ses snapshots de features et labels, ainsi qu’une évaluation du même modèle et du même hash. Il exige une source `BOA_HISTORICAL_OBSERVED`, des labels binaires matures non candidats, un manifest et une évaluation `VALIDATED` sans blocker, des critères d’acceptation, Brier/ECE bornés, une calibration validée et un checksum d’artefact. Les endpoints actuels ne produisent volontairement aucun statut `VALIDATED`; une future activation demanderait donc une évolution et une approbation séparées. `HYBRID_CANDIDATE` est hors MVP. Le système déterministe reste la seule source de priorité pendant toute la phase shadow.
 
 ## Références
 

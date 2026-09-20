@@ -3,13 +3,18 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+from boa_oi.models.entities import OpportunityRule
 from boa_oi.opportunity_api import (
+    configured_rules,
     rerank_with_propensity,
     rule_engine_candidates,
     rule_engine_metrics,
 )
 from boa_oi.rules import RuleEvaluator, canonical_operator
 from boa_oi.rules.simulation import metric_payload
+from boa_oi.technical.ids import deterministic_uuid
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 
 def definition(conditions, logic="AND"):
@@ -25,6 +30,28 @@ def definition(conditions, logic="AND"):
         },
         "confidence": {"baseScore": 50, "weights": {"growth": 25}},
     }
+
+
+def test_configured_rules_ignore_rule_studio_adapter_rows():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    with engine.connect() as connection:
+        connection.exec_driver_sql("ATTACH DATABASE ':memory:' AS 'opportunity'")
+        OpportunityRule.__table__.create(connection)
+        with Session(connection) as session:
+            session.add(
+                OpportunityRule(
+                    id=deterministic_uuid("rule-studio-adapter-test"),
+                    opportunity_type="RULE_STUDIO_TEST",
+                    version="1",
+                    configuration_json={"source": "rule-studio", "ruleId": "RULE-TEST"},
+                    active=True,
+                    created_by="unit-test",
+                )
+            )
+            session.commit()
+            config = configured_rules(session)
+
+    assert "RULE_STUDIO_TEST" not in config.opportunity_rules
 
 
 @pytest.mark.parametrize(
@@ -173,7 +200,7 @@ def test_analytics_growth_aliases_and_published_rule_trace_are_preserved():
     }
 
 
-def test_sales_propensity_changes_priority_and_preserves_prediction_trace():
+def test_shadow_sales_propensity_never_changes_rules_priority():
     candidate = rule_engine_candidates(
         "SME-00001",
         date(2026, 9, 18),
@@ -194,18 +221,13 @@ def test_sales_propensity_changes_priority_and_preserves_prediction_trace():
             "modelVersion": "sales-propensity-logit-poc-v1",
             "featureVersion": "sales-features-v2",
             "trainingDatasetVersion": "synthetic-demo-20260918-v1",
-            "deploymentMode": "POC_ASSISTIVE",
+            "deploymentMode": "POC_SHADOW",
             "traceId": f"trace-{value}",
         }
 
     low = rerank_with_propensity(candidate, score(0.1), rules_weight=0.65, ml_weight=0.35)
     high = rerank_with_propensity(candidate, score(0.9), rules_weight=0.65, ml_weight=0.35)
-    assert high.priority_score > low.priority_score
-    assert high.priority_score != candidate.priority_score
-    ml_component = next(
-        item for item in high.priority_components if item["name"] == "sales_propensity_ml"
-    )
-    assert ml_component["model_version"] == "sales-propensity-logit-poc-v1"
-    assert ml_component["feature_version"] == "sales-features-v2"
-    assert ml_component["training_dataset_version"] == "synthetic-demo-20260918-v1"
-    assert ml_component["trace_id"] == "trace-0.9"
+    assert high.priority_score == low.priority_score
+    assert high.priority_level == low.priority_level
+    assert high.engine_version.endswith("+rules-only")
+    assert low.engine_version.endswith("+rules-only")

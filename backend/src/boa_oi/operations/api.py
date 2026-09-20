@@ -143,7 +143,7 @@ class ReadinessOut(BaseModel):
     checks: list[ReadinessComponentOut]
     blocking_components: list[str] = Field(alias="blockingComponents")
     component_statuses: dict[str, str] = Field(alias="componentStatuses")
-    deployment_mode: Literal["POC_ASSISTIVE"] = Field(alias="deploymentMode")
+    deployment_mode: Literal["POC_SHADOW"] = Field(alias="deploymentMode")
     production_performance_claim: Literal[False] = Field(alias="productionPerformanceClaim")
     generated_at: datetime = Field(alias="generatedAt")
 
@@ -472,7 +472,7 @@ def _readiness(request: Request) -> dict[str, Any]:
         "checks": components,
         "blockingComponents": blocking,
         "componentStatuses": statuses,
-        "deploymentMode": "POC_ASSISTIVE",
+        "deploymentMode": "POC_SHADOW",
         "productionPerformanceClaim": False,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
     }

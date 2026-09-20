@@ -1,11 +1,11 @@
 # Acceptation de l’incrément ML
 
 **Produit :** BOA SME Opportunity Intelligence  
-**Statut :** exécution technique POC en cours ; résultats détaillés dans `ml-integration-status.md`
+**Statut :** G1 technique démontré localement ; G2/G3 bloqués faute d’historiques BOA et de validation indépendante
 **Auteur :** Manus AI  
 **Périmètre :** preuve d’acceptation du Feature Store, du ML Engine CPU-ready, de la fusion, des dashboards et de la gouvernance
 
-> Ce document reste la checklist normative jusqu’à une éventuelle activation de production. L’implémentation locale actuelle est un `POC_ASSISTIVE` sur données synthétiques. Les résultats exécutés et les limites non implémentées sont consignés dans [`ml-integration-status.md`](./ml-integration-status.md). Aucun résultat de ce POC ne vaut validation de performance, calibration ou gouvernance de production.
+> Ce document reste la checklist normative jusqu’à une éventuelle activation séparée. L’implémentation actuelle impose `POC_SHADOW` et une priorité opérationnelle `RULES_ONLY`. Les résultats locaux/synthétiques sont descriptifs ; aucun résultat ne vaut validation de performance, calibration, training-readiness ou gouvernance de production. Les blockers restent persistés tant que les historiques BOA observés, matures et approuvés ne sont pas disponibles.
 
 ## 1. Statuts et preuve attendue
 
@@ -64,6 +64,7 @@ Le passage d’une porte est enregistré avec l’approbateur, les versions exac
 | MLA-MOD-007 | Reproductibilité | la version d’entraînement est reconstruisible depuis manifestes, code, features et dataset | Oui |
 | MLA-MOD-008 | Rollback | retour au champion précédent ou à `RULES_ONLY` testé avec audit | Oui |
 | MLA-MOD-009 | Sécurité artefact | SBOM et scan sans vulnérabilité critique ; aucun chargement arbitraire non maîtrisé | Oui |
+| MLA-MOD-010 | Preuves persistées | la promotion résout manifest, snapshots labels/features et évaluation persistés ; une déclaration dans le payload ne suffit jamais | Oui |
 
 ## 6. Checklist du contrat de score
 

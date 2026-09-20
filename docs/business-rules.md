@@ -630,7 +630,7 @@ Les anciens snapshots dépourvus de `historyDays` et `observedFrom` ne sont pas 
 
 `ACCEPT_OPPORTUNITY`, `DISMISS_OPPORTUNITY`, `DEFER_OPPORTUNITY` et `MARK_CONVERTED` sont des actions terminales directement projetées vers le cycle Opportunity. `CONTACT_CUSTOMER` et `SCHEDULE_MEETING` restent des actions planifiées tant qu’aucun outcome ne prouve le contact ou le rendez-vous. Les outcomes sont persistés séparément sous forme structurée. `REVIEW_LATER` représente le report ; il ne vaut ni rejet ni absence d’intérêt.
 
-Une action terminale identique ne peut pas être créée deux fois pour la même opportunité avec une nouvelle clé technique. Un outcome enregistré ne peut pas être remplacé. Ces garde-fous préservent la qualité des futurs labels d’apprentissage. Ils ne transforment pas les outcomes du pilote en preuve de performance ML : le modèle reste **POC assistif/shadow**, CPU-only, sans LLM et sans décision de crédit.
+Une action terminale identique ne peut pas être créée deux fois pour la même opportunité avec une nouvelle clé technique. Un outcome enregistré ne peut pas être remplacé. Ces garde-fous préservent la qualité de **labels candidats**. Ils ne rendent pas le dataset training-ready et ne prouvent aucune performance : le modèle reste `POC_SHADOW`, la priorité `RULES_ONLY`, CPU-only, sans LLM et sans décision de crédit.
 
 ### 22.6 Audit et périmètre
 

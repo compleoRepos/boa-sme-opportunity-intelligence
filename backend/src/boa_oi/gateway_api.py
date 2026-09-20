@@ -512,6 +512,27 @@ async def materialize_ml_outcomes(
     )
 
 
+@app.get("/api/v1/admin/ml/outcomes/snapshots", tags=["ML governance"])
+async def list_ml_outcome_snapshots(
+    request: Request,
+    _principal: Principal = Depends(require_roles("DATA_ANALYST", "ADMIN", "SERVICE")),
+) -> JSONResponse:
+    return await proxy(request, "ml-engine", "ml/outcomes/snapshots")
+
+
+@app.api_route(
+    "/api/v1/admin/ml/datasets/manifests",
+    methods=["GET", "POST"],
+    tags=["ML governance"],
+)
+async def ml_dataset_manifests(
+    request: Request,
+    _principal: Principal = Depends(require_roles("DATA_ANALYST", "ADMIN", "SERVICE")),
+) -> JSONResponse:
+    body = await json_body(request) if request.method == "POST" else None
+    return await proxy(request, "ml-engine", "ml/datasets/manifests", body=body)
+
+
 @app.get("/api/v1/admin/readiness", tags=["Operations"])
 async def platform_readiness(
     request: Request,

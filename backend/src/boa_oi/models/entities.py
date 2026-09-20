@@ -492,11 +492,13 @@ class Opportunity(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     engine_version: Mapped[str] = mapped_column(String(100), default="0.1.0")
     rule_version: Mapped[str] = mapped_column(String(30), default="1")
-    scoring_policy_id: Mapped[str] = mapped_column(String(80), default="commercial-hybrid-poc")
+    scoring_policy_id: Mapped[str] = mapped_column(
+        String(80), default="commercial-rules-shadow-poc"
+    )
     scoring_policy_version: Mapped[int] = mapped_column(Integer, default=1)
-    rules_weight: Mapped[Decimal] = mapped_column(Numeric(8, 6), default=Decimal("0.65"))
-    ml_weight: Mapped[Decimal] = mapped_column(Numeric(8, 6), default=Decimal("0.35"))
-    fallback_mode: Mapped[str] = mapped_column(String(20), default="HYBRID_ML")
+    rules_weight: Mapped[Decimal] = mapped_column(Numeric(8, 6), default=Decimal("1"))
+    ml_weight: Mapped[Decimal] = mapped_column(Numeric(8, 6), default=Decimal("0"))
+    fallback_mode: Mapped[str] = mapped_column(String(20), default="RULES_ONLY")
     fallback_cause_json: Mapped[dict | None] = mapped_column(JSON)
     rule_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("opportunity.opportunity_rules.id")
@@ -631,9 +633,11 @@ class DecisionAudit(Base, UUIDPrimaryKeyMixin):
     metric_snapshots_json: Mapped[list] = mapped_column(JSON)
     confidence_components_json: Mapped[list] = mapped_column(JSON)
     priority_components_json: Mapped[list] = mapped_column(JSON)
-    scoring_policy_id: Mapped[str] = mapped_column(String(80), default="commercial-hybrid-poc")
+    scoring_policy_id: Mapped[str] = mapped_column(
+        String(80), default="commercial-rules-shadow-poc"
+    )
     scoring_policy_version: Mapped[int] = mapped_column(Integer, default=1)
-    fallback_mode: Mapped[str] = mapped_column(String(20), default="HYBRID_ML")
+    fallback_mode: Mapped[str] = mapped_column(String(20), default="RULES_ONLY")
     fallback_cause_json: Mapped[dict | None] = mapped_column(JSON)
     decision_hash: Mapped[str] = mapped_column(String(64), unique=True)
 
@@ -658,7 +662,18 @@ class ScoringPolicyVersion(Base, UUIDPrimaryKeyMixin):
             "'ACTIVE','DISABLED','ROLLED_BACK')",
             name="status",
         ),
+        CheckConstraint(
+            "effective_to IS NULL OR effective_from IS NULL OR effective_to > effective_from",
+            name="effective_window",
+        ),
         Index("ix_scoring_policy_versions_status", "status", "effective_from"),
+        Index(
+            "uq_scoring_policy_single_active",
+            "status",
+            unique=True,
+            postgresql_where=text("status = 'ACTIVE'"),
+            sqlite_where=text("status = 'ACTIVE'"),
+        ),
         {"schema": "opportunity"},
     )
     policy_id: Mapped[UUID] = mapped_column(
@@ -1125,7 +1140,14 @@ class ModelRegistry(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     validation_metrics_json: Mapped[dict] = mapped_column(JSON)
     training_dataset_version: Mapped[str] = mapped_column(String(80))
     training_code_version: Mapped[str] = mapped_column(String(80))
-    deployment_mode: Mapped[str] = mapped_column(String(20), default="POC_ASSISTIVE")
+    deployment_mode: Mapped[str] = mapped_column(String(20), default="POC_SHADOW")
+    target_outcome: Mapped[str] = mapped_column(String(80), default="ANY_COMMERCIAL_OPPORTUNITY")
+    horizon_days: Mapped[int] = mapped_column(Integer, default=90)
+    score_interpretation: Mapped[str] = mapped_column(String(30), default="RANKING_ONLY")
+    calibration_status: Mapped[str] = mapped_column(String(30), default="NOT_VALIDATED")
+    dataset_manifest_hash: Mapped[str | None] = mapped_column(String(64))
+    artifact_checksum: Mapped[str | None] = mapped_column(String(64))
+    contract_version: Mapped[str] = mapped_column(String(20), default="1.0")
     training_period_from: Mapped[date | None] = mapped_column(Date)
     training_period_to: Mapped[date | None] = mapped_column(Date)
     validation_period_from: Mapped[date | None] = mapped_column(Date)
@@ -1158,7 +1180,7 @@ class PropensityScoreRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     score: Mapped[Decimal] = mapped_column(Numeric(12, 10))
     threshold: Mapped[Decimal] = mapped_column(Numeric(8, 6))
     above_threshold: Mapped[bool] = mapped_column(Boolean)
-    calibration: Mapped[str] = mapped_column(String(20))
+    score_band: Mapped[str] = mapped_column(String(20))
     segment: Mapped[str] = mapped_column(String(20))
     model_version: Mapped[str] = mapped_column(String(40))
     feature_set_version: Mapped[str] = mapped_column(String(40))
@@ -1166,8 +1188,18 @@ class PropensityScoreRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     contributions_json: Mapped[list] = mapped_column(JSON)
     top_factors_json: Mapped[list] = mapped_column(JSON)
     training_dataset_version: Mapped[str] = mapped_column(String(80))
-    deployment_mode: Mapped[str] = mapped_column(String(20), default="POC_ASSISTIVE")
+    deployment_mode: Mapped[str] = mapped_column(String(20), default="POC_SHADOW")
     prediction_trace_id: Mapped[str] = mapped_column(String(100), default="unknown")
+    target_outcome: Mapped[str] = mapped_column(String(80), default="ANY_COMMERCIAL_OPPORTUNITY")
+    horizon_days: Mapped[int] = mapped_column(Integer, default=90)
+    opportunity_type: Mapped[str] = mapped_column(String(80), default="ANY_COMMERCIAL_OPPORTUNITY")
+    score_interpretation: Mapped[str] = mapped_column(String(30), default="RANKING_ONLY")
+    feature_snapshot_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    feature_watermark: Mapped[str | None] = mapped_column(String(120))
+    valid_until: Mapped[date | None] = mapped_column(Date)
+    contract_version: Mapped[str] = mapped_column(String(20), default="1.0")
+    dataset_manifest_hash: Mapped[str | None] = mapped_column(String(64))
+    artifact_checksum: Mapped[str | None] = mapped_column(String(64))
 
 
 class OutcomeLabelSnapshot(Base, UUIDPrimaryKeyMixin):
@@ -1203,6 +1235,16 @@ class OutcomeLabelSnapshot(Base, UUIDPrimaryKeyMixin):
     outcome_value: Mapped[bool | None] = mapped_column(Boolean)
     source_reference: Mapped[str] = mapped_column(String(120))
     source: Mapped[str] = mapped_column(String(40), default="COMMERCIAL_OUTCOME")
+    label_definition_version: Mapped[str] = mapped_column(String(80), default="legacy-unversioned")
+    target_outcome: Mapped[str] = mapped_column(String(80), default="ANY_COMMERCIAL_OPPORTUNITY")
+    horizon_days: Mapped[int] = mapped_column(Integer, default=90)
+    population_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    source_kind: Mapped[str] = mapped_column(String(40), default="LOCAL_COMMERCIAL_OUTCOME")
+    window_closed: Mapped[bool] = mapped_column(Boolean, default=False)
+    candidate_only: Mapped[bool] = mapped_column(Boolean, default=True)
+    feature_snapshot_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    feature_checksum: Mapped[str | None] = mapped_column(String(64))
+    dataset_manifest_hash: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -1233,9 +1275,66 @@ class MLTrainingRun(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     hyperparameters_json: Mapped[dict] = mapped_column(JSON, default=dict)
     metrics_json: Mapped[dict] = mapped_column(JSON, default=dict)
     lineage_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    deployment_mode: Mapped[str] = mapped_column(String(20), default="POC_SHADOW")
+    dataset_manifest_hash: Mapped[str | None] = mapped_column(String(64))
+    activation_gate_status: Mapped[str] = mapped_column(String(30), default="BLOCKED")
+    artifact_checksum: Mapped[str | None] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(20), default="DRAFT")
     approved_by: Mapped[str | None] = mapped_column(String(120))
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class MLDatasetManifest(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "dataset_manifests"
+    __table_args__ = (
+        Index("ix_dataset_manifests_status_created", "status", "created_at"),
+        {"schema": "ml"},
+    )
+    manifest_version: Mapped[str] = mapped_column(String(80), unique=True)
+    source_kind: Mapped[str] = mapped_column(String(40))
+    purpose: Mapped[str] = mapped_column(String(60))
+    target_outcome: Mapped[str] = mapped_column(String(80))
+    label_definition_version: Mapped[str] = mapped_column(String(80))
+    horizon_days: Mapped[int] = mapped_column(Integer)
+    population_json: Mapped[dict] = mapped_column(JSON)
+    exclusions_json: Mapped[list] = mapped_column(JSON)
+    training_cutoff: Mapped[date] = mapped_column(Date)
+    feature_snapshot_ids_json: Mapped[list] = mapped_column(JSON)
+    label_snapshot_ids_json: Mapped[list] = mapped_column(JSON)
+    row_count: Mapped[int] = mapped_column(Integer)
+    manifest_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    status: Mapped[str] = mapped_column(String(20))
+    blockers_json: Mapped[list] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    created_by: Mapped[str] = mapped_column(String(120))
+
+
+class MLEvaluationSnapshot(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "evaluation_snapshots"
+    __table_args__ = (
+        Index("ix_evaluation_snapshots_model_created", "model_version", "created_at"),
+        {"schema": "ml"},
+    )
+    evaluation_ref: Mapped[str] = mapped_column(String(100), unique=True)
+    model_version: Mapped[str] = mapped_column(String(40))
+    dataset_manifest_hash: Mapped[str] = mapped_column(String(64))
+    source_kind: Mapped[str] = mapped_column(String(40))
+    evaluation_period_from: Mapped[date] = mapped_column(Date)
+    evaluation_period_to: Mapped[date] = mapped_column(Date)
+    sample_count: Mapped[int] = mapped_column(Integer)
+    positive_count: Mapped[int] = mapped_column(Integer)
+    negative_count: Mapped[int] = mapped_column(Integer)
+    metrics_json: Mapped[dict] = mapped_column(JSON)
+    calibration_json: Mapped[dict] = mapped_column(JSON)
+    acceptance_criteria_json: Mapped[dict] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(30))
+    blockers_json: Mapped[list] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    created_by: Mapped[str] = mapped_column(String(120))
 
 
 class MLMonitoringSnapshot(Base, UUIDPrimaryKeyMixin):

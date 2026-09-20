@@ -8,7 +8,7 @@ import { EmptyState, ErrorState, Kpi, NoResults, Panel, Segmented, SkeletonStack
 import { PriorityRow } from './PriorityRow'
 
 type Filter = 'today' | 'all' | 'P1' | 'P2' | 'opportunities' | 'actions'
-type Sort = 'priority' | 'propensity' | 'name'
+type Sort = 'priority' | 'name'
 
 const greeting = () => {
   const hour = new Date().getHours()
@@ -29,8 +29,7 @@ export function selectCustomers(data: RelationshipManagerDashboard, filter: Filt
     }
   })
   const by: Record<Sort, (a: PortfolioCustomerSummary, b: PortfolioCustomerSummary) => number> = {
-    priority: (a, b) => (b.combinedPriorityScore ?? b.propensityScore) - (a.combinedPriorityScore ?? a.propensityScore),
-    propensity: (a, b) => b.propensityScore - a.propensityScore,
+    priority: (a, b) => (b.combinedPriorityScore ?? 0) - (a.combinedPriorityScore ?? 0) || a.customerId.localeCompare(b.customerId),
     name: (a, b) => a.customerName.localeCompare(b.customerName, 'fr'),
   }
   return [...rows].sort(by[sort])
@@ -74,7 +73,7 @@ export function CcDashboardPage() {
           <div><p className="eyebrow">À regarder aujourd’hui</p><h2>{filter === 'today' ? `${formatNumber(todayCount)} PME à examiner` : `${formatNumber(rows.length)} PME`}</h2></div>
           <div className="panel-tools">
             <div className="search"><Search size={14} /><input className="input sm" placeholder="Filtrer la liste…" aria-label="Filtrer la liste" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
-            <select className="select sm" aria-label="Trier" value={sort} onChange={(event) => setSort(event.target.value as Sort)}><option value="priority">Priorité combinée</option><option value="propensity">Propension ML</option><option value="name">Nom</option></select>
+            <select className="select sm" aria-label="Trier" value={sort} onChange={(event) => setSort(event.target.value as Sort)}><option value="priority">Priorité règles</option><option value="name">Nom</option></select>
           </div>
         </header>
         <div className="list-filters">
@@ -86,13 +85,13 @@ export function CcDashboardPage() {
       <aside className="stack">
         <Panel eyebrow="Ordre de traitement" title="Distribution des priorités" id="distribution">
           <PriorityStack items={data.priorityDistribution} onSelect={(level) => setFilter(level as Filter)} />
-          <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>Priorité combinée = 65 % règles métier publiées + 35 % propension ML. Un ordre de travail commercial, jamais une notation de risque.</p>
+          <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>Priorité = règles métier publiées uniquement. La propension ML est observée en shadow, hors classement et sans notation de risque.</p>
         </Panel>
         <Panel eyebrow="Repères" title="Comment lire cette vue" id="help">
           <ul className="help-list">
             <li><Sparkles size={15} /> <span><strong>Signaux chiffrés</strong> issus des flux réels des 90 derniers jours, comparés à l’historique.</span></li>
             <li><ShieldCheck size={15} /> <span><strong>Règle métier déclenchée</strong> et version du moteur consultables sur chaque opportunité.</span></li>
-            <li><Flame size={15} /> <span><strong>Propension</strong> : intérêt commercial estimé, pour prioriser vos contacts.</span></li>
+            <li><Flame size={15} /> <span><strong>Propension shadow</strong> : observation expérimentale affichée séparément, sans effet sur l’ordre des contacts.</span></li>
           </ul>
         </Panel>
       </aside>

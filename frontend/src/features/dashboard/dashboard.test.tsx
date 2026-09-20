@@ -25,9 +25,20 @@ beforeEach(() => { hooks.useRelationshipManagerDashboard.mockReturnValue({ data:
 const renderDashboard = () => render(<MemoryRouter><ToastProvider><CcDashboardPage /></ToastProvider></MemoryRouter>)
 
 describe('selectCustomers', () => {
-  it('filtre « aujourd’hui » sur P1 et actions planifiées, trié par priorité combinée', () => {
+  it('filtre « aujourd’hui » sur P1 et actions planifiées, trié par priorité règles', () => {
     expect(selectCustomers(dashboard, 'today', '', 'priority').map((item) => item.customerId)).toEqual(['SME-00001', 'SME-00002'])
     expect(selectCustomers(dashboard, 'all', 'agri', 'name').map((item) => item.customerId)).toEqual(['SME-00003'])
+  })
+
+  it('ne départage pas une égalité de priorité avec la propension shadow', () => {
+    const tied: RelationshipManagerDashboard = {
+      ...dashboard,
+      portfolio: [
+        { ...dashboard.portfolio[0]!, propensityScore: 0.01, combinedPriorityScore: 0.5 },
+        { ...dashboard.portfolio[1]!, propensityScore: 0.99, combinedPriorityScore: 0.5 },
+      ],
+    }
+    expect(selectCustomers(tied, 'all', '', 'priority').map((item) => item.customerId)).toEqual(['SME-00001', 'SME-00002'])
   })
 })
 

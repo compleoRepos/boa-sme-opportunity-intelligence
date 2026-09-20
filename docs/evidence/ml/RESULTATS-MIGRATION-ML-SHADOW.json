@@ -1,0 +1,32 @@
+{
+  "runId": "ml-migration-rollback-20260920T024930Z",
+  "generatedAt": "2026-09-20T02:49:30Z",
+  "status": "PASS",
+  "scope": "LOCAL_SYNTHETIC_MIGRATION_ROLLBACK",
+  "sourceRevision": {
+    "baseCommit": "050a541084e48f4b8cb6766760ebd57d668e86d0",
+    "sourceDigest": "d4e89dd0e2128b27e1d4fca9f9f2485c97c4808495f01b58d45e92054923d99a"
+  },
+  "environment": {
+    "sourceDatabase": "boa_sme",
+    "testDatabase": "boa_ml_migration_proof_2308799",
+    "freshDatabase": "boa_ml_migration_fresh_2308799",
+    "isolatedClone": true
+  },
+  "objects": {
+    "opportunityId": "006b002d-5d4f-5923-a665-c52481fc9d47",
+    "policyVersionId": "4d4f6a12-c905-4c4d-a64a-cd6892fb141d"
+  },
+  "checks": {
+    "freshUpgrade0001To0017": "PASS",
+    "shadowNeutralization": "PASS",
+    "exactDowngradeRestore": "PASS",
+    "reupgradeTo0017": "PASS",
+    "singleActivePolicyIndex": "PASS",
+    "effectiveWindowConstraint": "PASS"
+  },
+  "limitations": [
+    "Base vierge et clone PostgreSQL Docker local; données du clone synthétiques uniquement.",
+    "Ce test prouve la réversibilité technique de 0017; il ne constitue ni homologation de production ni validation de performance ML."
+  ]
+}

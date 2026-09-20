@@ -123,7 +123,7 @@ Pour isoler un effet éventuel du dispositif, BOA doit encore choisir et approuv
 3. **Aucun LLM/GPU requis.** Le chemin nominal et le repli doivent fonctionner sans LLM, sans GPU obligatoire et sans appel externe. `RULES_ONLY` est un mode de secours explicite, pas une valeur de score implicite.
 4. **Pas de valeur inventée.** Aucun PNB, revenu, coût, taux ou ROI ne doit être complété par une moyenne, une valeur synthétique ou une valeur par défaut. Une absence de mesure doit rester `NOT_REPORTED` ou **À RENSEIGNER PAR BOA**.
 5. **Traçabilité et périmètre.** Toute mesure doit être reliée à une source, un horodatage, un périmètre et un propriétaire. Les accès CC/agence doivent rester limités au portefeuille autorisé ; les données synthétiques ne doivent pas être présentées comme BOA.
-6. **Séparation valeur / score.** `confidence`, `priorityScore` et les métadonnées ML sont des éléments de classement ou d’explication technique ; ils ne sont ni un taux de pertinence, ni un taux de conversion, ni une valeur financière.
+6. **Séparation valeur / score.** `confidence` et `priorityScore` sont des éléments déterministes de classement issus des règles ; les métadonnées ML restent une observation shadow d’explication et d’évaluation, sans effet sur l’ordre. Aucun de ces éléments n’est un taux de pertinence, un taux de conversion ou une valeur financière.
 7. **Décision de passage.** Toute cible, tout seuil d’alerte, toute exigence de disponibilité, de volume, de performance, de conformité ou de sécurité ajoutée au pilote est **HYPOTHÈSE À VALIDER AVEC BOA** jusqu’à approbation et preuve correspondante.
 
 ## 8. Registre des décisions ouvertes à BOA

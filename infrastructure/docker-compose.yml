@@ -330,6 +330,11 @@ services:
       OAUTH_CLIENT_ID: ml-engine-service
       OAUTH_CLIENT_SECRET: ${ML_ENGINE_CLIENT_SECRET:-DevOnly-MlEngineClient-ChangeMe!}
       FEATURE_STORE_SERVICE_URL: http://feature-store:8080
+      CUDA_VISIBLE_DEVICES: ""
+      NVIDIA_VISIBLE_DEVICES: "none"
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
     depends_on:
       postgres: { condition: service_healthy }
       keycloak: { condition: service_healthy }
@@ -369,7 +374,7 @@ services:
       PRODUCT_SERVICE_URL: http://product:8080
       RULE_ENGINE_SERVICE_URL: http://rule-engine:8080
       ML_ENGINE_SERVICE_URL: http://ml-engine:8080
-      ML_TIMEOUT_SECONDS: ${ML_TIMEOUT_SECONDS:-2.0}
+      ML_TIMEOUT_SECONDS: ${ML_TIMEOUT_SECONDS:-10.0}
       ML_MAX_RETRIES: ${ML_MAX_RETRIES:-1}
       ML_CIRCUIT_FAILURE_THRESHOLD: ${ML_CIRCUIT_FAILURE_THRESHOLD:-3}
       ML_CIRCUIT_RECOVERY_SECONDS: ${ML_CIRCUIT_RECOVERY_SECONDS:-30}

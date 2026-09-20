@@ -36,11 +36,11 @@ def test_ml_ok_returns_score_and_accept_audit_event():
     result = asyncio.run(client.score({"customerId": "SME-1"}, as_of="2026-09-19"))
 
     assert result.score == pytest.approx(0.73)
-    assert result.used_ml is True
-    assert result.mode is FallbackMode.HYBRID_ML
+    assert result.used_ml is False
+    assert result.mode is FallbackMode.POC_SHADOW
     assert result.cause is None
     assert result.attempts == 1
-    assert result.audit_event.event_type == "ML_SCORE_ACCEPTED"
+    assert result.audit_event.event_type == "ML_SHADOW_SCORE_OBSERVED"
     assert events == [result.audit_event]
     assert client.circuit_breaker.state is CircuitState.CLOSED
 
@@ -216,6 +216,7 @@ def test_circuit_opens_after_failures_and_recovers_with_half_open_probe():
     recovered = asyncio.run(client.score())
 
     assert recovered.score == pytest.approx(0.64)
-    assert recovered.used_ml is True
+    assert recovered.used_ml is False
+    assert recovered.mode is FallbackMode.POC_SHADOW
     assert recovered.circuit_state is CircuitState.CLOSED
     assert calls == 3

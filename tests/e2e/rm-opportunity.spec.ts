@@ -14,6 +14,8 @@ test('cockpit CC : dashboard → fiche PME → opportunité → action → dashb
   await login(page, 'cc')
   await expect(page.getByRole('heading', { name: /Bon(jour|soir| après-midi)/ })).toBeVisible()
   await expect.poll(() => Object.keys(apiHeaders).length).toBeGreaterThan(0)
+  await expect(page.getByLabel('Trier').locator('option')).toHaveText(['Priorité règles', 'Nom'])
+  await expect(page.getByText(/Priorité = règles métier publiées uniquement/)).toBeVisible()
 
   const ownDashboard = await page.request.get(
     '/api/v1/dashboards/me?relationshipManagerId=rm-02',
@@ -68,6 +70,8 @@ test('cockpit CC : dashboard → fiche PME → opportunité → action → dashb
 
   await page.locator('.sheet-actions .ring').click()
   await expect(page.getByRole('dialog')).toContainText('Propension')
+  await expect(page.getByRole('dialog')).toContainText('POC shadow')
+  await expect(page.getByRole('dialog')).toContainText('Priorité RULES_ONLY')
   await expect(page.getByRole('dialog')).toContainText('Aucune décision de crédit')
   await page.keyboard.press('Escape')
 

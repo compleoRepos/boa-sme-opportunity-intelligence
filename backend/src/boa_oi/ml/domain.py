@@ -69,7 +69,7 @@ class PropensityScore:
     propensity: float
     threshold: float
     above_threshold: bool
-    calibration: str
+    score_band: str
     segment: str
     model_version: str
     feature_version: str
@@ -86,7 +86,7 @@ def stable_sigmoid(logit: float) -> float:
     return exp_value / (1.0 + exp_value)
 
 
-def calibration_band(score: float) -> str:
+def score_band(score: float) -> str:
     if score < 0.35:
         return "LOW"
     if score < 0.65:
@@ -153,7 +153,7 @@ class LogisticScorer:
             propensity=propensity,
             threshold=model.threshold,
             above_threshold=propensity >= model.threshold,
-            calibration=calibration_band(propensity),
+            score_band=score_band(propensity),
             segment=segment.upper(),
             model_version=model.model_version,
             feature_version=feature_version,
@@ -170,6 +170,6 @@ __all__ = [
     "LogisticScorer",
     "ModelStatus",
     "PropensityScore",
-    "calibration_band",
+    "score_band",
     "stable_sigmoid",
 ]

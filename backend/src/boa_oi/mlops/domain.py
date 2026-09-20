@@ -39,6 +39,7 @@ class FeatureLineage:
     observation_as_of: Timestamp
     source: str = "unknown"
     source_record_id: str | None = None
+    source_available_at: Timestamp | None = None
 
     @property
     def is_temporally_valid(self) -> bool:
@@ -48,6 +49,13 @@ class FeatureLineage:
         if not self.is_temporally_valid:
             raise FeatureContaminationError(
                 f"featureTimestamp ({self.feature_timestamp.isoformat()}) is after "
+                f"observationAsOf ({self.observation_as_of.isoformat()}) for {self.feature_name}"
+            )
+        if self.source_available_at is not None and _as_datetime(
+            self.source_available_at
+        ) > _as_datetime(self.observation_as_of):
+            raise FeatureContaminationError(
+                f"sourceAvailableAt ({self.source_available_at.isoformat()}) is after "
                 f"observationAsOf ({self.observation_as_of.isoformat()}) for {self.feature_name}"
             )
 
@@ -76,6 +84,12 @@ class TrainingExample:
     def validate_temporal_integrity(self) -> None:
         for feature in self.features:
             feature.validate()
+        if self.label_available_from is not None and _as_datetime(
+            self.label_available_from
+        ) <= _as_datetime(self.observation_as_of):
+            raise FeatureContaminationError(
+                "labelAvailableFrom must be strictly after observationAsOf"
+            )
 
     @property
     def is_label_mature(self) -> bool:
@@ -91,16 +105,30 @@ class TrainingLineage:
     source_snapshots: tuple[str, ...] = ()
     code_revision: str | None = None
     label_definition: str | None = None
+    dataset_manifest_hash: str | None = None
+    source_kind: str = "UNKNOWN"
+    target_outcome: str | None = None
+    horizon_days: int | None = None
+    population: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "examples", tuple(self.examples))
         object.__setattr__(self, "source_snapshots", tuple(self.source_snapshots))
 
     def validate(self) -> None:
+        seen: set[tuple[str, datetime]] = set()
         for example in self.examples:
             example.validate_temporal_integrity()
             if _as_datetime(example.observation_as_of) > _as_datetime(self.training_cutoff):
                 raise ValueError("training examples cannot be after the training cutoff")
+            key = (example.entity_id, _as_datetime(example.observation_as_of))
+            if key in seen:
+                raise ValueError("duplicate entity and observationAsOf in training lineage")
+            seen.add(key)
+        if self.dataset_manifest_hash is not None and len(self.dataset_manifest_hash) != 64:
+            raise ValueError("datasetManifestHash must be a SHA-256 digest")
+        if self.horizon_days is not None and self.horizon_days <= 0:
+            raise ValueError("horizonDays must be positive")
 
     @property
     def contaminated_examples(self) -> tuple[TrainingExample, ...]:
@@ -291,7 +319,8 @@ class MetricReport:
     precision_at_k: float | str = NA
     recall_at_k: float | str = NA
     pr_auc: float | str = NA
-    calibration: float | str = NA
+    expected_calibration_error: float | str = NA
+    brier_score: float | str = NA
     lift: float | str = NA
     uplift: float | str = NA
 
@@ -300,14 +329,15 @@ class MetricReport:
             "Precision@K": self.precision_at_k,
             "Recall@K": self.recall_at_k,
             "PR-AUC": self.pr_auc,
-            "calibration": self.calibration,
+            "expectedCalibrationError": self.expected_calibration_error,
+            "brierScore": self.brier_score,
             "lift": self.lift,
             "uplift": self.uplift,
         }
 
     @property
     def calibration_error(self) -> float | str:
-        return self.calibration
+        return self.expected_calibration_error
 
 
 EvaluationMetrics = MetricReport
@@ -366,7 +396,7 @@ def evaluate_metrics(
     bins: list[list[int]] = [[] for _ in range(10)]
     for index, score in enumerate(scores):
         bins[min(9, int(float(score) * 10))].append(index)
-    calibration = sum(
+    expected_calibration_error = sum(
         (len(bucket) / len(scores))
         * abs(
             sum(float(scores[i]) for i in bucket) / len(bucket)
@@ -375,6 +405,10 @@ def evaluate_metrics(
         for bucket in bins
         if bucket
     )
+    brier_score = sum(
+        (float(score) - float(bool(label))) ** 2
+        for score, label in zip(scores, labels, strict=True)
+    ) / len(scores)
     uplift: float | str = NA
     if (
         treatment is not None
@@ -388,7 +422,13 @@ def evaluate_metrics(
                 bool(labels[i]) for i in top_control
             ) / len(top_control)
     return MetricReport(
-        precision, recall, _average_precision(scores, labels), calibration, lift, uplift
+        precision,
+        recall,
+        _average_precision(scores, labels),
+        expected_calibration_error,
+        brier_score,
+        lift,
+        uplift,
     )
 
 

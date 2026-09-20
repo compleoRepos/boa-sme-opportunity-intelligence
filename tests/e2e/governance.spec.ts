@@ -26,9 +26,12 @@ test('gouvernance persistée, readiness prudente et RBAC administratif', async (
   })
   expect(policyResponse.status()).toBe(200)
   const policy = await policyResponse.json()
-  expect(policy.policyId).toBe('commercial-hybrid-poc')
+  expect(policy.policyId).toBe('commercial-rules-shadow-poc')
   expect(policy.status).toBe('ACTIVE')
-  expect(Number(policy.weights.rules) + Number(policy.weights.ml)).toBeCloseTo(1, 8)
+  expect(Number(policy.weights.rules)).toBe(1)
+  expect(Number(policy.weights.ml)).toBe(0)
+  expect(policy.operationalMode).toBe('RULES_ONLY')
+  expect(policy.mlObservationMode).toBe('POC_SHADOW')
 
   const readinessResponse = await analyst.request.get('/api/v1/admin/readiness', {
     headers: { Authorization: analystAuthorization, 'X-Correlation-ID': 'e2e-governance-readiness' },
@@ -36,6 +39,7 @@ test('gouvernance persistée, readiness prudente et RBAC administratif', async (
   expect(readinessResponse.status()).toBe(200)
   const readiness = await readinessResponse.json()
   expect(readiness.overallStatus).toMatch(/^(READY|BLOCKED)$/)
+  expect(readiness.deploymentMode).toBe('POC_SHADOW')
   expect(readiness.productionPerformanceClaim).toBe(false)
   expect(readiness.checks.length).toBeGreaterThan(0)
 
@@ -44,7 +48,7 @@ test('gouvernance persistée, readiness prudente et RBAC administratif', async (
   })
   expect(championResponse.status()).toBe(200)
   const champion = await championResponse.json()
-  expect(champion.mode).toBe('POC_ASSISTIVE')
+  expect(champion.mode).toBe('POC_SHADOW')
 
   const driftTrace = `e2e-drift-${Date.now()}`
   const driftObservation = await analyst.request.post(
@@ -109,7 +113,7 @@ test('gouvernance persistée, readiness prudente et RBAC administratif', async (
   await ccContext.close()
 })
 
-test('workflow MLOps gouverné avec séparation des rôles et rollback', async ({ browser }) => {
+test('workflow MLOps shadow avec séparation des rôles et promotion bloquée', async ({ browser }) => {
   const analystContext = await browser.newContext()
   const analyst = await analystContext.newPage()
   await login(analyst, 'analyste')
@@ -169,6 +173,7 @@ test('workflow MLOps gouverné avec séparation des rôles et rollback', async (
       'Precision@K': 'N/A',
       'Recall@K': 'N/A',
       'PR-AUC': 'N/A',
+      calibrationStatus: 'NOT_VALIDATED',
       productionPerformanceClaim: false,
     },
     lineage: {
@@ -178,6 +183,11 @@ test('workflow MLOps gouverné avec séparation des rôles et rollback', async (
       sourceSnapshots: ['synthetic-seed-2026-09'],
       codeRevision: 'e2e-governance',
       labelDefinition: 'commercial_conversion_30d',
+      datasetManifestHash: 'a'.repeat(64),
+      sourceKind: 'SYNTHETIC',
+      targetOutcome: 'CONVERTED',
+      horizonDays: 30,
+      population: { segment: 'SME', country: 'MA' },
       examples: [
         {
           entityId: 'SME-E2E',
@@ -193,7 +203,11 @@ test('workflow MLOps gouverné avec séparation des rôles et rollback', async (
         },
       ],
     },
-    deploymentMode: 'POC_ASSISTIVE',
+    deploymentMode: 'POC_SHADOW',
+    datasetManifestHash: 'a'.repeat(64),
+    artifactChecksum: 'b'.repeat(64),
+    targetOutcome: 'CONVERTED',
+    horizonDays: 30,
     reason: 'E2E gouvernance sans revendication de performance',
     artifact: {
       algorithm: 'LOGISTIC_REGRESSION',
@@ -247,36 +261,28 @@ test('workflow MLOps gouverné avec séparation des rôles et rollback', async (
       { headers: approverHeaders, data: { reason: 'promotion par le reviewer interdite' } },
     )
     expect(selfPromotion.status()).toBe(403)
-    const promoted = await admin.request.post(
+    const blockedPromotion = await admin.request.post(
       `/api/v1/admin/ml/governance/runs/sales-propensity/${modelVersion}/promote`,
       { headers: adminHeaders, data: { reason: 'release manager E2E' } },
     )
-    expect(promoted.status()).toBe(202)
+    expect(blockedPromotion.status()).toBe(409)
+    expect(JSON.stringify(await blockedPromotion.json())).toContain('ML_ACTIVATION_BLOCKED')
   }
 
-  const activeSecond = await analyst.request.get('/api/v1/ml/models/active', {
+  const activeModel = await analyst.request.get('/api/v1/ml/models/active', {
     headers: { Authorization: analystAuthorization },
   })
-  expect(activeSecond.status()).toBe(200)
-  expect((await activeSecond.json()).modelVersion).toBe(secondVersion)
-
-  const rollback = await admin.request.post('/api/v1/admin/ml/governance/rollback', {
-    headers: adminHeaders,
-    data: { modelVersion: firstVersion, reason: 'rollback E2E contrôlé' },
-  })
-  expect(rollback.status()).toBe(202)
-  const activeFirst = await analyst.request.get('/api/v1/ml/models/active', {
-    headers: { Authorization: analystAuthorization },
-  })
-  expect(activeFirst.status()).toBe(200)
-  expect((await activeFirst.json()).modelVersion).toBe(firstVersion)
+  expect(activeModel.status()).toBe(200)
+  const activeModelBody = await activeModel.json()
+  expect(activeModelBody.modelVersion).not.toBe(firstVersion)
+  expect(activeModelBody.modelVersion).not.toBe(secondVersion)
 
   await analystContext.close()
   await approverContext.close()
   await adminContext.close()
 })
 
-test('Scoring Policy versionnée, simulée, activée puis restaurée', async ({ browser }) => {
+test('Scoring Policy hybride simulable mais non activable sans labels BOA', async ({ browser }) => {
   const analystContext = await browser.newContext()
   const analyst = await analystContext.newPage()
   await login(analyst, 'analyste')
@@ -296,7 +302,7 @@ test('Scoring Policy versionnée, simulée, activée puis restaurée', async ({ 
     'Content-Type': 'application/json',
     'X-Correlation-ID': trace,
   }
-  const policyId = 'commercial-hybrid-poc'
+  const policyId = 'commercial-rules-shadow-poc'
   const created = await analyst.request.post(
     `/api/v1/admin/scoring-policies/${policyId}/versions`,
     {
@@ -334,7 +340,7 @@ test('Scoring Policy versionnée, simulée, activée puis restaurée', async ({ 
     { headers: analystHeaders, data: { reason: 'auto-approbation interdite', simulationId } },
   )
   expect(selfApproval.status()).toBe(403)
-  for (const action of ['approve', 'publish', 'activate']) {
+  for (const action of ['approve', 'publish']) {
     const response = await approver.request.post(
       `/api/v1/admin/scoring-policies/${policyId}/versions/${version}/${action}`,
       {
@@ -344,25 +350,23 @@ test('Scoring Policy versionnée, simulée, activée puis restaurée', async ({ 
     )
     expect(response.status()).toBe(202)
   }
-  const activeCandidate = await analyst.request.get('/api/v1/admin/scoring-policies/active', {
-    headers: { Authorization: analystAuthorization },
-  })
-  expect(activeCandidate.status()).toBe(200)
-  expect((await activeCandidate.json()).version).toBe(version)
-  const restored = await approver.request.post(
-    `/api/v1/admin/scoring-policies/${policyId}/rollback`,
+  const blockedActivation = await approver.request.post(
+    `/api/v1/admin/scoring-policies/${policyId}/versions/${version}/activate`,
     {
       headers: approverHeaders,
-      data: { targetVersion: 1, reason: 'restauration du baseline E2E' },
+      data: { reason: 'activation interdite sans labels BOA', simulationId },
     },
   )
-  expect(restored.status()).toBe(202)
-  const activeRestored = await analyst.request.get('/api/v1/admin/scoring-policies/active', {
+  expect(blockedActivation.status()).toBe(409)
+  expect(JSON.stringify(await blockedActivation.json())).toContain('ML_SHADOW_POLICY_REQUIRED')
+  const activeBaseline = await analyst.request.get('/api/v1/admin/scoring-policies/active', {
     headers: { Authorization: analystAuthorization },
   })
-  const baseline = await activeRestored.json()
-  expect(Number(baseline.weights.rules)).toBeCloseTo(0.65, 8)
-  expect(Number(baseline.weights.ml)).toBeCloseTo(0.35, 8)
+  expect(activeBaseline.status()).toBe(200)
+  const baseline = await activeBaseline.json()
+  expect(baseline.version).not.toBe(version)
+  expect(Number(baseline.weights.rules)).toBe(1)
+  expect(Number(baseline.weights.ml)).toBe(0)
   await analystContext.close()
   await approverContext.close()
 })

@@ -81,14 +81,16 @@ def test_metrics_are_na_when_they_cannot_be_exploited():
     assert report.precision_at_k == "N/A"
     assert report.recall_at_k == "N/A"
     assert report.pr_auc == "N/A"
-    assert report.calibration == "N/A"
+    assert report.expected_calibration_error == "N/A"
+    assert report.brier_score == "N/A"
     assert report.lift == "N/A"
     assert report.uplift == "N/A"
     assert evaluate_metrics([], []).as_dict() == {
         "Precision@K": "N/A",
         "Recall@K": "N/A",
         "PR-AUC": "N/A",
-        "calibration": "N/A",
+        "expectedCalibrationError": "N/A",
+        "brierScore": "N/A",
         "lift": "N/A",
         "uplift": "N/A",
     }
@@ -120,7 +122,7 @@ def test_registry_requires_approval_before_promotion_and_supports_rollback():
     assert registry.champion == first and second.status == ModelStatus.RETIRED
 
 
-def test_service_forbids_auto_approval_and_requires_distinct_release_manager():
+def test_service_forbids_auto_approval_and_blocks_promotion_without_boa_evidence():
     service = MLOpsGovernanceService()
     payload = {
         "modelId": "sales-propensity",
@@ -132,9 +134,11 @@ def test_service_forbids_auto_approval_and_requires_distinct_release_manager():
         "validationPeriodFrom": "2026-04-01",
         "validationPeriodTo": "2026-04-30",
         "codeVersion": "abc123",
-        "metrics": {"Precision@K": "N/A"},
+        "metrics": {"Precision@K": "N/A", "calibrationStatus": "NOT_VALIDATED"},
+        "deploymentMode": "POC_SHADOW",
         "lineage": {
             "trainingCutoff": "2026-03-31",
+            "sourceKind": "SYNTHETIC",
             "sourceSnapshots": ["feature-snapshot-v1"],
             "examples": [
                 {
@@ -160,19 +164,21 @@ def test_service_forbids_auto_approval_and_requires_distinct_release_manager():
     with pytest.raises(ConflictError, match="auto-approval"):
         service.approve("sales-propensity", "v-governed", actor="author", trace_id="trace-self")
     service.approve("sales-propensity", "v-governed", actor="reviewer", trace_id="trace-approve")
-    with pytest.raises(ConflictError, match="promote their own"):
+    with pytest.raises(ConflictError, match="ML_ACTIVATION_BLOCKED"):
         service.promote(
             "sales-propensity", "v-governed", actor="reviewer", trace_id="trace-self-release"
         )
-    promoted = service.promote(
-        "sales-propensity", "v-governed", actor="release-manager", trace_id="trace-release"
-    )
-    assert promoted.status == "CHAMPION"
-    assert service.champion() == promoted
+    with pytest.raises(ConflictError, match="BOA_HISTORICAL_LABELS_UNAVAILABLE"):
+        service.promote(
+            "sales-propensity", "v-governed", actor="release-manager", trace_id="trace-release"
+        )
+    run = service.get("sales-propensity", "v-governed")
+    assert run.status == "APPROVED"
+    assert run.activation_gate_status == "BLOCKED"
+    assert service.champion() is None
     assert [event.action for event in service.audits()] == [
         "REGISTERED",
         "LINEAGE_VALIDATED",
         "SUBMITTED",
         "APPROVED",
-        "PROMOTED",
     ]

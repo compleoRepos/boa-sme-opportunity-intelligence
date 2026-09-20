@@ -5,7 +5,7 @@ from .domain import (
     LogisticScorer,
     ModelStatus,
     PropensityScore,
-    calibration_band,
+    score_band,
     stable_sigmoid,
 )
 
@@ -16,6 +16,6 @@ __all__ = [
     "LogisticScorer",
     "ModelStatus",
     "PropensityScore",
-    "calibration_band",
+    "score_band",
     "stable_sigmoid",
 ]

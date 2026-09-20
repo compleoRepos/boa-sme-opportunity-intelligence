@@ -28,13 +28,14 @@ refresh_token
 
 post_internal() {
   local service="$1" path="$2" payload="${3-}"
+  local key=${4:-${path//\//-}}
   [[ -n "$payload" ]] || payload='{}'
   echo "POST ${service}${path}"
   compose exec -T "$service" curl --fail-with-body --silent --show-error \
     --request POST \
     --header "Authorization: Bearer ${token}" \
     --header "X-Correlation-ID: ${CORRELATION_ID}" \
-    --header "Idempotency-Key: ${CORRELATION_ID}-${service}-${path//\//-}" \
+    --header "Idempotency-Key: ${CORRELATION_ID}-${service}-${key}" \
     --header 'Content-Type: application/json' \
     --data "$payload" \
     "http://127.0.0.1:8080${path}"
@@ -57,8 +58,8 @@ for ((start=0; start<customer_count; start+=batch_size)); do
   analytics_payload=$(jq -nc --argjson ids "$ids" --arg asOf "$as_of" '{customerIds:$ids,asOf:$asOf,periods:["7D","30D","90D","180D","365D"]}')
   signal_payload=$(jq -nc --argjson ids "$ids" --arg asOf "$as_of" '{customerIds:$ids,asOf:$asOf,periods:["90D"]}')
   opportunity_payload=$(jq -nc --argjson ids "$ids" --arg asOf "$as_of" '{customerIds:$ids,asOf:$asOf}')
-  post_internal analytics "/internal/v1/analytics/recompute" "$analytics_payload"
-  post_internal signal "/internal/v1/signals/evaluate" "$signal_payload"
-  post_internal opportunity "/internal/v1/opportunities/generate" "$opportunity_payload"
+  post_internal analytics "/internal/v1/analytics/recompute" "$analytics_payload" "batch-${start}"
+  post_internal signal "/internal/v1/signals/evaluate" "$signal_payload" "batch-${start}"
+  post_internal opportunity "/internal/v1/opportunities/generate" "$opportunity_payload" "batch-${start}"
 done
 echo "Pipeline submitted successfully (correlationId=${CORRELATION_ID})."

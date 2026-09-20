@@ -23,6 +23,8 @@ from pydantic import ValidationError
 def test_config_exactly_four_active_versioned_rules_and_checksum(rule_set):
     assert len(rule_set.opportunity_rules) == 4 and rule_set.status == "ACTIVE"
     assert rule_set.checksum() == rule_set.checksum() and len(rule_set.checksum()) == 64
+    for rule in rule_set.opportunity_rules.values():
+        ensure_relational_language(rule.model_dump(mode="json"))
 
 
 def test_config_rejects_missing_rule_and_bad_priority(rule_set):

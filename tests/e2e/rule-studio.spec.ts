@@ -70,6 +70,6 @@ test('ML Governance expose le registre réel des modèles', async ({ page }) => 
   await page.goto('/back-office/modeles')
   await expect(page.getByRole('heading', { name: 'Model Registry' })).toBeVisible()
   await page.locator('.model-list button').first().click()
-  await expect(page.locator('#model')).toContainText('Seuil de décision')
+  await expect(page.locator('#model')).toContainText('Seuil descriptif POC')
   await expect(page.locator('.coef-list li').first()).toBeVisible()
 })

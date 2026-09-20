@@ -128,6 +128,11 @@ class ScoringPolicyVersion(BaseModel):
             raise ValueError(f"{self.status.value} requires a recorded approval")
         if self.status == PolicyStatus.ACTIVE and self.effective_from is None:
             raise ValueError("ACTIVE requires effectiveFrom")
+        if (
+            self.status == PolicyStatus.ACTIVE
+            and self.weights.get("ml", self.weights.get("propensity", Decimal("0"))) != 0
+        ):
+            raise ValueError("ACTIVE is restricted to RULES_ONLY while BOA labels are unavailable")
         return self
 
     @classmethod
@@ -215,6 +220,11 @@ class ScoringPolicyVersion(BaseModel):
                 raise DomainError("author cannot approve the same policy version")
             if not reason or not reason.strip():
                 raise DomainError("approval reason is required")
+        if (
+            target == PolicyStatus.ACTIVE
+            and self.weights.get("ml", self.weights.get("propensity", Decimal("0"))) != 0
+        ):
+            raise DomainError("ACTIVE is restricted to RULES_ONLY while BOA labels are unavailable")
         if target in {PolicyStatus.DISABLED, PolicyStatus.ROLLED_BACK} and not reason:
             raise DomainError(f"{target.value} requires a reason")
         at = at or datetime.now(timezone.utc)

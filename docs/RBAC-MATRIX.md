@@ -154,8 +154,9 @@ Les groupes ci-dessous reprennent toutes les routes déclarées dans [`gateway_a
 | `POST /api/v1/admin/portfolio-assignments/sync` | `ADMIN` | Synchronisation des affectations | **IMPLÉMENTÉ** ; idempotence/scope **À VALIDER** |
 | `POST /api/v1/admin/pipeline`, `POST /api/v1/admin/recompute` | `ADMIN`, `SERVICE` | Recalcul analytics/signaux/opportunités | **IMPLÉMENTÉ** ; absence de décision de crédit maintenue |
 | `GET/POST /api/v1/admin/scoring-policies[/{subpath}]` | `RULE_READ_ROLES` | Gouvernance de scoring policy | **IMPLÉMENTÉ** ; le code Gateway est large et délègue le détail au service |
-| `GET/POST /api/v1/admin/ml/governance[/{subpath}]` | `DATA_ANALYST`, `RULE_APPROVER`, `ADMIN` | Gouvernance ML | **IMPLÉMENTÉ** ; labels BOA/performance **À VALIDER** |
+| `GET/POST /api/v1/admin/ml/governance[/{subpath}]` | Gateway : `DATA_ANALYST`, `RULE_APPROVER`, `ADMIN`; service aval : auteur/évaluation/approbateur/release selon opération | Gouvernance ML | **IMPLÉMENTÉ** ; `evaluation/labels` et `evaluation/metrics` refusent les rôles commerciaux et exigent `DATA_ANALYST`/`ADMIN` (`SERVICE` interne seulement) |
 | `POST /api/v1/admin/ml/outcomes/materialize` | `DATA_ANALYST`, `ADMIN`, `SERVICE` | Matérialisation d’outcomes | **IMPLÉMENTÉ** |
+| `GET /api/v1/admin/ml/outcomes/snapshots`, `GET/POST /api/v1/admin/ml/datasets/manifests` | `DATA_ANALYST`, `ADMIN`, `SERVICE` | Labels candidats et manifests point-in-time | **IMPLÉMENTÉ** ; `RELATIONSHIP_MANAGER` refusé côté service |
 | `GET /api/v1/admin/readiness` | `DATA_ANALYST`, `ADMIN` | Readiness de plateforme/ML | **IMPLÉMENTÉ** ; seuils de passage BOA **À VALIDER** |
 | `GET/POST /api/v1/admin/monitoring/{subpath}` | `DATA_ANALYST`, `ADMIN` | Observations et monitoring | **IMPLÉMENTÉ** ; couverture d’autorisation **NON IDENTIFIÉE** |
 

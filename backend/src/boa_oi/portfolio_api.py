@@ -208,23 +208,14 @@ def _normalized_rules_score(opportunities: list[Opportunity]) -> float:
 
 
 def _persisted_priority(
-    propensity: float, opportunities: list[Opportunity]
+    _propensity: float, opportunities: list[Opportunity]
 ) -> tuple[float, str, Opportunity | None]:
     if opportunities:
         selected = max(opportunities, key=lambda item: float(item.priority_score))
         combined = float(selected.priority_score)
         combined = combined / 100 if combined > 1 else combined
         return combined, selected.priority_level, selected
-    combined = propensity
-    if combined >= 0.80:
-        level = "P1"
-    elif combined >= 0.60:
-        level = "P2"
-    elif combined >= 0.40:
-        level = "P3"
-    else:
-        level = "P4"
-    return combined, level, None
+    return 0.0, "P4", None
 
 
 def _factor_label(feature: str) -> str:
@@ -252,9 +243,7 @@ def _portfolio_payload(
         propensity = float(score_record.score) if score_record else 0.0
         customer_opportunities = opportunities.get(customer.id, [])
         customer_actions = actions.get(customer.id, [])
-        combined, priority_level, _selected = _persisted_priority(
-            propensity, customer_opportunities
-        )
+        combined, priority_level, selected = _persisted_priority(propensity, customer_opportunities)
         distribution[priority_level] += 1
         open_actions = [
             item for item in customer_actions if item.status not in {"DONE", "CANCELLED"}
@@ -269,11 +258,6 @@ def _portfolio_payload(
             if item.outcome_type in {"CONTACTED", "MEETING_SCHEDULED", "OFFER_CREATED", "CONVERTED"}
         )
         all_open_opportunities += len(customer_opportunities)
-        top_factor = (
-            score_record.top_factors_json[0]
-            if score_record and score_record.top_factors_json
-            else None
-        )
         portfolio.append(
             {
                 "customerId": customer.customer_ref,
@@ -288,10 +272,9 @@ def _portfolio_payload(
                 "combinedPriorityScore": combined,
                 "priorityLevel": priority_level,
                 "priorityReason": (
-                    f"{_factor_label(str(top_factor['feature']))} est le principal "
-                    "facteur du score."
-                    if top_factor
-                    else "Aucun score de propension matérialisé pour cette date."
+                    "Priorité RULES_ONLY issue de l'opportunité commerciale persistée."
+                    if selected
+                    else "Aucune opportunité issue des règles; la propension reste shadow."
                 ),
                 "openOpportunities": [
                     {
@@ -325,7 +308,6 @@ def _portfolio_payload(
     portfolio.sort(
         key=lambda item: (
             -float(item["combinedPriorityScore"]),
-            -float(item["propensityScore"]),
             str(item["customerId"]),
         )
     )
@@ -713,7 +695,7 @@ def customer_propensity(
     return {
         "customerId": customer.customer_ref,
         "score": propensity,
-        "scoreMeaning": "intérêt commercial estimé",
+        "scoreMeaning": "observation shadow d'intérêt commercial estimé",
         "priorityLevel": priority_level,
         "model": {
             "modelId": "sales-propensity-logistic",
@@ -722,18 +704,20 @@ def customer_propensity(
             "scoredAt": score_record.created_at.isoformat(),
         },
         "combination": {
-            "method": selected.fallback_mode if selected else "PROPENSITY_ONLY_NO_OPPORTUNITY",
+            "method": "RULES_ONLY",
+            "mlObservationMode": score_record.deployment_mode,
             "mlScore": propensity,
             "rulesScore": rules_score,
-            "mlWeight": float(selected.ml_weight) if selected else None,
-            "rulesWeight": float(selected.rules_weight) if selected else None,
+            "mlWeight": 0.0,
+            "rulesWeight": 1.0,
             "policyId": selected.scoring_policy_id if selected else None,
             "policyVersion": selected.scoring_policy_version if selected else None,
             "combinedPriorityScore": combined,
             "summary": (
-                "La propension ML complete les regles metier publiees "
-                "pour ordonner le travail commercial."
+                "La priorité visible provient uniquement des règles et opportunités. "
+                "La propension ML est calculée et auditée en shadow sans modifier l'ordre."
             ),
+            "shadowReadOnly": True,
         },
         "factors": factors,
         "warnings": [

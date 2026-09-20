@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import random
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -21,7 +22,12 @@ from boa_oi.models.entities import (
     PortfolioAssignment,
     Product,
     RelationshipManager,
+    Rule,
+    RuleAction,
+    RuleCondition,
+    RuleConfidenceConfiguration,
     RuleConfiguration,
+    RuleVersion,
     Sector,
     SignalRule,
     Transaction,
@@ -325,6 +331,143 @@ def seed(database_url: str, batch_size: int = 1000) -> dict:
                     ]
                 )
             )
+        studio_rule_code = "SYNTHETIC_GROWTH_REVIEW"
+        studio_rule_id = deterministic_uuid("rule-studio", studio_rule_code)
+        studio_version_id = deterministic_uuid("rule-studio-version", studio_rule_code, 1)
+        studio_definition = {
+            "name": "Revue de croissance synthétique",
+            "description": (
+                "Règle de démonstration synthétique; seuil HYPOTHÈSE À VALIDER AVEC BOA."
+            ),
+            "scope": {"segment": ["SMALL", "MEDIUM"], "dataKind": "SYNTHETIC"},
+            "logic": "AND",
+            "conditions": [
+                {
+                    "metric": "INFLOW_GROWTH",
+                    "operator": ">",
+                    "value": 0.2,
+                    "unit": "RATIO",
+                    "period": "90D",
+                }
+            ],
+            "recommendation": {
+                "opportunityType": "GROWTH_FINANCING",
+                "products": ["INVESTMENT_FINANCING"],
+                "horizon": "1-3_MONTHS",
+            },
+            "confidence": {"baseScore": 60, "weights": {"INFLOW_GROWTH": 25}},
+            "lifecycle": {
+                "validityDays": 90,
+                "dismissedCooldownDays": 30,
+                "convertedCooldownDays": 180,
+                "deferredCooldownDays": 30,
+                "expiredCooldownDays": 7,
+            },
+        }
+        studio_checksum = hashlib.sha256(
+            json.dumps(
+                studio_definition,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode()
+        ).hexdigest()
+        session.execute(
+            pg_insert(Rule)
+            .values(
+                id=studio_rule_id,
+                rule_id=studio_rule_code,
+                name=studio_definition["name"],
+                description=studio_definition["description"],
+                status="ACTIVE",
+                current_version=1,
+                active_version=1,
+                created_by="demo-data-generator",
+            )
+            .on_conflict_do_nothing(index_elements=[Rule.rule_id])
+        )
+        session.execute(
+            pg_insert(RuleVersion)
+            .values(
+                id=studio_version_id,
+                rule_id=studio_rule_id,
+                version=1,
+                status="ACTIVE",
+                name=studio_definition["name"],
+                description=studio_definition["description"],
+                scope_json=studio_definition["scope"],
+                logic="AND",
+                configuration_json=studio_definition,
+                checksum=studio_checksum,
+                created_by="demo-data-generator",
+            )
+            .on_conflict_do_nothing(index_elements=[RuleVersion.rule_id, RuleVersion.version])
+        )
+        root_condition_id = deterministic_uuid("rule-condition", studio_rule_code, 1, "root")
+        session.execute(
+            pg_insert(RuleCondition)
+            .values(
+                id=root_condition_id,
+                rule_version_id=studio_version_id,
+                parent_condition_id=None,
+                path="root",
+                position=0,
+                node_type="GROUP",
+                logic="AND",
+                metric_code=None,
+                operator=None,
+                value_json=None,
+                unit=None,
+                period=None,
+            )
+            .on_conflict_do_nothing(
+                index_elements=[RuleCondition.rule_version_id, RuleCondition.path]
+            )
+        )
+        session.execute(
+            pg_insert(RuleCondition)
+            .values(
+                id=deterministic_uuid("rule-condition", studio_rule_code, 1, "root.0"),
+                rule_version_id=studio_version_id,
+                parent_condition_id=root_condition_id,
+                path="root.0",
+                position=0,
+                node_type="CONDITION",
+                logic=None,
+                metric_code="INFLOW_GROWTH",
+                operator=">",
+                value_json=0.2,
+                unit="RATIO",
+                period="90D",
+            )
+            .on_conflict_do_nothing(
+                index_elements=[RuleCondition.rule_version_id, RuleCondition.path]
+            )
+        )
+        session.execute(
+            pg_insert(RuleAction)
+            .values(
+                id=deterministic_uuid("rule-action", studio_rule_code, 1, 0),
+                rule_version_id=studio_version_id,
+                position=0,
+                opportunity_type_code="GROWTH_FINANCING",
+                product_codes_json=["INVESTMENT_FINANCING"],
+                horizon_code="1-3_MONTHS",
+            )
+            .on_conflict_do_nothing(
+                index_elements=[RuleAction.rule_version_id, RuleAction.position]
+            )
+        )
+        session.execute(
+            pg_insert(RuleConfidenceConfiguration)
+            .values(
+                id=deterministic_uuid("rule-confidence", studio_rule_code, 1),
+                rule_version_id=studio_version_id,
+                base_score=Decimal("0.60"),
+                weights_json={"INFLOW_GROWTH": 25},
+            )
+            .on_conflict_do_nothing(index_elements=[RuleConfidenceConfiguration.rule_version_id])
+        )
         session.flush()
         tx_buffer = []
         balance_buffer = []

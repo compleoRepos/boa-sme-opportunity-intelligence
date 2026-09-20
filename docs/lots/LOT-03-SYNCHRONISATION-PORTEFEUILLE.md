@@ -93,7 +93,7 @@ Les données sont synthétiques et utilisées uniquement comme preuve fonctionne
 
 ### 5.3 Stack et intégration existante
 
-Les services PostgreSQL, Keycloak, Customer, Analytics, Signal, Rule Engine, Feature Store, ML Engine, Opportunity, Action, Portfolio, Gateway et Frontend ont été reconstruits et observés `healthy`. La validation ML existante reste **PASS** : 500 vecteurs, 500 scores de propension, lignée Rules/Signals/Features, influence réelle sur la priorité Opportunity, versions modèle/features/dataset, matérialisation des outcomes comme futurs labels, absence de lecture SQL transverse et absence de dépendance LLM/GPU.
+Les services PostgreSQL, Keycloak, Customer, Analytics, Signal, Rule Engine, Feature Store, ML Engine, Opportunity, Action, Portfolio, Gateway et Frontend ont été reconstruits et observés `healthy`. Cette validation historique confirmait 500 vecteurs, 500 scores, la lignée et l’absence de dépendance LLM/GPU. **Le claim d’influence est remplacé par le lot 10 : le score est désormais shadow et la priorité rules-only.**
 
 Cette validation confirme une intégration POC/shadow CPU-only. Elle ne revendique aucune performance ML de production et ne réalise aucune décision de crédit.
 

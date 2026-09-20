@@ -27,7 +27,7 @@ Chaque classeur contient une feuille de données et une feuille `Métadonnées`.
 | Tests backend | **PASS** | `197 passed`, avec six avertissements historiques non bloquants. |
 | Tests frontend | **PASS** | `18 passed`; typecheck et build de production réussis. |
 | E2E navigateur | **PASS** | `9 passed`, dont téléchargement via Keycloak et contrôle de la signature ZIP du `.xlsx`. |
-| Régression ML | **PASS** | 500 vecteurs, 500 scores, lignée, influence réelle sur la priorité et absence de dépendance LLM/GPU confirmés. |
+| Régression ML du lot | **PASS historique / REMPLACÉE pour la priorité** | 500 vecteurs, 500 scores, lignée et absence de dépendance LLM/GPU confirmés. Le lot 10 neutralise ensuite toute influence : `POC_SHADOW`, règles `1`, ML `0`. |
 | Exécution AWS | **BLOCKED** | Aucun accès AWS exécutable n’est configuré dans cette session. Les connecteurs disponibles sont documentaires et l’intégration GitHub ne permet pas de lire ou configurer les secrets Actions. Aucun résultat AWS n’est revendiqué. |
 
 ## Preuve E2E du classeur

@@ -1,5 +1,7 @@
 # Audit data et ML — BOA SME Opportunity Intelligence
 
+> **Photographie historique antérieure aux migrations 0016/0017.** Les références à `POC_ASSISTIVE`, `HYBRID_ML`, Alembic `0008` et à l’absence d’exécution Docker ne décrivent plus l’état courant. Le lot 09 couvre l’ingestion gouvernée et le lot 10 impose `POC_SHADOW` avec priorité `RULES_ONLY`; les limites relatives aux historiques BOA et à la production restent valides.
+
 **Périmètre.** Cet audit en lecture seule couvre les migrations Alembic, le seed, les données et leur catégorisation, le Feature Store, la lignée, la gouvernance MLOps, les labels, la qualité, le dataset d’apprentissage, le Model Registry, les métriques d’évaluation et le mode de secours « règles seules ». Le code n’a pas été modifié. Les vérifications combinent lecture du dépôt, exécution du manifeste de seed, inspection de l’historique Alembic et tests unitaires ciblés.
 
 ## Conclusion exécutive

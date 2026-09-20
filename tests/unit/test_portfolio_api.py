@@ -16,7 +16,7 @@ from boa_oi.models.entities import (
 from boa_oi.platform import Principal, current_principal
 from boa_oi.technical.ids import deterministic_uuid
 from fastapi.testclient import TestClient
-from sqlalchemy import Table, create_engine
+from sqlalchemy import Table, create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -118,7 +118,7 @@ def factory_and_ids():
                     score=Decimal("0.90") if customer_ref == "SME-00001" else Decimal("0.20"),
                     threshold=Decimal("0.58"),
                     above_threshold=customer_ref == "SME-00001",
-                    calibration="HIGH" if customer_ref == "SME-00001" else "LOW",
+                    score_band="HIGH" if customer_ref == "SME-00001" else "LOW",
                     segment="MEDIUM",
                     model_version="sales-propensity-logit-poc-v1",
                     feature_set_version="sales-features-v2",
@@ -126,7 +126,7 @@ def factory_and_ids():
                     contributions_json=[],
                     top_factors_json=[],
                     training_dataset_version="synthetic-demo-20260918-v1",
-                    deployment_mode="POC_ASSISTIVE",
+                    deployment_mode="POC_SHADOW",
                     created_by="unit-test",
                 )
             )
@@ -181,7 +181,7 @@ def test_branch_scope_is_consolidated_but_cannot_cross_branch(monkeypatch):
     assert cross_branch.status_code == 404
 
 
-def test_high_propensity_increases_combined_commercial_priority(monkeypatch):
+def test_shadow_propensity_does_not_change_rules_only_priority(monkeypatch):
     monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
     factory, _customers = factory_and_ids()
     branch = principal("BRANCH_MANAGER", branches=("BR-01",))
@@ -192,6 +192,35 @@ def test_high_propensity_increases_combined_commercial_priority(monkeypatch):
     rm1 = portfolio_client.get("/internal/v1/dashboards/relationship-managers/rm-01").json()
     rm2 = portfolio_client.get("/internal/v1/dashboards/relationship-managers/rm-02").json()
     assert rm1["portfolio"][0]["propensityScore"] > rm2["portfolio"][0]["propensityScore"]
-    assert (
-        rm1["portfolio"][0]["combinedPriorityScore"] > rm2["portfolio"][0]["combinedPriorityScore"]
-    )
+    assert rm1["portfolio"][0]["combinedPriorityScore"] == 0
+    assert rm2["portfolio"][0]["combinedPriorityScore"] == 0
+    assert rm1["portfolio"][0]["priorityLevel"] == "P4"
+    assert rm2["portfolio"][0]["priorityLevel"] == "P4"
+
+
+def test_shadow_propensity_does_not_break_rules_only_priority_ties(monkeypatch):
+    monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
+    factory, customers = factory_and_ids()
+    rm1 = deterministic_uuid("rm", 1)
+    with factory.begin() as session:
+        customer_two = session.get(Customer, customers["SME-00002"][0])
+        assert customer_two is not None
+        customer_two.rm_id = rm1
+        score_one = session.scalar(
+            select(PropensityScoreRecord).where(PropensityScoreRecord.customer_ref == "SME-00001")
+        )
+        score_two = session.scalar(
+            select(PropensityScoreRecord).where(PropensityScoreRecord.customer_ref == "SME-00002")
+        )
+        assert score_one is not None and score_two is not None
+        score_one.score = Decimal("0.01")
+        score_two.score = Decimal("0.99")
+
+    branch = principal("BRANCH_MANAGER", branches=("BR-01",))
+    portfolio_client = client_for("portfolio-service", factory, branch)
+    payload = portfolio_client.get("/internal/v1/dashboards/relationship-managers/rm-01").json()
+    assert [item["customerId"] for item in payload["portfolio"]] == [
+        "SME-00001",
+        "SME-00002",
+    ]
+    assert [item["combinedPriorityScore"] for item in payload["portfolio"]] == [0, 0]

@@ -1,5 +1,7 @@
 # Rapport final de finalisation technique
 
+> **RAPPORT HISTORIQUE REMPLACÉ POUR LE ML.** Les passages `POC_ASSISTIVE`, `HYBRID_ML`, poids 65/35, récupération hybride et opportunités hybrides décrivent l’état du 19 septembre 2026. Depuis la migration `0017_ml_shadow_governance`, le mode est `POC_SHADOW`, la priorité est `RULES_ONLY`, les poids actifs sont règles `1` et ML `0`, et toute activation/promotion sans preuves BOA est bloquée. Utiliser [`final-status.md`](./final-status.md) et le lot 10 pour l’état courant.
+
 **Produit :** BOA SME Opportunity Intelligence
 **Date :** 19 septembre 2026
 **Périmètre :** fusion UX premium Claude, socle ML CPU, gouvernance du scoring, résilience et préparation à l’industrialisation

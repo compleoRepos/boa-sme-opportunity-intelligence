@@ -11,6 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Any, Iterable, Mapping, Protocol
+from uuid import UUID
+
+from boa_oi.ml.governance import POC_SHADOW, activation_blockers
 
 from .domain import (
     FeatureLineage,
@@ -29,13 +32,18 @@ try:  # SQLAlchemy is optional for the pure in-memory API path.
     from sqlalchemy.orm import Session
 
     from boa_oi.models.entities import (
+        FeatureMaterialization,
+        MLDatasetManifest,
+        MLEvaluationSnapshot,
         MLGovernanceAuditLog,
         MLTrainingRun,
         ModelRegistry,
+        OutcomeLabelSnapshot,
     )
 except ImportError:  # pragma: no cover - only exercised in minimal environments.
     Session = Any  # type: ignore[misc,assignment]
-    MLGovernanceAuditLog = MLTrainingRun = ModelRegistry = None  # type: ignore[assignment,misc]
+    FeatureMaterialization = MLDatasetManifest = MLEvaluationSnapshot = None  # type: ignore[assignment,misc]
+    MLGovernanceAuditLog = MLTrainingRun = ModelRegistry = OutcomeLabelSnapshot = None  # type: ignore[assignment,misc]
 
 
 class GovernanceError(ValueError):
@@ -98,7 +106,12 @@ class RunRecord:
     hyperparameters: dict[str, Any]
     metrics: dict[str, Any]
     lineage: TrainingLineage
-    deployment_mode: str = "POC_ASSISTIVE"
+    deployment_mode: str = POC_SHADOW
+    dataset_manifest_hash: str | None = None
+    artifact_checksum: str | None = None
+    source_kind: str = "UNKNOWN"
+    activation_gate_status: str = "BLOCKED"
+    activation_gate_blockers: list[str] = field(default_factory=list)
     status: str = ModelStatus.REGISTERED.value
     approved_by: str | None = None
     approved_at: datetime | None = None
@@ -128,6 +141,11 @@ class RunRecord:
             "metrics": self.metrics,
             "lineage": _lineage_payload(self.lineage),
             "deploymentMode": self.deployment_mode,
+            "datasetManifestHash": self.dataset_manifest_hash,
+            "artifactChecksum": self.artifact_checksum,
+            "sourceKind": self.source_kind,
+            "activationGateStatus": self.activation_gate_status,
+            "activationGateBlockers": self.activation_gate_blockers,
             "status": self.status,
             "approvedBy": self.approved_by,
             "approvedAt": self.approved_at.isoformat() if self.approved_at else None,
@@ -150,6 +168,11 @@ def _lineage_payload(lineage: TrainingLineage) -> dict[str, Any]:
         "sourceSnapshots": list(lineage.source_snapshots),
         "codeRevision": lineage.code_revision,
         "labelDefinition": lineage.label_definition,
+        "datasetManifestHash": lineage.dataset_manifest_hash,
+        "sourceKind": lineage.source_kind,
+        "targetOutcome": lineage.target_outcome,
+        "horizonDays": lineage.horizon_days,
+        "population": dict(lineage.population),
         "examples": [
             {
                 "entityId": example.entity_id,
@@ -169,6 +192,11 @@ def _lineage_payload(lineage: TrainingLineage) -> dict[str, Any]:
                         "observationAsOf": _timestamp(feature.observation_as_of),
                         "source": feature.source,
                         "sourceRecordId": feature.source_record_id,
+                        "sourceAvailableAt": (
+                            _timestamp(feature.source_available_at)
+                            if feature.source_available_at is not None
+                            else None
+                        ),
                     }
                     for feature in example.features
                 ],
@@ -263,6 +291,12 @@ class SqlAlchemyModelRepository(InMemoryModelRepository):
                     dict(entity.hyperparameters_json or {}),
                     metrics,
                     lineage,
+                    deployment_mode=entity.deployment_mode,
+                    dataset_manifest_hash=entity.dataset_manifest_hash,
+                    artifact_checksum=entity.artifact_checksum,
+                    source_kind=lineage.source_kind,
+                    activation_gate_status=entity.activation_gate_status,
+                    activation_gate_blockers=list(validation.get("activationBlockers", [])),
                     status=entity.status,
                     approved_by=entity.approved_by,
                     approved_at=entity.approved_at,
@@ -314,6 +348,10 @@ class SqlAlchemyModelRepository(InMemoryModelRepository):
                         "_governanceValidation": run.validation,
                     },
                     lineage_json=_lineage_payload(run.lineage),
+                    deployment_mode=run.deployment_mode,
+                    dataset_manifest_hash=run.dataset_manifest_hash,
+                    activation_gate_status=run.activation_gate_status,
+                    artifact_checksum=run.artifact_checksum,
                     status=run.status,
                     created_by=run.author,
                 )
@@ -340,6 +378,10 @@ class SqlAlchemyModelRepository(InMemoryModelRepository):
                 }
                 entity.hyperparameters_json = run.hyperparameters
                 entity.lineage_json = _lineage_payload(run.lineage)
+                entity.deployment_mode = run.deployment_mode
+                entity.dataset_manifest_hash = run.dataset_manifest_hash
+                entity.activation_gate_status = run.activation_gate_status
+                entity.artifact_checksum = run.artifact_checksum
                 self._flush()
         return result
 
@@ -392,6 +434,112 @@ class SqlAlchemyModelRepository(InMemoryModelRepository):
         target.hyperparameters_json = run.hyperparameters
         self._flush()
 
+    def activation_evidence_blockers(self, run: RunRecord) -> list[str]:
+        if (
+            self.session is None
+            or MLDatasetManifest is None
+            or MLEvaluationSnapshot is None
+            or OutcomeLabelSnapshot is None
+            or FeatureMaterialization is None
+        ):
+            return ["PERSISTED_ACTIVATION_EVIDENCE_UNAVAILABLE"]
+        blockers: list[str] = []
+        manifest = self.session.scalar(
+            select(MLDatasetManifest).where(
+                MLDatasetManifest.manifest_hash == run.dataset_manifest_hash
+            )
+        )
+        if manifest is None:
+            return ["DATASET_MANIFEST_NOT_FOUND"]
+        if manifest.source_kind != "BOA_HISTORICAL_OBSERVED":
+            blockers.append("PERSISTED_MANIFEST_SOURCE_NOT_BOA_HISTORICAL")
+        if manifest.status != "VALIDATED" or manifest.blockers_json:
+            blockers.append("PERSISTED_MANIFEST_NOT_VALIDATED")
+        if (
+            manifest.target_outcome != run.lineage.target_outcome
+            or manifest.horizon_days != run.lineage.horizon_days
+            or dict(manifest.population_json or {}) != dict(run.lineage.population)
+        ):
+            blockers.append("MANIFEST_RUN_CONTRACT_MISMATCH")
+        try:
+            label_ids = [UUID(str(item)) for item in manifest.label_snapshot_ids_json]
+            feature_ids = [UUID(str(item)) for item in manifest.feature_snapshot_ids_json]
+        except (TypeError, ValueError):
+            blockers.append("MANIFEST_SNAPSHOT_IDENTIFIERS_INVALID")
+            label_ids = []
+            feature_ids = []
+        labels = (
+            list(
+                self.session.scalars(
+                    select(OutcomeLabelSnapshot).where(OutcomeLabelSnapshot.id.in_(label_ids))
+                )
+            )
+            if label_ids
+            else []
+        )
+        if not labels or len(labels) != len(label_ids) or manifest.row_count != len(labels):
+            blockers.append("PERSISTED_LABEL_SNAPSHOTS_INCOMPLETE")
+        elif any(
+            item.source_kind != "BOA_HISTORICAL_OBSERVED"
+            or item.candidate_only
+            or not item.window_closed
+            or item.outcome_value not in (True, False)
+            or item.feature_snapshot_id not in feature_ids
+            or item.dataset_manifest_hash != manifest.manifest_hash
+            or item.label_available_from <= manifest.training_cutoff
+            for item in labels
+        ):
+            blockers.append("PERSISTED_LABELS_NOT_TRAINING_ELIGIBLE")
+        feature_count = (
+            len(
+                list(
+                    self.session.scalars(
+                        select(FeatureMaterialization.id).where(
+                            FeatureMaterialization.id.in_(feature_ids)
+                        )
+                    )
+                )
+            )
+            if feature_ids
+            else 0
+        )
+        if feature_count != len(feature_ids):
+            blockers.append("PERSISTED_FEATURE_SNAPSHOTS_INCOMPLETE")
+        evaluation = self.session.scalar(
+            select(MLEvaluationSnapshot)
+            .where(
+                MLEvaluationSnapshot.model_version == run.model_version,
+                MLEvaluationSnapshot.dataset_manifest_hash == manifest.manifest_hash,
+            )
+            .order_by(MLEvaluationSnapshot.created_at.desc())
+        )
+        if evaluation is None:
+            blockers.append("PERSISTED_EVALUATION_NOT_FOUND")
+        else:
+            criteria = dict(evaluation.acceptance_criteria_json or {})
+            metrics = dict(evaluation.metrics_json or {})
+            calibration = dict(evaluation.calibration_json or {})
+            if (
+                evaluation.source_kind != "BOA_HISTORICAL_OBSERVED"
+                or evaluation.status != "VALIDATED"
+                or evaluation.blockers_json
+                or criteria.get("approved") is not True
+                or not criteria.get("approvedBy")
+                or calibration.get("status") != "VALIDATED"
+                or evaluation.created_by == run.author
+            ):
+                blockers.append("PERSISTED_EVALUATION_NOT_VALIDATED")
+            for key in ("brierScore", "expectedCalibrationError"):
+                value = metrics.get(key)
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not 0 <= float(value) <= 1
+                    or calibration.get(key) != value
+                ):
+                    blockers.append("PERSISTED_EVALUATION_METRICS_INVALID")
+        return list(dict.fromkeys(blockers))
+
     def rollback_registry(self, target: RunRecord, current: RunRecord) -> None:
         if self.session is None or ModelRegistry is None:
             return
@@ -433,6 +581,9 @@ def _feature(payload: Mapping[str, Any]) -> FeatureLineage:
         _date(payload.get("observationAsOf", payload.get("observation_as_of")), "observationAsOf"),
         str(payload.get("source", "unknown")),
         payload.get("sourceRecordId", payload.get("source_record_id")),
+        _date(payload["sourceAvailableAt"], "sourceAvailableAt")
+        if payload.get("sourceAvailableAt")
+        else None,
     )
 
 
@@ -471,6 +622,11 @@ def lineage_from_payload(
         tuple(str(item) for item in source.get("sourceSnapshots", ())),
         source.get("codeRevision", defaults.get("code_version")),
         source.get("labelDefinition"),
+        source.get("datasetManifestHash"),
+        str(source.get("sourceKind", "UNKNOWN")),
+        source.get("targetOutcome"),
+        int(source["horizonDays"]) if source.get("horizonDays") is not None else None,
+        dict(source.get("population", {}) or {}),
     )
 
 
@@ -532,6 +688,21 @@ class MLOpsGovernanceService:
         for key in ("dataset_version", "feature_version", "training_period_to", "code_version"):
             if defaults[key] in (None, ""):
                 raise ValidationError(f"{key} is required")
+        metrics = dict(payload.get("metrics", payload.get("metricsJson", {})) or {})
+        lineage = lineage_from_payload(payload, defaults=defaults)
+        deployment_mode = str(payload.get("deploymentMode", POC_SHADOW))
+        dataset_manifest_hash = payload.get("datasetManifestHash") or lineage.dataset_manifest_hash
+        artifact_checksum = payload.get("artifactChecksum")
+        blockers = activation_blockers(
+            deployment_mode=deployment_mode,
+            source_kind=lineage.source_kind,
+            dataset_manifest_hash=(
+                str(dataset_manifest_hash) if dataset_manifest_hash is not None else None
+            ),
+            artifact_checksum=(str(artifact_checksum) if artifact_checksum is not None else None),
+            lineage_examples=lineage.examples,
+            metrics=metrics,
+        )
         run = RunRecord(
             model_id,
             model_version,
@@ -556,17 +727,28 @@ class MLOpsGovernanceService:
             _date(payload["testPeriodTo"], "testPeriodTo") if payload.get("testPeriodTo") else None,
             str(defaults["code_version"]),
             dict(payload.get("hyperparameters", payload.get("hyperparametersJson", {})) or {}),
-            dict(payload.get("metrics", payload.get("metricsJson", {})) or {}),
-            lineage_from_payload(payload, defaults=defaults),
-            str(payload.get("deploymentMode", "POC_ASSISTIVE")),
+            metrics,
+            lineage,
+            deployment_mode=deployment_mode,
+            dataset_manifest_hash=(
+                str(dataset_manifest_hash) if dataset_manifest_hash is not None else None
+            ),
+            artifact_checksum=(str(artifact_checksum) if artifact_checksum is not None else None),
+            source_kind=lineage.source_kind,
+            activation_gate_status="BLOCKED" if blockers else "ELIGIBLE",
+            activation_gate_blockers=blockers,
             author=actor,
         )
-        if run.deployment_mode != "POC_ASSISTIVE":
-            raise ValidationError("only POC_ASSISTIVE deployment mode is supported")
+        if run.deployment_mode != POC_SHADOW:
+            raise ValidationError("only POC_SHADOW deployment mode is supported")
         if run.training_period_from > run.training_period_to:
             raise ValidationError("training period is not chronological")
         if run.validation_period_from > run.validation_period_to:
             raise ValidationError("validation period is not chronological")
+        run.validation = {
+            "activationGateStatus": run.activation_gate_status,
+            "activationBlockers": run.activation_gate_blockers,
+        }
         self.repository.add(run)
         self._audit("REGISTERED", run, actor, None, run.as_dict(), reason, trace_id)
         return run
@@ -597,9 +779,21 @@ class MLOpsGovernanceService:
         try:
             validate_temporal_integrity(run.lineage)
             run.lineage.validate()
-            result = {"valid": True, "contaminationFindings": [], "errors": []}
+            result = {
+                "valid": True,
+                "contaminationFindings": [],
+                "errors": [],
+                "activationGateStatus": run.activation_gate_status,
+                "activationBlockers": run.activation_gate_blockers,
+            }
         except (ValueError, TypeError) as exc:
-            result = {"valid": False, "contaminationFindings": [], "errors": [str(exc)]}
+            result = {
+                "valid": False,
+                "contaminationFindings": [],
+                "errors": [str(exc)],
+                "activationGateStatus": run.activation_gate_status,
+                "activationBlockers": run.activation_gate_blockers,
+            }
             run.validation = result
             self.repository.save(run)
             self._audit(
@@ -677,6 +871,30 @@ class MLOpsGovernanceService:
         reason: str | None = None,
     ) -> RunRecord:
         run = self.get(model_id, model_version)
+        blockers = activation_blockers(
+            deployment_mode=run.deployment_mode,
+            source_kind=run.source_kind,
+            dataset_manifest_hash=run.dataset_manifest_hash,
+            artifact_checksum=run.artifact_checksum,
+            lineage_examples=run.lineage.examples,
+            metrics=run.metrics,
+        )
+        evidence_validator = getattr(self.repository, "activation_evidence_blockers", None)
+        if evidence_validator is None:
+            blockers.append("PERSISTED_ACTIVATION_EVIDENCE_UNAVAILABLE")
+        else:
+            blockers.extend(evidence_validator(run))
+        blockers = list(dict.fromkeys(blockers))
+        run.activation_gate_blockers = blockers
+        run.activation_gate_status = "BLOCKED" if blockers else "ELIGIBLE"
+        run.validation = {
+            **run.validation,
+            "activationGateStatus": run.activation_gate_status,
+            "activationBlockers": blockers,
+        }
+        self.repository.save(run)
+        if blockers:
+            raise ConflictError("ML_ACTIVATION_BLOCKED: " + ", ".join(blockers))
         if run.status != "APPROVED" or not run.approved_by:
             raise ConflictError("only an APPROVED model can be promoted")
         if run.approved_by == actor:
@@ -769,7 +987,10 @@ class MLOpsGovernanceService:
             k=k,
             treatment=list(treatment) if treatment is not None else None,
         )
-        return {"metrics": report.as_dict(), "claim": "POC_ASSISTIVE; no performance claim"}
+        return {
+            "metrics": report.as_dict(),
+            "claim": "POC_SHADOW; descriptive metrics only; no production performance claim",
+        }
 
     def evaluate_labels(
         self, labels: Iterable[Mapping[str, Any]], *, evaluated_as_of: date | datetime
@@ -799,6 +1020,28 @@ class MLOpsGovernanceService:
             "missingCount": report.missing_count,
             "trainingReady": report.training_ready,
         }
+
+    def record_label_evaluation(
+        self,
+        *,
+        actor: str,
+        trace_id: str,
+        source_kind: str,
+        result: Mapping[str, Any],
+    ) -> None:
+        self.repository.audit(
+            AuditEntry(
+                action="LABEL_MATURITY_EVALUATED",
+                user_id=actor,
+                object_type="MLLabelEvaluation",
+                object_id=trace_id,
+                object_version="1.0",
+                old_value=None,
+                new_value={"sourceKind": source_kind, **dict(result)},
+                reason="POC_SHADOW label maturity assessment",
+                trace_id=trace_id,
+            )
+        )
 
 
 # Friendly aliases used by callers that prefer shorter names.

@@ -70,7 +70,7 @@ opportunity_rules:
   FINANCIAL_STRESS_SIGNAL:
     version: '1'
     horizon: 0-1_MONTH
-    what: Signal relationnel de tension financière à examiner avec le client, sans décision de crédit.
+    what: Signal relationnel de tension financière à examiner avec le client, sous analyse humaine uniquement.
     when: Prise de contact relationnelle dans le mois.
     recommended_product_codes: [CASH_MANAGEMENT, WORKING_CAPITAL_FACILITY]
     minimum_data_coverage: 0.83

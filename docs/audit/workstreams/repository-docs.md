@@ -1,5 +1,7 @@
 # Audit en lecture seule — dépôt et documents
 
+> **Photographie historique du 19 septembre 2026.** Les absences et compteurs constatés ici ont alimenté les lots ultérieurs et ne doivent pas être lus comme état courant. Le pack bancaire, les preuves de charge, l’ingestion gouvernée et le verrou ML shadow ont été ajoutés sur `feat/pilot-readiness` après cet audit.
+
 **Dépôt audité :** `/home/ubuntu/btp-suivi-projets/boa-sme-opportunity-intelligence`
 **Exigences comparées :** `/home/ubuntu/upload/Pasted_content_100.txt`
 **Date de l’audit :** 2026-09-19

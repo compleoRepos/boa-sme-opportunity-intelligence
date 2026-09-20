@@ -2,7 +2,7 @@
 
 **Périmètre.** Ce document répond aux questions difficiles qu’un comité BOA devrait poser avant de considérer le POC. Il décrit uniquement ce qui est lisible ou démontré dans le dépôt, sans inventer de donnée BOA, de résultat commercial, de coût, de KPI, de seuil approuvé ou d’exigence réglementaire.
 
-**Rappel de décision.** Le produit est une aide commerciale explicable. Il ne prend **aucune décision de crédit**. Le modèle ML est un modèle classique, CPU-only, limité à un **POC assistif et/ou à un mode shadow** tant que les labels BOA matures ne sont pas disponibles. **Aucun LLM ni GPU n’est requis.** La readiness de production est `BLOCKED`.
+**Rappel de décision.** Le produit est une aide commerciale explicable. Il ne prend **aucune décision de crédit**. Le modèle ML est classique, CPU-only et techniquement verrouillé en **`POC_SHADOW`** ; la priorité reste `RULES_ONLY` tant que les labels historiques BOA matures et la validation indépendante ne sont pas disponibles. **Aucun LLM ni GPU n’est requis.** La readiness de production est `BLOCKED`.
 
 ## Lecture des statuts
 
@@ -59,7 +59,7 @@ Les mentions **HYPOTHÈSE À VALIDER AVEC BOA** signalent explicitement toute pr
 
 ### 11. Quelle est exactement la place du ML et pourquoi ne pas le mettre en production ?
 
-**Réponse — PROUVÉ en POC, NON AUTORISÉ en production.** Le modèle `sales-propensity-logit-poc-v1` est une régression logistique classique, locale et CPU-only ; il ordonne une propension commerciale et ne décide pas seul. Faute de labels BOA matures et de validation prédictive indépendante, la position de comité doit rester `POC_ASSISTIVE` ou `ML_SHADOW`, avec les règles comme référence ; toute activation opérationnelle supplémentaire est **À VALIDER AVEC BOA**. Source : [`docs/ml-engine.md`](../ml-engine.md), [`docs/ml-acceptance.md`](../ml-acceptance.md) et [`docs/finalization-status-2026-09-19.md`](../finalization-status-2026-09-19.md).
+**Réponse — PROUVÉ en POC shadow, NON AUTORISÉ en production.** Le modèle `sales-propensity-logit-poc-v1` est une régression logistique classique, locale et CPU-only. Il produit une observation `RANKING_ONLY`, non calibrée, qui ne change ni l’éligibilité ni la priorité. Les contraintes applicatives et SQL imposent `POC_SHADOW`, règles `1`, ML `0`. Toute évolution est **À VALIDER AVEC BOA** après historiques BOA matures, manifest point-in-time, calibration et validation indépendante. Source : [`docs/ml-engine.md`](../ml-engine.md) et [`docs/ml-acceptance.md`](../ml-acceptance.md).
 
 ### 12. Une erreur de dépendance peut-elle créer une opportunité ou un score inventé ?
 
@@ -71,7 +71,7 @@ Les mentions **HYPOTHÈSE À VALIDER AVEC BOA** signalent explicitement toute pr
 
 ### 14. Qui fixe les règles, les seuils et les pondérations, et peut-on les modifier sans trace ?
 
-**Réponse — IMPLÉMENTÉ et PROUVÉ pour la gouvernance de configuration.** Les règles et la Scoring Policy sont versionnées, simulables, soumises, approuvées par un autre acteur, publiées, activées et restaurables ; les décisions historiques ne sont pas réécrites. Tout seuil ou poids métier non explicitement approuvé par BOA, y compris les paramètres initiaux documentés, reste une **HYPOTHÈSE À VALIDER AVEC BOA**. Source : [`docs/business-rules.md`](../business-rules.md), [`docs/finalization-status-2026-09-19.md`](../finalization-status-2026-09-19.md) et [`backend/src/boa_oi/scoring_policy/`](../../backend/src/boa_oi/scoring_policy/).
+**Réponse — IMPLÉMENTÉ et PROUVÉ pour la gouvernance de configuration.** Les règles et la Scoring Policy sont versionnées, simulables, soumises, approuvées et publiées avec séparation des rôles. Seule une policy `RULES_ONLY` peut être activée ; une version avec poids ML non nul est rejetée par l’API et PostgreSQL. Tout seuil ou poids BOA reste une **HYPOTHÈSE À VALIDER AVEC BOA**. Source : [`docs/business-rules.md`](../business-rules.md) et [`backend/src/boa_oi/scoring_policy/`](../../backend/src/boa_oi/scoring_policy/).
 
 ### 15. Comment limiter les faux positifs dus à la saisonnalité ou à un événement ponctuel ?
 
@@ -91,7 +91,7 @@ Les mentions **HYPOTHÈSE À VALIDER AVEC BOA** signalent explicitement toute pr
 
 ### 19. Quelle performance est réellement démontrée et quel SLO peut-on annoncer ?
 
-**Réponse — PROUVÉ à une échelle de démonstration seulement.** Le rapport final indique un batch de 500 PME synthétiques exécuté en 585 secondes dans le sandbox, sans en faire un SLO BOA ni un benchmark de production ; les essais 1 000 et 5 000 PME ne sont pas exécutés. Tout p95, débit, concurrence, volumétrie cible ou SLO est une **HYPOTHÈSE À VALIDER AVEC BOA** par une campagne de charge représentative. Source : [`docs/finalization-status-2026-09-19.md`](../finalization-status-2026-09-19.md) et [`docs/test-plan.md`](../test-plan.md).
+**Réponse — PROUVÉ à une échelle de laboratoire seulement.** Le lot 08 exécute un protocole isolé sur 50 000 PME synthétiques et publie p95/p99, débit, erreurs, ressources et plans SQL. Cette mesure locale n’est ni un SLO, ni une homologation, ni une capacité de production BOA ; les dashboards mesurés sans seuil d’acceptation ne sont pas déclarés PASS de capacité. Toute cible BOA est une **HYPOTHÈSE À VALIDER AVEC BOA**. Source : [`LOT-08-CHARGE-50000.md`](../lots/LOT-08-CHARGE-50000.md).
 
 ### 20. Quel est le coût total de possession du dispositif ?
 
@@ -99,7 +99,7 @@ Les mentions **HYPOTHÈSE À VALIDER AVEC BOA** signalent explicitement toute pr
 
 ### 21. Peut-on revenir en arrière après une mauvaise règle, politique ou version de modèle ?
 
-**Réponse — IMPLÉMENTÉ et PROUVÉ pour les registres gouvernés.** La Scoring Policy possède un workflow avec rollback, et le Model Registry retire le champion précédent puis peut restaurer une version approuvée ; les règles et décisions historiques restent versionnées. La réversibilité des raccordements SI réels, des migrations de données et d’une release d’infrastructure est **À VALIDER** par BOA. Source : [`docs/finalization-status-2026-09-19.md`](../finalization-status-2026-09-19.md), [`docs/workstreams/mlops-governance.md`](../workstreams/mlops-governance.md) et [`docs/industrialization-governance.md`](../industrialization-governance.md).
+**Réponse — IMPLÉMENTÉ avec verrou prudent.** Les règles et policies conservent version et audit ; le Model Registry possède un workflow de revue. Toutefois, la promotion d’un run local ou synthétique est désormais bloquée par des blockers persistés. Cette absence de promotion est le comportement attendu, pas un défaut masqué. La réversibilité SI et release reste **À VALIDER** par BOA.
 
 ### 22. Quels moyens d’exploitation et d’alerte sont disponibles au quotidien ?
 
@@ -127,7 +127,7 @@ Les mentions **HYPOTHÈSE À VALIDER AVEC BOA** signalent explicitement toute pr
 
 ### 28. Comment éviter la fuite temporelle entre données, labels et prédictions ?
 
-**Réponse — IMPLÉMENTÉ et PROUVÉ.** Les features portent `featureTimestamp`, `observationAsOf` et `sourcePeriod`, avec contrôle `featureTimestamp <= observationAsOf`; un exemple contaminé est rejeté et les splits temporels contrôlent les bornes. Le cutoff BOA, les fenêtres métier et les règles de conservation des exports restent **À VALIDER**. Source : [`docs/workstreams/mlops-governance.md`](../workstreams/mlops-governance.md), [`backend/src/boa_oi/features/domain.py`](../../backend/src/boa_oi/features/domain.py) et [`docs/finalization-status-2026-09-19.md`](../finalization-status-2026-09-19.md).
+**Réponse — IMPLÉMENTÉ et PROUVÉ.** Les features portent `featureTimestamp`, `sourceAvailableAt` et `observationAsOf`; les labels portent `labelAvailableFrom`, définition versionnée, cible, horizon et lien au snapshot feature. Les sources tardives, labels non futurs et doublons d’exemples sont rejetés. Le cutoff et les fenêtres BOA restent **À VALIDER**.
 
 ### 29. Que se passe-t-il si une source BOA est partielle, lente, dupliquée ou hors service ?
 
@@ -135,7 +135,7 @@ Les mentions **HYPOTHÈSE À VALIDER AVEC BOA** signalent explicitement toute pr
 
 ### 30. Quel est le go/no-go défendable devant le comité aujourd’hui ?
 
-**Réponse — GO pour démontrer le POC assistif synthétique ; NO-GO pour la production BOA.** Le rapport final classe la readiness `BLOCKED` en raison notamment des données et labels BOA, de l’homologation DPO/Sécurité, de la HA, des sauvegardes restaurées, des secrets de production et des adaptateurs SI réels. Aucun passage en production, décision de crédit, GPU ou LLM ne doit être inféré sans validations BOA explicites. Source : [`docs/finalization-status-2026-09-19.md`](../finalization-status-2026-09-19.md) et [`README.md`](../../README.md).
+**Réponse — GO pour démontrer un POC `POC_SHADOW` synthétique ; NO-GO pour toute influence ML ou production BOA.** La readiness reste `BLOCKED` : historiques BOA, validation indépendante, DPO/Sécurité, HA, restauration, secrets de production et adaptateurs SI réels manquent. Aucun passage en production, décision de crédit, GPU ou LLM ne doit être inféré.
 
 ## Points ouverts de comité
 

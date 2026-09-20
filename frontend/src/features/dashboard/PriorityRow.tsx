@@ -35,7 +35,7 @@ export function PriorityRow({ customer, index, compact, linkSuffix = '' }: { cus
       {products.length > 0 && <span className="chip product" title={products.join(' · ')}>{products[0]}{products.length > 1 ? ` +${products.length - 1}` : ''}</span>}
     </div>}
     <div className="priority-side">
-      <Tooltip content={<><strong>Propension commerciale</strong>Intérêt commercial estimé (ML + règles). Ce n’est pas un score de risque.</>}>
+      <Tooltip content={<><strong>Propension commerciale shadow</strong>Observation ML expérimentale, séparée de la priorité issue des règles. Ce n’est pas un score de risque.</>}>
         <Ring value={customer.propensityScore} label={`Propension ${Math.round(customer.propensityScore * 100)} %`} />
       </Tooltip>
       {nextAction ? <span className="muted next-action"><CalendarClock size={12} /> {label(nextAction.actionType)}{nextAction.dueAt ? ` · ${formatRelative(nextAction.dueAt)}` : ''}</span> : <span className="faint next-action">Aucune action planifiée</span>}

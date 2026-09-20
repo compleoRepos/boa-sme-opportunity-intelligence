@@ -10,7 +10,7 @@ Le lot ferme les dettes P0/P1 relatives au cycle de vie des opportunités et des
 
 L’historique transactionnel minimal est vérifié avant toute génération. La preuve Docker a d’abord retourné `422 INSUFFICIENT_TRANSACTION_HISTORY` sur un snapshot historique dépourvu de lignée. Après recalcul explicite, le client présentait une profondeur de **365 jours**, puis le rerun a supprimé deux candidats pendant le cooldown au lieu de recréer l’opportunité différée.
 
-La porte finale passe avec **171 tests backend**, **16 tests frontend** et **8 scénarios E2E**. La migration passe sur la base existante et sur une base PostgreSQL vierge de `0001` à `0011`. Les invariants ML restent inchangés : modèle POC assistif/shadow, CPU-only, sans LLM, sans décision de crédit et sans revendication de performance sur les données synthétiques.
+La porte finale de ce lot passe avec **171 tests backend**, **16 tests frontend** et **8 scénarios E2E**. La migration passe sur la base existante et sur une base PostgreSQL vierge de `0001` à `0011`. **Mise à jour ultérieure :** le lot 10 impose `POC_SHADOW` et une priorité `RULES_ONLY`; aucun LLM, GPU, décision de crédit ou claim de performance n’est introduit.
 
 ## Résultats par exigence
 
@@ -112,7 +112,7 @@ Sur la base vierge temporaire, Alembic a appliqué successivement `0001_initial`
 | `npm run test:e2e` | PASS — **8 scénarios** en 1,8 minute |
 | `./scripts/validate-ml-integration.sh` | PASS |
 
-La validation ML confirme **500 vecteurs de features** et **500 scores de propension** persistés, la lignée Rule Studio/Signal, l’influence du score sur la priorité, la trace modèle/features/dataset/mode POC, les outcomes comme futurs labels et l’absence de dépendance LLM/GPU/cloud.
+La validation ML exécutée lors de ce lot confirmait **500 vecteurs** et **500 scores** avec lignée. Son ancien claim d’influence sur la priorité est **remplacé par le lot 10** : les scores restent persistés en shadow, les outcomes sont des labels candidats et la priorité est rules-only.
 
 ## Écarts rencontrés et corrigés
 

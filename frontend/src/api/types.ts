@@ -430,11 +430,14 @@ export interface PropensityModelMetadata {
 }
 
 export interface PropensityCombination {
-  method: 'HYBRID_ML_RULES' | string
+  method: 'RULES_ONLY' | string
+  mlObservationMode?: 'POC_SHADOW' | string
   mlScore: number
   rulesScore: number
   mlWeight: number
   rulesWeight: number
+  combinedPriorityScore?: number
+  shadowReadOnly?: boolean
   summary?: string
 }
 

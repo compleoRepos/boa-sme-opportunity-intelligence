@@ -119,6 +119,10 @@ def serialize_version(
         payload = _version_payload(row)
         payload["definitionChecksum"] = checksum(row.weights)
         payload["checksum"] = payload["definitionChecksum"]
+        payload["operationalMode"] = (
+            "RULES_ONLY" if row.weights.get("ml", Decimal("0")) == 0 else "NOT_ACTIVATABLE_POC"
+        )
+        payload["mlObservationMode"] = "POC_SHADOW"
         return payload
     weights = _weights_from_row(row)
     return {
@@ -138,6 +142,8 @@ def serialize_version(
         "simulationId": row.simulation_id,
         "definitionChecksum": row.checksum,
         "checksum": row.checksum,
+        "operationalMode": "RULES_ONLY" if weights["ml"] == 0 else "NOT_ACTIVATABLE_POC",
+        "mlObservationMode": "POC_SHADOW",
     }
 
 
@@ -292,6 +298,16 @@ def _domain_problem(exc: Exception) -> Problem:
     return Problem(422, "INVALID_POLICY", message)
 
 
+def _require_shadow_safe_activation(row: ScoringPolicyVersionRow) -> None:
+    if Decimal(str(row.ml_weight)) != 0 or Decimal(str(row.rules_weight)) != 1:
+        raise Problem(
+            409,
+            "ML_SHADOW_POLICY_REQUIRED",
+            "Activation is limited to RULES_ONLY (rules=1, ml=0) until BOA historical "
+            "labels satisfy the governed activation gates.",
+        )
+
+
 def create_policy(
     session: Session,
     policy_id: str,
@@ -418,6 +434,8 @@ def transition_policy(
         "approved_at": row.approved_at,
         "simulation_id": row.simulation_id,
     }
+    if target == PolicyStatus.ACTIVE:
+        _require_shadow_safe_activation(row)
     aggregate = _aggregate(session, policy)
     try:
         if target == PolicyStatus.SIMULATED:
@@ -497,6 +515,7 @@ def rollback_policy(
 ) -> ScoringPolicyVersionRow:
     policy = _find_row(session, policy_id)
     target = find_version(session, policy_id, target_version)
+    _require_shadow_safe_activation(target)
     current = find_version(session, policy_id, policy.current_version)
     at = _now(at)
     actor_id, trace_id, reason = _actor(actor_id), _trace(trace_id), _reason(reason)
@@ -579,6 +598,8 @@ def active_policy(session: Session, at: datetime | None = None) -> ScoringPolicy
         select(ScoringPolicyVersionRow)
         .where(
             ScoringPolicyVersionRow.status == "ACTIVE",
+            ScoringPolicyVersionRow.rules_weight == Decimal("1"),
+            ScoringPolicyVersionRow.ml_weight == Decimal("0"),
             (ScoringPolicyVersionRow.effective_from.is_(None))
             | (ScoringPolicyVersionRow.effective_from <= at),
             (ScoringPolicyVersionRow.effective_to.is_(None))

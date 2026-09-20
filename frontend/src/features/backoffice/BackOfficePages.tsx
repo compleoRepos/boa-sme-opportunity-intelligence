@@ -97,7 +97,7 @@ export function ModelsPage() {
   const current: MlModel | undefined = list.find((model) => model.modelVersion === selected) || active
   const metrics = current ? Object.entries(current.validationMetrics || {}) : []
   return <>
-    <header className="page-head" data-demo="models"><div><p className="eyebrow accent">ML Governance</p><h1>Model Registry</h1><p className="subtitle">Modèle de propension commerciale (régression logistique CPU, POC assistif). Aucune décision de crédit, aucun entraînement automatique.</p></div></header>
+    <header className="page-head" data-demo="models"><div><p className="eyebrow accent">ML Governance</p><h1>Model Registry</h1><p className="subtitle">Modèle de propension commerciale (régression logistique CPU, POC_SHADOW). Aucune décision de crédit, aucun entraînement automatique.</p></div></header>
     {models.isPending ? <SkeletonStack rows={3} /> : models.isError ? <ErrorState error={models.error} onRetry={() => void models.refetch()} /> : !list.length ? <EmptyState title="Aucun modèle enregistré" /> : <div className="grid cols-3 rule-grid">
       <Panel eyebrow="Registre" title={`${list.length} version(s)`} id="registry" flush>
         <ul className="model-list">{list.map((model) => <li key={model.modelVersion}><button type="button" className={current?.modelVersion === model.modelVersion ? 'active' : ''} onClick={() => setSelected(model.modelVersion)}><strong>{model.modelVersion}</strong><span className="row" style={{ gap: 6 }}><Badge value={model.status} /><small className="muted">{model.featureSetVersion}</small></span></button></li>)}</ul>
@@ -106,7 +106,7 @@ export function ModelsPage() {
         <Panel eyebrow={current.scoreType} title={<span className="row" style={{ gap: 8 }}>{current.modelVersion} <Badge value={current.status} /></span>} id="model" tools={<div className="row" style={{ gap: 6 }}><Button size="sm" icon={<History size={14} />} onClick={() => setSelected(undefined)}>Historique</Button><Button size="sm" variant="danger" icon={<RotateCcw size={14} />} onClick={() => toast.push('info', 'Rollback non exposé', 'Le ML engine ne publie pas d’endpoint de bascule de version dans ce MVP : l’opération se fait par le registre (statut ACTIVE unique).')}>Rollback</Button></div>}>
           <div className="grid cols-4">
             <div className="stat"><span className="stat-label">Algorithme</span><span className="stat-value sm">{label(current.algorithm)}</span></div>
-            <div className="stat"><span className="stat-label">Seuil de décision</span><span className="stat-value sm num">{formatPercent(current.threshold, 0)}</span></div>
+            <div className="stat"><span className="stat-label">Seuil descriptif POC</span><span className="stat-value sm num">{formatPercent(current.threshold, 0)}</span></div>
             <div className="stat"><span className="stat-label">Mode</span><span className="stat-value sm">{current.deploymentMode}</span></div>
             <div className="stat"><span className="stat-label">Features</span><span className="stat-value sm">{current.featureSetVersion}</span><span className="stat-note">{current.featureOrder.length} variables</span></div>
           </div>
@@ -116,7 +116,7 @@ export function ModelsPage() {
             <div className="stack"><p className="eyebrow">Coefficients (contribution par feature)</p><ul className="coef-list">{Object.entries(current.coefficients).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(([feature, coefficient]) => { const peak = Math.max(...Object.values(current.coefficients).map(Math.abs), 0.01); return <li key={feature}><span className="breakdown-label" title={label(feature)}>{label(feature)}</span><span className="breakdown-track"><i style={{ width: `${Math.max(3, (Math.abs(coefficient) / peak) * 100)}%`, background: coefficient >= 0 ? CHART.violet : CHART.red }} /></span><b className="num">{coefficient >= 0 ? '+' : ''}{formatNumber(coefficient, 2)}</b></li> })}</ul><p className="faint" style={{ fontSize: 11 }}>Intercept {formatNumber(current.intercept, 2)} · ordre des features imposé par le registre (checksum vérifié au scoring).</p></div>
           </div>
         </Panel>
-        <Panel eyebrow="Traçabilité" title="Cycle de vie" id="model-lifecycle"><dl className="kv"><dt>Enregistré</dt><dd>{formatDate(current.createdAt, true)}</dd><dt>Mis à jour</dt><dd>{formatDate(current.updatedAt, true)}</dd><dt>Entraînement auto</dt><dd>{current.automaticTraining ? 'oui' : 'non'}</dd><dt>Score</dt><dd>{current.scoreType} · combiné aux règles publiées (35 % / 65 %)</dd></dl></Panel>
+        <Panel eyebrow="Traçabilité" title="Cycle de vie" id="model-lifecycle"><dl className="kv"><dt>Enregistré</dt><dd>{formatDate(current.createdAt, true)}</dd><dt>Mis à jour</dt><dd>{formatDate(current.updatedAt, true)}</dd><dt>Entraînement auto</dt><dd>{current.automaticTraining ? 'oui' : 'non'}</dd><dt>Score</dt><dd>{current.scoreType} · POC_SHADOW, poids opérationnel ML nul</dd></dl></Panel>
       </div>}
     </div>}
   </>

@@ -1,6 +1,6 @@
 # Rapport de validation d’intégration ML
 
-> **Rapport historique.** Cette photographie précède l’ajout du fallback `RULES_ONLY`, de la Scoring Policy persistée, du workflow MLOps, du monitoring et de la readiness. Pour l’état courant, utiliser [`finalization-status-2026-09-19.md`](./finalization-status-2026-09-19.md).
+> **RAPPORT HISTORIQUE REMPLACÉ — NE PAS UTILISER COMME ÉTAT COURANT.** Cette photographie documente l’ancien reranking synthétique 65/35. La migration `0017_ml_shadow_governance` l’a désactivé : le mode courant est `POC_SHADOW`, la priorité est `RULES_ONLY`, les poids actifs sont règles `1` et ML `0`, et les priorités historiques ont été recalculées sans composante ML. Utiliser le rapport du lot 10 et sa preuve JSON sous `docs/evidence/ml/`. Les chiffres, claims hybrides et statuts ci-dessous restent uniquement une trace datée du 19 septembre 2026.
 
 **Produit :** BOA SME Opportunity Intelligence
 **Date d’exécution :** 19 septembre 2026

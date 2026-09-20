@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -21,6 +22,10 @@ from boa_oi.models.entities import (
     Customer,
     FeatureMaterialization,
     MetricSnapshot,
+    MLDatasetManifest,
+    MLEvaluationSnapshot,
+    MLGovernanceAuditLog,
+    MLTrainingRun,
     ModelRegistry,
     Opportunity,
     OpportunityAction,
@@ -165,7 +170,7 @@ def test_explanation_reconstructs_logit_and_orders_top_factors():
     )[:3]
     assert result.score_type == "SALES_PROPENSITY"
     assert result.segment == "MEDIUM"
-    assert result.calibration in {"LOW", "MEDIUM", "HIGH"}
+    assert result.score_band in {"LOW", "MEDIUM", "HIGH"}
 
 
 def test_materialized_features_are_deterministic_versioned_and_checksum_sensitive():
@@ -227,6 +232,10 @@ def memory_factory():
         ModelRegistry.__mapper__.local_table,
         PropensityScoreRecord.__mapper__.local_table,
         OutcomeLabelSnapshot.__mapper__.local_table,
+        MLDatasetManifest.__mapper__.local_table,
+        MLEvaluationSnapshot.__mapper__.local_table,
+        MLTrainingRun.__mapper__.local_table,
+        MLGovernanceAuditLog.__mapper__.local_table,
         Signal.__mapper__.local_table,
         Rule.__mapper__.local_table,
         RuleVersion.__mapper__.local_table,
@@ -411,7 +420,7 @@ def seed_api_data(factory) -> None:
                 },
                 training_dataset_version="synthetic-demo-20260918-v1",
                 training_code_version="manual-baseline-coefficients-v1",
-                deployment_mode="POC_ASSISTIVE",
+                deployment_mode="POC_SHADOW",
                 created_by="unit-test",
             )
         )
@@ -462,26 +471,36 @@ def test_internal_materialize_score_batch_model_and_outcome_endpoints(monkeypatc
     )
     assert batch.status_code == 200
     batch_body = batch.json()["data"][0]
-    assert {key: value for key, value in batch_body.items() if key != "traceId"} == {
-        key: value for key, value in body.items() if key != "traceId"
-    }
+    assert {
+        key: value for key, value in batch_body.items() if key not in {"traceId", "scoredAt"}
+    } == {key: value for key, value in body.items() if key not in {"traceId", "scoredAt"}}
     assert batch_body["traceId"] != body["traceId"]
+    assert batch_body["scoredAt"] != body["scoredAt"]
 
     registry = ml_client.get("/internal/v1/ml/models/active").json()
     assert registry["status"] == "ACTIVE"
     assert registry["algorithm"] == "LOGISTIC_REGRESSION"
     assert registry["automaticTraining"] is False
-    assert registry["deploymentMode"] == "POC_ASSISTIVE"
+    assert registry["deploymentMode"] == "POC_SHADOW"
+    assert registry["scoreInterpretation"] == "RANKING_ONLY"
+    assert registry["calibrationStatus"] == "NOT_VALIDATED"
     assert registry["productionPerformanceClaim"] is False
     assert registry["featureOrder"] == list(FEATURE_ORDER)
     assert body["trainingDatasetVersion"] == "synthetic-demo-20260918-v1"
-    assert body["deploymentMode"] == "POC_ASSISTIVE"
+    assert body["deploymentMode"] == "POC_SHADOW"
+    assert body["scoreInterpretation"] == "RANKING_ONLY"
+    assert body["calibrationStatus"] == "NOT_VALIDATED"
+    assert "calibration" not in body
     assert body["traceId"]
 
     materialized_labels = ml_client.post(
         "/internal/v1/ml/outcomes/materialize",
         json={
             "snapshotVersion": "labels-synthetic-v1",
+            "labelDefinitionVersion": "conversion-90d-v1",
+            "targetOutcome": "CONVERTED",
+            "horizonDays": 90,
+            "population": {"segment": "SME", "country": "MA"},
             "observationAsOf": AS_OF.isoformat(),
             "labelAvailableFrom": "2026-11-01",
         },
@@ -495,8 +514,110 @@ def test_internal_materialize_score_batch_model_and_outcome_endpoints(monkeypatc
     assert outcomes["data"][0]["outcomeValue"] is True
     assert outcomes["data"][0]["datasetVersion"] == "labels-synthetic-v1"
     assert outcomes["data"][0]["source"] == "COMMERCIAL_OUTCOME"
+    assert outcomes["data"][0]["sourceKind"] == "LOCAL_COMMERCIAL_OUTCOME"
+    assert outcomes["data"][0]["candidateOnly"] is True
+    assert outcomes["data"][0]["labelDefinitionVersion"] == "conversion-90d-v1"
     assert outcomes["meta"]["purpose"] == "FUTURE_LABEL_SNAPSHOT_ONLY"
     assert outcomes["meta"]["automaticTraining"] is False
+    rm_headers = {
+        "X-Dev-Principal": json.dumps(
+            {
+                "subject": "rm-01",
+                "username": "rm-01",
+                "roles": ["RELATIONSHIP_MANAGER"],
+                "branchIds": ["BR-01"],
+                "relationshipManagerIds": ["rm-01"],
+            }
+        )
+    }
+    assert (
+        ml_client.get("/internal/v1/ml/outcomes/snapshots", headers=rm_headers).status_code == 403
+    )
+    assert (
+        ml_client.get("/internal/v1/ml/datasets/manifests", headers=rm_headers).status_code == 403
+    )
+    denied_label_evaluation = ml_client.post(
+        "/internal/v1/ml/governance/evaluation/labels",
+        headers=rm_headers,
+        json={
+            "labels": [],
+            "evaluatedAsOf": "2026-11-01",
+            "sourceKind": "LOCAL_COMMERCIAL_OUTCOME",
+        },
+    )
+    assert denied_label_evaluation.status_code == 403
+    assert (
+        ml_client.get(
+            "/internal/v1/ml/governance/evaluation/snapshots", headers=rm_headers
+        ).status_code
+        == 403
+    )
+    assert ml_client.get("/internal/v1/ml/governance/runs", headers=rm_headers).status_code == 403
+    manifest = ml_client.post(
+        "/internal/v1/ml/datasets/manifests",
+        json={
+            "manifestVersion": "manifest-local-v1",
+            "snapshotVersion": "labels-synthetic-v1",
+            "labelDefinitionVersion": "conversion-90d-v1",
+            "purpose": "shadow-evaluation",
+            "targetOutcome": "CONVERTED",
+            "horizonDays": 90,
+            "population": {"segment": "SME", "country": "MA"},
+            "exclusions": ["window_not_closed"],
+            "trainingCutoff": AS_OF.isoformat(),
+        },
+    )
+    assert manifest.status_code == 200
+    assert manifest.json()["status"] == "BLOCKED"
+    assert "BOA_HISTORICAL_LABELS_UNAVAILABLE" in manifest.json()["activationBlockers"]
+    assert len(manifest.json()["manifestHash"]) == 64
+    calibration_without_evidence = ml_client.post(
+        "/internal/v1/ml/governance/evaluation/metrics",
+        json={
+            "evaluationRef": "eval-calibration-without-evidence",
+            "modelVersion": MODEL_VERSION,
+            "datasetManifestHash": manifest.json()["manifestHash"],
+            "sourceKind": "LOCAL_COMMERCIAL_OUTCOME",
+            "evaluationPeriodFrom": "2026-09-01",
+            "evaluationPeriodTo": "2026-11-01",
+            "scores": [0.8, 0.2],
+            "labels": [1, 0],
+            "k": 1,
+            "acceptanceCriteria": {},
+            "calibrationMethod": "PLATT",
+        },
+    )
+    assert calibration_without_evidence.status_code == 422
+    assert calibration_without_evidence.json()["code"] == "CALIBRATION_EVIDENCE_REQUIRED"
+    evaluation = ml_client.post(
+        "/internal/v1/ml/governance/evaluation/metrics",
+        json={
+            "evaluationRef": "eval-local-v1",
+            "modelVersion": MODEL_VERSION,
+            "datasetManifestHash": manifest.json()["manifestHash"],
+            "sourceKind": "LOCAL_COMMERCIAL_OUTCOME",
+            "evaluationPeriodFrom": "2026-09-01",
+            "evaluationPeriodTo": "2026-11-01",
+            "scores": [0.8, 0.2],
+            "labels": [1, 0],
+            "k": 1,
+            "acceptanceCriteria": {},
+            "calibrationMethod": "NONE",
+        },
+    )
+    assert evaluation.status_code == 200
+    evaluation_body = evaluation.json()
+    assert evaluation_body["status"] == "BLOCKED"
+    assert evaluation_body["calibration"]["status"] == "NOT_VALIDATED"
+    assert evaluation_body["calibration"]["method"] == "NONE"
+    assert isinstance(evaluation_body["metrics"]["brierScore"], float)
+    assert isinstance(evaluation_body["metrics"]["expectedCalibrationError"], float)
+    assert evaluation_body["productionPerformanceClaim"] is False
+    assert "BOA_HISTORICAL_LABELS_UNAVAILABLE" in evaluation_body["activationBlockers"]
+    assert (
+        "DECLARATIVE_EVALUATION_INPUT_NOT_LINKED_TO_SNAPSHOTS"
+        in evaluation_body["activationBlockers"]
+    )
 
 
 def test_owned_ml_implementation_has_no_forbidden_phrase():
