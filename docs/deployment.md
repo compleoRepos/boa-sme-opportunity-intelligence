@@ -22,7 +22,11 @@ Les services communiquent par HTTP interne. Chaque service persistant applique s
 
 Les URLs, secrets, audiences OIDC, timeouts et paramètres de seed sont configurés par variables d’environnement. Les imports, recalculs et publications outbox sont idempotents. Les migrations suivent une stratégie expand–migrate–contract.
 
-Le Compose local n’est pas une cible de haute disponibilité. Avant une exploitation BOA, il faudra définir orchestration, sauvegarde/restauration, gestion des secrets, chiffrement, rotation des clés, supervision et objectifs de reprise.
+`BOA_AUTH_DISABLED=true` est désormais refusé au démarrage dès que `APP_ENV` est absent, inconnu ou différent de `development`, `local` ou `test`. Le fichier `.env.example` contient uniquement des valeurs synthétiques `DevOnly` destinées à la validation locale. Il ne constitue jamais une configuration pilote ou production.
+
+Le workflow GitHub Actions versionné exécute lint, typage, tests backend/frontend, audits de dépendances, scans d’images, build Compose, migration/seed, pipeline synthétique, 19 parcours E2E, rollback de migration, backup/restore isolé et panne PostgreSQL contrôlée. Une porte finale dépend de chacun de ces jobs. Les images backend, frontend, PostgreSQL 16.15, Keycloak 26.7.4 et Mailpit 1.31.2 sont pinées par digest et scannées sans `--ignore-unfixed`. Le protocole local est **PASS**, mais son gate release est **BLOCKED_IMAGE_CVES**; le job CI `release-image-gate` bloque donc `main` et toute pull request tant que les images ne sont pas `READY`.[8] Le workflow ne publie aucune image et ne déploie aucun environnement bancaire.
+
+Le Compose local n’est pas une cible de haute disponibilité. Une sauvegarde/restauration logique PostgreSQL et une récupération de readiness après panne DB sont prouvées uniquement sur le sandbox synthétique.[6] [7] Avant une exploitation BOA, il reste nécessaire de définir l’orchestration cible, le coffre de secrets, TLS/mTLS, le chiffrement au repos, la rotation des clés, la rétention, le stockage indépendant des backups, la supervision centralisée, l’alerting, le SIEM, la haute disponibilité et les objectifs de reprise.
 
 ## Références
 
@@ -31,3 +35,6 @@ Le Compose local n’est pas une cible de haute disponibilité. Avant une exploi
 [3]: https://docs.docker.com/compose/ "Docker Compose documentation"
 [4]: https://alembic.sqlalchemy.org/en/latest/ "Alembic documentation"
 [5]: https://fastapi.tiangolo.com/ "FastAPI documentation"
+[6]: evidence/backup/RESULTATS-BACKUP-RESTORE.json "Preuve locale de backup et restauration PostgreSQL"
+[7]: evidence/operations/RESULTATS-READINESS-OPERATIONNELLE.json "Preuve locale de readiness dégradée et récupération PostgreSQL"
+[8]: evidence/security/RESULTATS-SCANS-SECURITE.json "Preuve locale consolidée des scans de sécurité et gate release"

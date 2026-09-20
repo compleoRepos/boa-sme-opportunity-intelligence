@@ -1,0 +1,60 @@
+{
+  "runId": "backup-restore-20260920T051333Z-2646494",
+  "generatedAt": "2026-09-20T05:13:50Z",
+  "status": "PASS",
+  "scope": "LOCAL_SYNTHETIC_LOGICAL_BACKUP_RESTORE",
+  "sourceRevision": {
+    "baseCommit": "f27fd2e906794c70ca337490b9644f177f32dc4d",
+    "sourceDigest": "6007f9e682254c3df912d73fc947c5f73188295d43936c9e86710aedd3560d6f"
+  },
+  "environment": {
+    "postgresVersion": "16.15",
+    "backendBaseImage": "python:3.12-alpine@sha256:c4634f578a412db396771b61b064c6e546c9d6414c7fb5b1b05d5871f1885f7b",
+    "sourceDatabase": "boa_backup_source_20260920T051333Z_2646494",
+    "restoreDatabase": "boa_backup_restore_20260920T051333Z_2646494",
+    "sentinelDatabase": "boa_sme",
+    "isolatedDatabases": true
+  },
+  "backup": {
+    "format": "PostgreSQL custom",
+    "compression": 6,
+    "bytes": 179470,
+    "sha256": "157c92c5b4b5aaae9da6e3ded64f0420e4a4d1a430c45fd968b49bcc6bb7c455",
+    "listEntries": 360
+  },
+  "durationsMs": {
+    "backup": 344,
+    "restore": 753,
+    "verify": 988
+  },
+  "restoredInventory": {
+    "alembicVersion": "0017_ml_shadow_governance",
+    "schemas": 16,
+    "tables": 65,
+    "indexes": 176,
+    "constraints": 216,
+    "marker": "20260920T051333Z-2646494:synthetic-backup-restore-proof:2026-09-20T00:00:00Z"
+  },
+  "checks": {
+    "databaseNamesAbsentBeforeCreate": "PASS",
+    "nonEmptyDump": "PASS",
+    "checksumBeforeRestore": "PASS",
+    "tamperedCopyDetected": "PASS",
+    "pgRestoreListReadable": "PASS",
+    "restoreExitOnError": "PASS",
+    "alembicVersionMatch": "PASS",
+    "schemaCountMatch": "PASS",
+    "tableCountMatch": "PASS",
+    "indexCountMatch": "PASS",
+    "constraintCountMatch": "PASS",
+    "syntheticMarkerMatch": "PASS",
+    "temporaryDatabasesAbsentAfterCleanup": "PASS",
+    "sentinelDatabaseUnchanged": "PASS"
+  },
+  "limitations": [
+    "Preuve locale sur deux bases PostgreSQL Docker isolées et données synthétiques uniquement.",
+    "Le dump temporaire n est pas chiffré et est supprimé en fin de run; cette preuve ne valide ni coffre, ni KMS, ni stockage off-site, ni immutabilité, ni politique de rétention.",
+    "Les durées observées ne constituent ni RTO ni RPO BOA; ces objectifs restent A VALIDER AVEC BOA.",
+    "Le protocole restaure la base applicative PostgreSQL; la reprise Keycloak, secrets, certificats, images et infrastructure reste NON IMPLEMENTEE."
+  ]
+}

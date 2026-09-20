@@ -1,0 +1,34 @@
+{
+  "runId": "operational-readiness-20260920T051350Z-2649153",
+  "generatedAt": "2026-09-20T05:14:26Z",
+  "status": "PASS",
+  "scope": "LOCAL_SYNTHETIC_OPERATIONAL_READINESS",
+  "sourceRevision": {
+    "baseCommit": "f27fd2e906794c70ca337490b9644f177f32dc4d",
+    "sourceDigest": "119c3224add3a72190f105d706b0862d9931045c0970f37ff907d446d2885e23",
+    "backendBaseImage": "python:3.12-alpine@sha256:c4634f578a412db396771b61b064c6e546c9d6414c7fb5b1b05d5871f1885f7b"
+  },
+  "checks": {
+    "healthEndpoint": "PASS",
+    "readyWithDatabase": "PASS",
+    "structuredCorrelationLog": "PASS",
+    "correlationHeader": "PASS",
+    "requestMetricIncrement": "PASS",
+    "readinessFailsWhenDatabaseStops": "PASS",
+    "livenessRemainsHealthyWhenDatabaseStops": "PASS",
+    "readinessRecoversAfterDatabaseRestart": "PASS"
+  },
+  "observations": {
+    "correlationId": "operational-readiness-20260920T051350Z-2649153-correlation",
+    "matchingLogLines": 4,
+    "requestsBefore": 2,
+    "requestsAfter": 5,
+    "recoveryDurationMs": 16894
+  },
+  "limitations": [
+    "Panne PostgreSQL locale contrôlée sur données synthétiques; aucun trafic ou objectif BOA réel.",
+    "La durée de récupération observée ne constitue ni SLO, ni RTO, ni engagement de disponibilité.",
+    "La preuve valide logs corrélés, métriques minimales, liveness/readiness et récupération DB; centralisation, alerting externe, traces distribuées, HA et SIEM restent NON IMPLEMENTES.",
+    "Les seuils et responsabilités d alerte restent A VALIDER AVEC BOA."
+  ]
+}

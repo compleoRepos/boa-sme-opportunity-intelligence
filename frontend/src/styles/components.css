@@ -148,9 +148,9 @@
 }
 
 .badge.success { background: var(--green-100); color: var(--green-700); }
-.badge.warning { background: var(--amber-100); color: var(--amber-700); }
+.badge.warning { background: var(--amber-100); color: var(--ink-800); }
 .badge.danger { background: var(--red-100); color: var(--red-700); }
-.badge.info { background: var(--blue-100); color: var(--blue-700); }
+.badge.info { background: var(--blue-100); color: var(--navy-800); }
 .badge.violet { background: var(--violet-100); color: var(--violet-700); }
 .badge.teal { background: var(--teal-100); color: var(--teal-700); }
 .badge.neutral { background: var(--ink-100); color: var(--ink-600); }

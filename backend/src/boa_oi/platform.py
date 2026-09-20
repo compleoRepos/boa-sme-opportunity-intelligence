@@ -23,6 +23,7 @@ from boa_oi import __version__
 
 _bearer = HTTPBearer(auto_error=False)
 _logger = logging.getLogger("boa.platform")
+_LOCAL_ENVIRONMENTS = frozenset({"development", "local", "test"})
 
 
 class Problem(Exception):
@@ -57,7 +58,24 @@ class Principal(BaseModel):
 
 
 def auth_disabled() -> bool:
-    return os.getenv("BOA_AUTH_DISABLED", "false").strip().lower() == "true"
+    disabled = os.getenv("BOA_AUTH_DISABLED", "false").strip().lower() == "true"
+    environment = os.getenv("APP_ENV", "unknown").strip().lower()
+    if disabled and environment not in _LOCAL_ENVIRONMENTS:
+        raise RuntimeError(
+            "BOA_AUTH_DISABLED=true is forbidden unless APP_ENV is development, local or test."
+        )
+    return disabled
+
+
+def _configure_platform_logging() -> None:
+    level_name = os.getenv("LOG_LEVEL", "INFO").strip().upper()
+    _logger.setLevel(getattr(logging, level_name, logging.INFO))
+    if not any(getattr(handler, "_boa_platform_handler", False) for handler in _logger.handlers):
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        handler._boa_platform_handler = True  # type: ignore[attr-defined]
+        _logger.addHandler(handler)
+    _logger.propagate = False
 
 
 def oidc_issuer() -> str:
@@ -386,6 +404,8 @@ def install_openapi_security(app: FastAPI) -> None:
 
 
 def create_service_app(service_name: str, description: str, *, database: bool = True) -> FastAPI:
+    auth_disabled()
+    _configure_platform_logging()
     app = FastAPI(
         title=f"BOA {service_name}",
         version=__version__,

@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM python:3.12.7-slim-bookworm
+FROM python:3.12-alpine@sha256:c4634f578a412db396771b61b064c6e546c9d6414c7fb5b1b05d5871f1885f7b
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -7,11 +7,9 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app/backend/src:/app
 
-RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ca-certificates curl tini \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --gid 10001 boa \
-    && useradd --uid 10001 --gid boa --home-dir /app --shell /usr/sbin/nologin boa
+RUN apk add --no-cache ca-certificates curl tini \
+    && addgroup -S -g 10001 boa \
+    && adduser -S -D -H -u 10001 -G boa -s /sbin/nologin boa
 
 WORKDIR /app
 COPY backend/ /app/backend/
@@ -33,4 +31,4 @@ RUN set -eux; \
 
 USER 10001:10001
 EXPOSE 8080
-ENTRYPOINT ["/usr/bin/tini", "--", "/opt/boa/backend-entrypoint.sh"]
+ENTRYPOINT ["/sbin/tini", "--", "/opt/boa/backend-entrypoint.sh"]

@@ -1,0 +1,9 @@
+title = "BOA SME Opportunity Intelligence"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known synthetic idempotency key used by one unit test"
+regexTarget = "secret"
+regexes = ['''^durable-transition-001$''']
