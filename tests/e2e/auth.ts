@@ -39,7 +39,7 @@ export async function login(page: Page, account: keyof typeof accounts) {
     await page.getByRole('button', { name: /Sign In|Connexion|Se connecter/i }).click()
   }
   await expect(page).not.toHaveURL(/\/login/, { timeout: 30_000 })
-  if (account === 'analyste') {
+  if (account === 'analyste' && !devMode) {
     await expect(page.getByRole('heading', { name: /réservée à un autre rôle/i })).toBeVisible()
     return
   }

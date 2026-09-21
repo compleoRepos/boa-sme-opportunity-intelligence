@@ -329,6 +329,14 @@ async def product_gaps(
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     await assert_customer_scope(request, principal, customer_id)
+    customer = await service_request(
+        "GET",
+        f"{customer_url()}/internal/v1/customers/{customer_id}",
+        correlation_id=correlation_id(request),
+        incoming_authorization=request.headers.get("Authorization"),
+        dev_principal=request.headers.get("X-Dev-Principal"),
+    )
+    visibility_level = (customer.get("flowVisibility") or {}).get("level", "UNKNOWN")
     products = list(session.scalars(select(Product).where(Product.active.is_(True))))
     owned_rows = session.execute(
         select(Product.product_code, CustomerProduct.utilization_ratio)
@@ -343,7 +351,7 @@ async def product_gaps(
     for product in products:
         utilization = owned.get(product.product_code)
         status_value = (
-            "ABSENT"
+            ("ABSENT_OR_ELSEWHERE" if visibility_level in {"PARTIAL", "LOW"} else "ABSENT")
             if product.product_code not in owned
             else (
                 "UNDERUTILIZED"
@@ -355,7 +363,17 @@ async def product_gaps(
             {
                 "product": serialize(product),
                 "status": status_value,
-                "isGap": status_value in {"ABSENT", "UNDERUTILIZED"},
+                "isGap": status_value
+                in {
+                    "ABSENT",
+                    "ABSENT_OR_ELSEWHERE",
+                    "UNDERUTILIZED",
+                },
+                "label": (
+                    "produit non détenu chez BOA (peut être détenu ailleurs)"
+                    if status_value == "ABSENT_OR_ELSEWHERE"
+                    else None
+                ),
             }
         )
     return {"customerId": customer_id, "gaps": gaps}

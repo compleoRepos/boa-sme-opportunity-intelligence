@@ -10,6 +10,7 @@ import { Sparkline } from '../../charts/Sparkline'
 import { SERIES } from '../../charts/theme'
 import { Badge, Button, Delta, EmptyState, ErrorState, Panel, PriorityBadge, Ring, Segmented, Skeleton, SkeletonStack, Tabs, tabId, Tooltip } from '../../ui'
 import { ActionChoiceGrid } from './ActionPanel'
+import { FlowVisibilityBadge, FlowVisibilityDrawer } from './FlowVisibilityPanel'
 import { OpportunityDrawer } from './OpportunityDrawer'
 import { PropensityDrawer } from './PropensityDrawer'
 import { WhyChain } from './WhyChain'
@@ -70,6 +71,7 @@ export function CustomerSheetPage() {
 
   const openOpportunity = (id: string, signal?: string) => { const next = new URLSearchParams(params); next.set('opportunite', id); if (signal) next.set('signal', signal); else next.delete('signal'); next.delete('panneau'); setParams(next) }
   const openPropensity = () => { const next = new URLSearchParams(params); next.set('panneau', 'propension'); next.delete('opportunite'); next.delete('signal'); setParams(next) }
+  const openVisibility = () => { const next = new URLSearchParams(params); next.set('panneau', 'visibilite'); next.delete('opportunite'); next.delete('signal'); setParams(next) }
   const closeDrawers = () => { const next = new URLSearchParams(params); next.delete('opportunite'); next.delete('panneau'); next.delete('signal'); setParams(next) }
 
   const rail: PortfolioCustomerSummary[] | undefined = isRm ? dashboard.data?.portfolio : managerPortfolio.data?.portfolio
@@ -99,7 +101,7 @@ export function CustomerSheetPage() {
           <div className="sheet-identity">
             <span className="avatar company lg">{initials(profile.legalName)}</span>
             <div>
-              <div className="row" style={{ gap: 8 }}><h1>{profile.legalName}</h1>{propensity.data?.priorityLevel && <PriorityBadge level={propensity.data.priorityLevel} />}<Badge value={profile.status} /></div>
+              <div className="row" style={{ gap: 8 }}><h1>{profile.legalName}</h1>{propensity.data?.priorityLevel && <PriorityBadge level={propensity.data.priorityLevel} />}<Badge value={profile.status} /><FlowVisibilityBadge visibility={profile.flowVisibility} onClick={openVisibility} /></div>
               <p className="muted sheet-meta"><span><Building2 size={13} /> PME · {label(profile.industry)} · {label(profile.segment)}</span><span><Landmark size={13} /> Agence {profile.branchName || profile.branchId}</span><span><UserRound size={13} /> CC {profile.relationshipManagerName || profile.relationshipManagerId}</span>{relationSince && <span>Relation depuis {new Date(relationSince).getFullYear()}</span>}{profile.incorporatedOn && <span>Créée en {new Date(profile.incorporatedOn).getFullYear()}</span>}<span className="mono">{profile.customerId}</span></p>
             </div>
           </div>
@@ -161,5 +163,6 @@ export function CustomerSheetPage() {
 
     {drawerOpportunity && <OpportunityDrawer opportunityId={drawerOpportunity} customerId={customerId} customerName={profile?.legalName} initialSignal={signalParam} onClose={closeDrawers} onPropensity={openPropensity} />}
     {drawerPanel === 'propension' && <PropensityDrawer customerId={customerId} customerName={profile?.legalName} opportunity={primary} onClose={closeDrawers} />}
+    {drawerPanel === 'visibilite' && profile && <FlowVisibilityDrawer customer={profile} canDeclare={auth.hasRole('RELATIONSHIP_MANAGER') || auth.hasRole('BRANCH_MANAGER')} onClose={closeDrawers} />}
   </div>
 }

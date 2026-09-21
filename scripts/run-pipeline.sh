@@ -47,7 +47,12 @@ post_internal() {
 
 as_of=${AS_OF_DATE:-2026-09-30}
 customer_count=${PIPELINE_CUSTOMER_COUNT:-500}
+pipeline_stages=",${PIPELINE_STAGES:-analytics,signal,opportunity},"
 customer_ids=$(jq -nc --argjson count "$customer_count" '[range(1; $count + 1) | "SME-" + (tostring | ("00000" + .)[-5:])]')
+
+stage_enabled() {
+  [[ "$pipeline_stages" == *",$1,"* ]]
+}
 
 if [[ "${IMPORT_VIA_ADAPTER:-false}" == "true" ]]; then
   refresh_token
@@ -60,8 +65,14 @@ for ((start=0; start<customer_count; start+=batch_size)); do
   analytics_payload=$(jq -nc --argjson ids "$ids" --arg asOf "$as_of" '{customerIds:$ids,asOf:$asOf,periods:["7D","30D","90D","180D","365D"]}')
   signal_payload=$(jq -nc --argjson ids "$ids" --arg asOf "$as_of" '{customerIds:$ids,asOf:$asOf,periods:["90D"]}')
   opportunity_payload=$(jq -nc --argjson ids "$ids" --arg asOf "$as_of" '{customerIds:$ids,asOf:$asOf}')
-  post_internal analytics "/internal/v1/analytics/recompute" "$analytics_payload" "batch-${start}"
-  post_internal signal "/internal/v1/signals/evaluate" "$signal_payload" "batch-${start}"
-  post_internal opportunity "/internal/v1/opportunities/generate" "$opportunity_payload" "batch-${start}"
+  if stage_enabled analytics; then
+    post_internal analytics "/internal/v1/analytics/recompute" "$analytics_payload" "batch-${start}"
+  fi
+  if stage_enabled signal; then
+    post_internal signal "/internal/v1/signals/evaluate" "$signal_payload" "batch-${start}"
+  fi
+  if stage_enabled opportunity; then
+    post_internal opportunity "/internal/v1/opportunities/generate" "$opportunity_payload" "batch-${start}"
+  fi
 done
 echo "Pipeline submitted successfully (correlationId=${CORRELATION_ID})."

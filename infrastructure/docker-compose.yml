@@ -212,9 +212,11 @@ services:
       DATABASE_URL: postgresql+psycopg://product_service:${PRODUCT_DB_PASSWORD:-DevOnly-ProductDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Dproduct
       OAUTH_CLIENT_ID: product-service
       OAUTH_CLIENT_SECRET: ${PRODUCT_CLIENT_SECRET:-DevOnly-ProductClient-ChangeMe!}
+      CUSTOMER_SERVICE_URL: http://customer:8080
     depends_on:
       postgres: { condition: service_healthy }
       keycloak: { condition: service_healthy }
+      customer: { condition: service_healthy }
 
   mock-bank:
     <<: *backend
@@ -271,11 +273,13 @@ services:
       OAUTH_CLIENT_SECRET: ${ANALYTICS_CLIENT_SECRET:-DevOnly-AnalyticsClient-ChangeMe!}
       TRANSACTION_SERVICE_URL: http://transaction:8080
       ACCOUNT_SERVICE_URL: http://account:8080
+      CUSTOMER_SERVICE_URL: http://customer:8080
     depends_on:
       postgres: { condition: service_healthy }
       keycloak: { condition: service_healthy }
       transaction: { condition: service_healthy }
       account: { condition: service_healthy }
+      customer: { condition: service_healthy }
     deploy:
       resources:
         limits: { cpus: "0.75", memory: 512M }
@@ -373,6 +377,7 @@ services:
       ANALYTICS_SERVICE_URL: http://analytics:8080
       CUSTOMER_SERVICE_URL: http://customer:8080
       PRODUCT_SERVICE_URL: http://product:8080
+      ACTION_SERVICE_URL: http://action:8080
       RULE_ENGINE_SERVICE_URL: http://rule-engine:8080
       ML_ENGINE_SERVICE_URL: http://ml-engine:8080
       ML_TIMEOUT_SECONDS: ${ML_TIMEOUT_SECONDS:-10.0}

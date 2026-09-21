@@ -24,6 +24,29 @@ export interface ApiProblem {
   details?: Array<{ field?: string; code?: string; message?: string }>
 }
 
+export type BankingRelationship = 'EXCLUSIVE' | 'PRIMARY' | 'SECONDARY' | 'UNKNOWN'
+export type FlowVisibilityLevel = 'HIGH' | 'PARTIAL' | 'LOW' | 'UNKNOWN'
+
+export interface BankingRelationshipDeclaration {
+  value?: BankingRelationship | null
+  declaredAt?: string | null
+  declaredBy?: string | null
+  reason?: string | null
+  source?: string | null
+}
+
+export interface FlowVisibility {
+  level: FlowVisibilityLevel
+  estimatedShare?: number | null
+  method: 'DECLARED' | 'TURNOVER_RATIO' | 'TRANSACTION_FINGERPRINTS' | 'NONE' | string
+  asOf?: string | null
+  evidence?: Array<Record<string, unknown>>
+  fingerprintCount90d?: number
+  fingerprintPrevious90d?: number
+  fingerprintGrowth90d?: number
+  categorizationCoverage?: number
+}
+
 export interface Customer {
   customerId: string
   legalName: string
@@ -36,6 +59,11 @@ export interface Customer {
   branchName?: string
   relationshipManagerId?: string
   relationshipManagerName?: string
+  bankingRelationship?: BankingRelationship
+  bankingRelationshipDeclaration?: BankingRelationshipDeclaration | null
+  declaredTurnover?: number | null
+  declaredTurnoverAsOf?: string | null
+  flowVisibility?: FlowVisibility | null
   status?: string
   incorporatedOn?: string
   createdAt?: string
@@ -152,6 +180,8 @@ export interface Opportunity {
   expiresAt?: string | null
   cooldownUntil?: string | null
   lastActionAt?: string | null
+  flowVisibility?: FlowVisibility | null
+  recommendationNature?: 'NEED_DISCOVERY' | 'WIN_BACK' | string
 }
 
 export interface ConfidenceComponent {
@@ -160,6 +190,7 @@ export interface ConfidenceComponent {
   maxPoints: number
   satisfied: boolean
   value?: number | string
+  reason?: string
 }
 
 export interface Explanation {
@@ -174,6 +205,8 @@ export interface Explanation {
   engineVersion?: string
   ruleVersion?: string
   evidence?: Array<string | Record<string, unknown>>
+  flowVisibility?: FlowVisibility | null
+  recommendationNature?: 'NEED_DISCOVERY' | 'WIN_BACK' | string
 }
 
 export type ActionType =
@@ -276,6 +309,8 @@ export interface PortfolioCustomerSummary {
   relationshipManagerName?: string
   branchId?: string
   branchName?: string
+  bankingRelationship?: BankingRelationship
+  flowVisibility?: FlowVisibility
   combinedPriorityScore?: number
   propensityScore: number
   priorityLevel: CustomerPriority
@@ -290,10 +325,17 @@ export interface PriorityDistributionItem {
   share?: number
 }
 
+export interface VisibilityDistributionItem {
+  level: FlowVisibilityLevel
+  count: number
+  share?: number
+}
+
 export interface RelationshipManagerDashboard {
   scope: DashboardScope
   kpis: CommercialDashboardKpis
   priorityDistribution: PriorityDistributionItem[]
+  visibilityDistribution?: VisibilityDistributionItem[]
   portfolio: PortfolioCustomerSummary[]
   generatedAt?: string
 }
@@ -327,6 +369,7 @@ export interface BreakdownItem {
   relationshipManagerName?: string
   actionType?: string
   outcome?: string
+  level?: FlowVisibilityLevel
 }
 
 export interface TimelinePoint {
@@ -338,6 +381,7 @@ export interface BranchDashboard {
   scope: DashboardScope
   kpis: CommercialDashboardKpis
   priorityDistribution: PriorityDistributionItem[]
+  visibilityDistribution?: VisibilityDistributionItem[]
   conversionFunnel: ConversionFunnelItem[]
   relationshipManagers: RelationshipManagerPerformance[]
   opportunitiesByType?: BreakdownItem[]
@@ -405,6 +449,7 @@ export interface DevPersona {
   description: string
   subject: string
   username: string
+  email?: string
   displayName: string
   roles: Role[]
   branchIds?: string[]

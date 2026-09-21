@@ -1,5 +1,7 @@
 """Catalogue commercial BANK OF AFRICA : cohérence et statut par famille."""
 
+from collections import Counter
+
 from boa_oi.catalog import (
     BOA_PRODUCTS,
     FAMILIES,
@@ -54,11 +56,20 @@ def test_family_status_aggregates_ownership():
         {"product": as_payload(PRODUCTS_BY_FAMILY["INVESTMENT_FINANCING"][0]), "status": "ABSENT"},
         {"product": as_payload(PRODUCTS_BY_FAMILY["INVESTMENT_FINANCING"][1]), "status": "OWNED"},
         {"product": as_payload(PRODUCTS_BY_FAMILY["TRADE_FINANCE"][0]), "status": "UNDERUTILIZED"},
+        {
+            "product": as_payload(PRODUCTS_BY_FAMILY["CASH_MANAGEMENT"][0]),
+            "status": "ABSENT",
+        },
+        {
+            "product": as_payload(PRODUCTS_BY_FAMILY["CASH_MANAGEMENT"][1]),
+            "status": "ABSENT_OR_ELSEWHERE",
+        },
         {"product": {"productId": "LEGACY", "name": "x", "category": "y"}, "status": "ABSENT"},
     ]
     status = family_status(gaps)
     assert status["INVESTMENT_FINANCING"] == "OWNED"
     assert status["TRADE_FINANCE"] == "UNDERUTILIZED"
+    assert status["CASH_MANAGEMENT"] == "ABSENT_OR_ELSEWHERE"
     assert status["LEGACY"] == "ABSENT"
     assert status[PRODUCTS_BY_FAMILY["INVESTMENT_FINANCING"][0].code] == "ABSENT"
 
@@ -73,3 +84,20 @@ def test_demo_ownerships_keep_trade_gap_for_international_growth():
     assert demo_ownerships("SME-00001", "GROWTH_COMPANY") == demo_ownerships(
         "SME-00001", "GROWTH_COMPANY"
     )
+
+
+def test_synthetic_branch_distribution_exercises_secondary_visibility_for_ahmed():
+    from database.seed.generate import scenario_for
+    from database.seed.naming import relationship_manager_index
+
+    branch_distribution = Counter(relationship_manager_index(index) for index in range(1, 251))
+    ahmed_secondary = [
+        index
+        for index in range(1, 251)
+        if relationship_manager_index(index) == 1 and scenario_for(index) == "MULTIBANK_SECONDARY"
+    ]
+
+    assert sum(branch_distribution.values()) == 250
+    assert set(branch_distribution) == {1, 2, 3, 4, 5}
+    assert branch_distribution[1] == max(branch_distribution.values())
+    assert ahmed_secondary, "le parcours E2E Ahmed doit exercer MULTIBANK_SECONDARY"

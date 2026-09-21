@@ -88,6 +88,7 @@ def test_gateway_registers_all_frontend_routes(monkeypatch):
         "/api/v1/customers",
         "/api/v1/customers/{customer_id}/accounts",
         "/api/v1/customers/{customer_id}/products",
+        "/api/v1/customers/{customer_id}/product-gaps",
         "/api/v1/customers/{customer_id}/transactions",
         "/api/v1/customers/{customer_id}/metrics",
         "/api/v1/customers/{customer_id}/signals",

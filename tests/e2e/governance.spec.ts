@@ -1,28 +1,50 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { login } from './auth'
+import { devMode, login } from './auth'
 
-async function authenticatedHeader(page: Page, route: string): Promise<string> {
-  let authorization = ''
+const businessAnalystDevHeader = JSON.stringify({
+  subject: 'analyst-e2e',
+  username: 'business.analyst.e2e',
+  roles: ['BUSINESS_ANALYST', 'DATA_ANALYST'],
+  branchIds: ['ALL'],
+})
+
+async function authenticatedHeaders(
+  page: Page,
+  route: string,
+  devPrincipal?: string,
+): Promise<Record<string, string>> {
+  if (devMode && devPrincipal) {
+    await page.goto(route)
+    return { 'X-Dev-Principal': devPrincipal }
+  }
+  let headers: Record<string, string> = {}
   page.on('request', (request) => {
-    const value = request.headers().authorization
-    if (value?.startsWith('Bearer ') && request.url().includes('/api/v1/')) {
-      authorization = value
+    if (!request.url().includes('/api/v1/')) return
+    const requestHeaders = request.headers()
+    if (requestHeaders.authorization?.startsWith('Bearer ')) {
+      headers = { Authorization: requestHeaders.authorization }
+    } else if (requestHeaders['x-dev-principal']) {
+      headers = { 'X-Dev-Principal': requestHeaders['x-dev-principal'] }
     }
   })
   await page.goto(route)
-  await expect.poll(() => authorization, { timeout: 20_000 }).toMatch(/^Bearer /)
-  return authorization
+  await expect.poll(() => Object.keys(headers).length, { timeout: 20_000 }).toBeGreaterThan(0)
+  return headers
 }
 
 test('gouvernance persistée, readiness prudente et RBAC administratif', async ({ browser }) => {
   const analystContext = await browser.newContext()
   const analyst = await analystContext.newPage()
   await login(analyst, 'analyste')
-  const analystAuthorization = await authenticatedHeader(analyst, '/produits')
+  const analystAuthHeaders = await authenticatedHeaders(
+    analyst,
+    '/produits',
+    businessAnalystDevHeader,
+  )
 
   const policyResponse = await analyst.request.get('/api/v1/admin/scoring-policies/active', {
-    headers: { Authorization: analystAuthorization, 'X-Correlation-ID': 'e2e-governance-policy' },
+    headers: { ...analystAuthHeaders, 'X-Correlation-ID': 'e2e-governance-policy' },
   })
   expect(policyResponse.status()).toBe(200)
   const policy = await policyResponse.json()
@@ -34,7 +56,7 @@ test('gouvernance persistée, readiness prudente et RBAC administratif', async (
   expect(policy.mlObservationMode).toBe('POC_SHADOW')
 
   const readinessResponse = await analyst.request.get('/api/v1/admin/readiness', {
-    headers: { Authorization: analystAuthorization, 'X-Correlation-ID': 'e2e-governance-readiness' },
+    headers: { ...analystAuthHeaders, 'X-Correlation-ID': 'e2e-governance-readiness' },
   })
   expect(readinessResponse.status()).toBe(200)
   const readiness = await readinessResponse.json()
@@ -44,7 +66,7 @@ test('gouvernance persistée, readiness prudente et RBAC administratif', async (
   expect(readiness.checks.length).toBeGreaterThan(0)
 
   const championResponse = await analyst.request.get('/api/v1/admin/ml/governance/champion', {
-    headers: { Authorization: analystAuthorization, 'X-Correlation-ID': 'e2e-governance-champion' },
+    headers: { ...analystAuthHeaders, 'X-Correlation-ID': 'e2e-governance-champion' },
   })
   expect(championResponse.status()).toBe(200)
   const champion = await championResponse.json()
@@ -54,7 +76,7 @@ test('gouvernance persistée, readiness prudente et RBAC administratif', async (
   const driftObservation = await analyst.request.post(
     '/api/v1/admin/monitoring/observations',
     {
-      headers: { Authorization: analystAuthorization, 'X-Correlation-ID': driftTrace },
+      headers: { ...analystAuthHeaders, 'X-Correlation-ID': driftTrace },
       data: {
         domain: 'FEATURE',
         metric: 'cash_inflow_growth_90d_psi',
@@ -77,7 +99,7 @@ test('gouvernance persistée, readiness prudente et RBAC administratif', async (
   const operationalObservation = await analyst.request.post(
     '/api/v1/admin/monitoring/observations',
     {
-      headers: { Authorization: analystAuthorization },
+      headers: { ...analystAuthHeaders },
       data: {
         domain: 'OPERATIONAL',
         metric: 'latency_ms',
@@ -93,7 +115,7 @@ test('gouvernance persistée, readiness prudente et RBAC administratif', async (
   expect(operationalObservation.status()).toBe(202)
   const monitoringHistory = await analyst.request.get(
     '/api/v1/admin/monitoring/history?limit=10',
-    { headers: { Authorization: analystAuthorization } },
+    { headers: { ...analystAuthHeaders } },
   )
   expect(monitoringHistory.status()).toBe(200)
   const monitoring = await monitoringHistory.json()
@@ -105,9 +127,9 @@ test('gouvernance persistée, readiness prudente et RBAC administratif', async (
   const ccContext = await browser.newContext()
   const cc = await ccContext.newPage()
   await login(cc, 'cc')
-  const ccAuthorization = await authenticatedHeader(cc, '/')
+  const ccAuthHeaders = await authenticatedHeaders(cc, '/')
   const forbidden = await cc.request.get('/api/v1/admin/readiness', {
-    headers: { Authorization: ccAuthorization, 'X-Correlation-ID': 'e2e-governance-forbidden' },
+    headers: { ...ccAuthHeaders, 'X-Correlation-ID': 'e2e-governance-forbidden' },
   })
   expect(forbidden.status()).toBe(403)
   await ccContext.close()
@@ -117,17 +139,21 @@ test('workflow MLOps shadow avec séparation des rôles et promotion bloquée', 
   const analystContext = await browser.newContext()
   const analyst = await analystContext.newPage()
   await login(analyst, 'analyste')
-  const analystAuthorization = await authenticatedHeader(analyst, '/produits')
+  const analystAuthHeaders = await authenticatedHeaders(
+    analyst,
+    '/produits',
+    businessAnalystDevHeader,
+  )
 
   const approverContext = await browser.newContext()
   const approver = await approverContext.newPage()
   await login(approver, 'approbateur')
-  const approverAuthorization = await authenticatedHeader(approver, '/back-office/regles')
+  const approverAuthHeaders = await authenticatedHeaders(approver, '/back-office/regles')
 
   const adminContext = await browser.newContext()
   const admin = await adminContext.newPage()
   await login(admin, 'admin')
-  const adminAuthorization = await authenticatedHeader(admin, '/back-office/modeles')
+  const adminAuthHeaders = await authenticatedHeaders(admin, '/back-office/modeles')
 
   const suffix = Date.now().toString()
   const firstVersion = `gov-a-${suffix}`
@@ -218,15 +244,15 @@ test('workflow MLOps shadow avec séparation des rôles et promotion bloquée', 
     },
   })
   const analystHeaders = {
-    Authorization: analystAuthorization,
+    ...analystAuthHeaders,
     'Content-Type': 'application/json',
   }
   const approverHeaders = {
-    Authorization: approverAuthorization,
+    ...approverAuthHeaders,
     'Content-Type': 'application/json',
   }
   const adminHeaders = {
-    Authorization: adminAuthorization,
+    ...adminAuthHeaders,
     'Content-Type': 'application/json',
   }
 
@@ -270,7 +296,7 @@ test('workflow MLOps shadow avec séparation des rôles et promotion bloquée', 
   }
 
   const activeModel = await analyst.request.get('/api/v1/ml/models/active', {
-    headers: { Authorization: analystAuthorization },
+    headers: { ...analystAuthHeaders },
   })
   expect(activeModel.status()).toBe(200)
   const activeModelBody = await activeModel.json()
@@ -286,28 +312,32 @@ test('Scoring Policy hybride simulable mais non activable sans labels BOA', asyn
   const analystContext = await browser.newContext()
   const analyst = await analystContext.newPage()
   await login(analyst, 'analyste')
-  const analystAuthorization = await authenticatedHeader(analyst, '/produits')
+  const analystAuthHeaders = await authenticatedHeaders(
+    analyst,
+    '/produits',
+    businessAnalystDevHeader,
+  )
   const approverContext = await browser.newContext()
   const approver = await approverContext.newPage()
   await login(approver, 'approbateur')
-  const approverAuthorization = await authenticatedHeader(approver, '/back-office/regles')
+  const approverAuthHeaders = await authenticatedHeaders(approver, '/back-office/regles')
   const adminContext = await browser.newContext()
   const admin = await adminContext.newPage()
   await login(admin, 'admin')
-  const adminAuthorization = await authenticatedHeader(admin, '/back-office')
+  const adminAuthHeaders = await authenticatedHeaders(admin, '/back-office')
   const trace = `e2e-policy-${Date.now()}`
   const analystHeaders = {
-    Authorization: analystAuthorization,
+    ...analystAuthHeaders,
     'Content-Type': 'application/json',
     'X-Correlation-ID': trace,
   }
   const approverHeaders = {
-    Authorization: approverAuthorization,
+    ...approverAuthHeaders,
     'Content-Type': 'application/json',
     'X-Correlation-ID': trace,
   }
   const adminHeaders = {
-    Authorization: adminAuthorization,
+    ...adminAuthHeaders,
     'Content-Type': 'application/json',
     'X-Correlation-ID': trace,
   }
@@ -371,7 +401,7 @@ test('Scoring Policy hybride simulable mais non activable sans labels BOA', asyn
   expect(blockedActivation.status()).toBe(409)
   expect(JSON.stringify(await blockedActivation.json())).toContain('ML_SHADOW_POLICY_REQUIRED')
   const activeBaseline = await analyst.request.get('/api/v1/admin/scoring-policies/active', {
-    headers: { Authorization: analystAuthorization },
+    headers: { ...analystAuthHeaders },
   })
   expect(activeBaseline.status()).toBe(200)
   const baseline = await activeBaseline.json()

@@ -16,6 +16,7 @@ from boa_oi.models.entities import (
     Account,
     AccountBalance,
     Customer,
+    CustomerBankingDeclaration,
     CustomerProduct,
     MLDatasetManifest,
     MLTrainingExample,
@@ -27,6 +28,7 @@ from boa_oi.models.entities import (
     RelationshipManager,
     Rule,
     RuleAction,
+    RuleAuditLog,
     RuleCondition,
     RuleConfidenceConfiguration,
     RuleConfiguration,
@@ -71,7 +73,13 @@ SCENARIOS = (
     "NORMAL_CUSTOMER",
     "FALSE_POSITIVE_SEASONAL",
     "FALSE_POSITIVE_ONE_OFF",
+    "MULTIBANK_PRIMARY",
+    "MULTIBANK_SECONDARY",
 )
+MULTIBANK_TARGET_SHARE = {
+    "MULTIBANK_PRIMARY": Decimal("0.60"),
+    "MULTIBANK_SECONDARY": Decimal("0.25"),
+}
 DEMO_ML_MANIFEST_VERSION = "demo-synthetic-labels-2026-v1"
 DEMO_ML_EXAMPLE_COUNT = 240
 DEMO_ML_FEATURES = (
@@ -120,6 +128,8 @@ def demo_training_example(index: int) -> dict:
         "NORMAL_CUSTOMER": 0.15,
         "FALSE_POSITIVE_SEASONAL": 0.0,
         "FALSE_POSITIVE_ONE_OFF": 0.0,
+        "MULTIBANK_PRIMARY": 0.45,
+        "MULTIBANK_SECONDARY": 0.35,
     }
     # Draw independently for every chronological example so TRAIN and TEST both
     # retain positives; false-positive scenarios are deterministically negative.
@@ -160,7 +170,7 @@ def demo_training_example(index: int) -> dict:
 def monthly_multiplier(scenario: str, month_index: int, sector: str) -> float:
     recent = month_index >= 9
     base = 1.0
-    if scenario == "GROWTH_COMPANY" and recent:
+    if scenario in {"GROWTH_COMPANY", "MULTIBANK_PRIMARY", "MULTIBANK_SECONDARY"} and recent:
         base = 1.42
     elif scenario == "INTERNATIONAL_GROWTH" and recent:
         base = 1.50
@@ -218,6 +228,18 @@ def generate_transaction_rows(
             amount = Decimal(str(round(max(100, amount_base * mult * rng.uniform(0.65, 1.35)), 2)))
             if scenario == "FALSE_POSITIVE_ONE_OFF" and international:
                 amount = Decimal("1750000.00")
+            self_transfer = (
+                scenario in MULTIBANK_TARGET_SHARE
+                and current.weekday() == 1
+                and current.day <= 14
+                and item_no == daily_count - 1
+            )
+            if self_transfer:
+                is_credit = (current.month + customer_index) % 2 == 0
+                direction = "CREDIT" if is_credit else "DEBIT"
+                category = "INTER_BANK_SELF_TRANSFER"
+                international = False
+                amount = Decimal("15000.00")
             tx_ref = f"TX-{customer_index:05d}-{current:%Y%m%d}-{item_no:02d}"
             yield {
                 "id": deterministic_uuid("transaction", tx_ref),
@@ -229,12 +251,21 @@ def generate_transaction_rows(
                 "direction": direction,
                 "amount": amount,
                 "currency": "MAD",
-                "transaction_type": "TRANSFER" if international else "PAYMENT",
+                "transaction_type": "TRANSFER" if international or self_transfer else "PAYMENT",
                 "category": category,
                 "is_international": international,
                 "country_code": "FR" if international else "MA",
                 "status": "BOOKED",
                 "source_system": "MOCK_PAYMENTS",
+                "counterparty_name": (
+                    customer_name(customer_index, sector) if self_transfer else None
+                ),
+                "remittance_information": (
+                    "Transfert entre comptes propres dans une autre banque"
+                    if self_transfer
+                    else None
+                ),
+                "externally_domiciled": self_transfer,
                 "created_by": "demo-data-generator",
             }
         current += timedelta(days=1)
@@ -253,6 +284,8 @@ def generate_balance_rows(customer_index: int, account_id: UUID) -> Iterator[dic
         progress = Decimal((current - START_DATE).days) / Decimal((END_DATE - START_DATE).days)
         if scenario == "FINANCIAL_STRESS":
             balance -= Decimal(600) if current < date(2026, 7, 1) else Decimal(2600)
+        elif scenario == "MULTIBANK_SECONDARY":
+            balance = max(Decimal("25000"), balance + Decimal(str(rng.randint(-3500, 2800))))
         elif scenario == "CASH_SURPLUS":
             balance += Decimal(str(rng.randint(-2500, 3500)))
         else:
@@ -289,6 +322,14 @@ def manifest() -> dict:
         "minimum_transactions": MIN_TRANSACTIONS,
         "sectors": list(SECTORS),
         "scenarios": list(SCENARIOS),
+        "multibank": {
+            "targetShares": {key: float(value) for key, value in MULTIBANK_TARGET_SHARE.items()},
+            "declaredTurnoverPopulation": "one customer out of two in each multibank scenario",
+            "relationshipDeclarationPopulation": (
+                "one customer out of three in each multibank scenario"
+            ),
+            "status": "HYPOTHÈSE À VALIDER AVEC BOA",
+        },
         "opportunities": 0,
     }
 
@@ -466,36 +507,92 @@ def seed(database_url: str, batch_size: int = 1000) -> dict:
                     ]
                 )
             )
-        studio_rule_code = "SYNTHETIC_GROWTH_REVIEW"
+        # This governed replica intentionally starts as a draft. The isolated
+        # validator exercises validation, persisted simulation, analyst
+        # submission, independent approval, publication and the full audit trail.
+        studio_rule_code = "FLOW_DOMICILIATION_001"
         studio_rule_id = deterministic_uuid("rule-studio", studio_rule_code)
         studio_version_id = deterministic_uuid("rule-studio-version", studio_rule_code, 1)
         studio_definition = {
-            "name": "Revue de croissance synthétique",
+            "name": "Domiciliation des flux multibancarisés",
             "description": (
-                "Règle de démonstration synthétique; seuil HYPOTHÈSE À VALIDER AVEC BOA."
+                "Réplique gouvernée de FLOW_DOMICILIATION_001 sur données synthétiques; "
+                "seuils HYPOTHÈSE À VALIDER AVEC BOA."
             ),
             "scope": {"segment": ["SMALL", "MEDIUM"], "dataKind": "SYNTHETIC"},
             "logic": "AND",
             "conditions": [
                 {
-                    "metric": "INFLOW_GROWTH",
-                    "operator": ">",
-                    "value": 0.2,
-                    "unit": "RATIO",
+                    "metric": "FLOW_VISIBILITY_OPPORTUNITY",
+                    "operator": "=",
+                    "value": True,
+                    "unit": "BOOLEAN",
                     "period": "90D",
-                }
+                },
+                {
+                    "metric": "NO_RECENT_DOMICILIATION_ACTION",
+                    "operator": "=",
+                    "value": True,
+                    "unit": "BOOLEAN",
+                    "period": "180D",
+                },
+                {
+                    "type": "GROUP",
+                    "logic": "OR",
+                    "conditions": [
+                        {
+                            "metric": "INFLOW_GROWTH",
+                            "operator": ">",
+                            "value": 0,
+                            "unit": "RATIO",
+                            "period": "90D",
+                        },
+                        {
+                            "metric": "FINGERPRINT_GROWTH_90D",
+                            "operator": ">",
+                            "value": 0,
+                            "unit": "COUNT",
+                            "period": "90D",
+                        },
+                        {
+                            "metric": "DECLARED_TURNOVER_GROWTH",
+                            "operator": ">",
+                            "value": 0,
+                            "unit": "RATIO",
+                            "period": "365D",
+                        },
+                    ],
+                },
             ],
             "recommendation": {
-                "opportunityType": "GROWTH_FINANCING",
-                "products": ["BOA_CREDIT_MLTD_DIRECT"],
+                "opportunityType": "FLOW_DOMICILIATION",
+                "products": [
+                    "BOA_PACK_BUSINESS_PME",
+                    "BOA_BUSINESS_ONLINE",
+                    "BOA_VIREMENT_MASSE",
+                    "BOA_PRELEVEMENT_MASSE",
+                ],
                 "horizon": "1-3_MONTHS",
+                "what": (
+                    "Part de flux estimée faible ou partielle chez BANK OF AFRICA : "
+                    "proposer la domiciliation des flux et des salaires."
+                ),
+                "whenText": "Contacter dans les 1 à 3 mois.",
             },
-            "confidence": {"baseScore": 60, "weights": {"INFLOW_GROWTH": 25}},
+            "confidence": {
+                "baseScore": 60,
+                "weights": {
+                    "FLOW_VISIBILITY_OPPORTUNITY": 15,
+                    "INFLOW_GROWTH": 10,
+                    "FINGERPRINT_GROWTH_90D": 10,
+                    "DECLARED_TURNOVER_GROWTH": 10,
+                },
+            },
             "lifecycle": {
                 "validityDays": 90,
-                "dismissedCooldownDays": 30,
+                "dismissedCooldownDays": 180,
                 "convertedCooldownDays": 180,
-                "deferredCooldownDays": 30,
+                "deferredCooldownDays": 180,
                 "expiredCooldownDays": 7,
             },
         }
@@ -514,10 +611,10 @@ def seed(database_url: str, batch_size: int = 1000) -> dict:
                 rule_id=studio_rule_code,
                 name=studio_definition["name"],
                 description=studio_definition["description"],
-                status="ACTIVE",
+                status="DRAFT",
                 current_version=1,
-                active_version=1,
-                created_by="demo-data-generator",
+                active_version=None,
+                created_by="business.analyst.demo",
             )
             .on_conflict_do_nothing(index_elements=[Rule.rule_id])
         )
@@ -527,14 +624,14 @@ def seed(database_url: str, batch_size: int = 1000) -> dict:
                 id=studio_version_id,
                 rule_id=studio_rule_id,
                 version=1,
-                status="ACTIVE",
+                status="DRAFT",
                 name=studio_definition["name"],
                 description=studio_definition["description"],
                 scope_json=studio_definition["scope"],
                 logic="AND",
                 configuration_json=studio_definition,
                 checksum=studio_checksum,
-                created_by="demo-data-generator",
+                created_by="business.analyst.demo",
             )
             .on_conflict_do_nothing(index_elements=[RuleVersion.rule_id, RuleVersion.version])
         )
@@ -559,34 +656,91 @@ def seed(database_url: str, batch_size: int = 1000) -> dict:
                 index_elements=[RuleCondition.rule_version_id, RuleCondition.path]
             )
         )
+        condition_rows = [
+            ("root.0", 0, "FLOW_VISIBILITY_OPPORTUNITY", "90D"),
+            ("root.1", 1, "NO_RECENT_DOMICILIATION_ACTION", "180D"),
+        ]
+        for path, position, metric, period in condition_rows:
+            session.execute(
+                pg_insert(RuleCondition)
+                .values(
+                    id=deterministic_uuid("rule-condition", studio_rule_code, 1, path),
+                    rule_version_id=studio_version_id,
+                    parent_condition_id=root_condition_id,
+                    path=path,
+                    position=position,
+                    node_type="CONDITION",
+                    logic=None,
+                    metric_code=metric,
+                    operator="=",
+                    value_json=True,
+                    unit="BOOLEAN",
+                    period=period,
+                )
+                .on_conflict_do_nothing(
+                    index_elements=[RuleCondition.rule_version_id, RuleCondition.path]
+                )
+            )
+        dynamics_group_id = deterministic_uuid("rule-condition", studio_rule_code, 1, "root.2")
         session.execute(
             pg_insert(RuleCondition)
             .values(
-                id=deterministic_uuid("rule-condition", studio_rule_code, 1, "root.0"),
+                id=dynamics_group_id,
                 rule_version_id=studio_version_id,
                 parent_condition_id=root_condition_id,
-                path="root.0",
-                position=0,
-                node_type="CONDITION",
-                logic=None,
-                metric_code="INFLOW_GROWTH",
-                operator=">",
-                value_json=0.2,
-                unit="RATIO",
-                period="90D",
+                path="root.2",
+                position=2,
+                node_type="GROUP",
+                logic="OR",
+                metric_code=None,
+                operator=None,
+                value_json=None,
+                unit=None,
+                period=None,
             )
             .on_conflict_do_nothing(
                 index_elements=[RuleCondition.rule_version_id, RuleCondition.path]
             )
         )
+        dynamic_rows = [
+            ("root.2.0", 0, "INFLOW_GROWTH", "RATIO", "90D"),
+            ("root.2.1", 1, "FINGERPRINT_GROWTH_90D", "COUNT", "90D"),
+            ("root.2.2", 2, "DECLARED_TURNOVER_GROWTH", "RATIO", "365D"),
+        ]
+        for path, position, metric, unit, period in dynamic_rows:
+            session.execute(
+                pg_insert(RuleCondition)
+                .values(
+                    id=deterministic_uuid("rule-condition", studio_rule_code, 1, path),
+                    rule_version_id=studio_version_id,
+                    parent_condition_id=dynamics_group_id,
+                    path=path,
+                    position=position,
+                    node_type="CONDITION",
+                    logic=None,
+                    metric_code=metric,
+                    operator=">",
+                    value_json=0,
+                    unit=unit,
+                    period=period,
+                )
+                .on_conflict_do_nothing(
+                    index_elements=[RuleCondition.rule_version_id, RuleCondition.path]
+                )
+            )
         session.execute(
             pg_insert(RuleAction)
             .values(
                 id=deterministic_uuid("rule-action", studio_rule_code, 1, 0),
                 rule_version_id=studio_version_id,
                 position=0,
-                opportunity_type_code="GROWTH_FINANCING",
-                product_codes_json=["BOA_CREDIT_MLTD_DIRECT"],
+                opportunity_type_code="FLOW_DOMICILIATION",
+                product_codes_json=[
+                    "BOA_PACK_BUSINESS_PME",
+                    "BOA_BUSINESS_ONLINE",
+                    "BOA_VIREMENT_MASSE",
+                    "BOA_PRELEVEMENT_MASSE",
+                ],
                 horizon_code="1-3_MONTHS",
             )
             .on_conflict_do_nothing(
@@ -599,9 +753,29 @@ def seed(database_url: str, batch_size: int = 1000) -> dict:
                 id=deterministic_uuid("rule-confidence", studio_rule_code, 1),
                 rule_version_id=studio_version_id,
                 base_score=Decimal("0.60"),
-                weights_json={"INFLOW_GROWTH": 25},
+                weights_json={
+                    "FLOW_VISIBILITY_OPPORTUNITY": 15,
+                    "INFLOW_GROWTH": 10,
+                    "FINGERPRINT_GROWTH_90D": 10,
+                    "DECLARED_TURNOVER_GROWTH": 10,
+                },
             )
             .on_conflict_do_nothing(index_elements=[RuleConfidenceConfiguration.rule_version_id])
+        )
+        session.execute(
+            pg_insert(RuleAuditLog)
+            .values(
+                id=deterministic_uuid("rule-audit", studio_rule_code, 1, "CREATED"),
+                rule_id=studio_rule_id,
+                rule_version=1,
+                action="CREATED",
+                user_id="business.analyst.demo",
+                timestamp=datetime.combine(START_DATE, time(hour=8), tzinfo=timezone.utc),
+                old_value_json=None,
+                new_value_json={**studio_definition, "status": "DRAFT"},
+                reason="Brouillon synthétique seedé pour le circuit gouverné",
+            )
+            .on_conflict_do_nothing(index_elements=[RuleAuditLog.id])
         )
         session.flush()
         tx_buffer = []
@@ -614,6 +788,19 @@ def seed(database_url: str, batch_size: int = 1000) -> dict:
             account_id = deterministic_uuid("account", account_ref)
             scenario = scenario_for(index)
             sector = SECTORS[(index - 1) % len(SECTORS)]
+            transaction_rows = list(generate_transaction_rows(index, customer_id, account_id))
+            multibank_share = MULTIBANK_TARGET_SHARE.get(scenario)
+            boa_inflows = sum(
+                (
+                    row["amount"]
+                    for row in transaction_rows
+                    if row["direction"] == "CREDIT"
+                    and row["category"] != "INTER_BANK_SELF_TRANSFER"
+                ),
+                Decimal(0),
+            )
+            has_si_relationship = multibank_share is not None and index % 3 == 0
+            has_declared_turnover = multibank_share is not None and index % 2 == 0
             customer = {
                 "id": customer_id,
                 "customer_ref": ref,
@@ -624,6 +811,41 @@ def seed(database_url: str, batch_size: int = 1000) -> dict:
                 "incorporated_on": date(2000 + index % 20, index % 12 + 1, index % 27 + 1),
                 "status": "ACTIVE",
                 "rm_id": rms[relationship_manager_index(index, len(rms)) - 1]["id"],
+                "banking_relationship": (
+                    "PRIMARY"
+                    if has_si_relationship and scenario == "MULTIBANK_PRIMARY"
+                    else "SECONDARY"
+                    if has_si_relationship
+                    else None
+                ),
+                "banking_relationship_declared_at": (
+                    datetime.combine(END_DATE, time.min, tzinfo=timezone.utc)
+                    if has_si_relationship
+                    else None
+                ),
+                "banking_relationship_declared_by": (
+                    "demo-data-generator" if has_si_relationship else None
+                ),
+                "banking_relationship_reason": (
+                    "Scénario synthétique multibancaire; HYPOTHÈSE À VALIDER AVEC BOA"
+                    if has_si_relationship
+                    else None
+                ),
+                "banking_relationship_source": (
+                    "INFORMATION_SYSTEM" if has_si_relationship else None
+                ),
+                "declared_turnover": (
+                    (boa_inflows / multibank_share).quantize(Decimal("0.0001"))
+                    if has_declared_turnover and multibank_share is not None
+                    else None
+                ),
+                "declared_turnover_as_of": END_DATE if has_declared_turnover else None,
+                "declared_turnover_entered_by": (
+                    "demo-data-generator" if has_declared_turnover else None
+                ),
+                "declared_turnover_source": (
+                    "INFORMATION_SYSTEM" if has_declared_turnover else None
+                ),
                 "created_by": "demo-data-generator",
             }
             session.execute(
@@ -631,6 +853,28 @@ def seed(database_url: str, batch_size: int = 1000) -> dict:
                 .values(**customer)
                 .on_conflict_do_nothing(index_elements=[Customer.customer_ref])
             )
+            if has_si_relationship or has_declared_turnover:
+                declared_at = datetime.combine(END_DATE, time.min, tzinfo=timezone.utc)
+                session.execute(
+                    pg_insert(CustomerBankingDeclaration)
+                    .values(
+                        id=deterministic_uuid(
+                            "banking-relationship-declaration", customer_id, declared_at
+                        ),
+                        customer_id=customer_id,
+                        banking_relationship=customer["banking_relationship"] or "UNKNOWN",
+                        declared_at=declared_at,
+                        declared_by="demo-data-generator",
+                        reason=("Scénario synthétique multibancaire; HYPOTHÈSE À VALIDER AVEC BOA"),
+                        source="SYNTHETIC_POC",
+                        declared_turnover=customer["declared_turnover"],
+                        declared_turnover_as_of=customer["declared_turnover_as_of"],
+                        declared_turnover_source=(
+                            "SYNTHETIC_POC" if has_declared_turnover else None
+                        ),
+                    )
+                    .on_conflict_do_nothing(index_elements=[CustomerBankingDeclaration.id])
+                )
             manager = rms[relationship_manager_index(index, len(rms)) - 1]
             session.execute(
                 pg_insert(PortfolioAssignment)
@@ -675,7 +919,7 @@ def seed(database_url: str, batch_size: int = 1000) -> dict:
                     )
                     .on_conflict_do_nothing(index_elements=[CustomerProduct.id])
                 )
-            for row in generate_transaction_rows(index, customer_id, account_id):
+            for row in transaction_rows:
                 tx_buffer.append(row)
                 tx_count += 1
                 if len(tx_buffer) >= batch_size:

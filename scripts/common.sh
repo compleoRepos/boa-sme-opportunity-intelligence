@@ -4,6 +4,7 @@ set -Eeuo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd -- "$SCRIPT_DIR/.." && pwd)
 COMPOSE_FILE=${COMPOSE_FILE:-$PROJECT_ROOT/infrastructure/docker-compose.yml}
+COMPOSE_OVERRIDE_FILE=${COMPOSE_OVERRIDE_FILE:-}
 ENV_FILE=${ENV_FILE:-$PROJECT_ROOT/infrastructure/.env}
 
 docker_cli() {
@@ -16,6 +17,9 @@ docker_cli() {
 
 compose() {
   local args=(--file "$COMPOSE_FILE")
+  if [[ -n "$COMPOSE_OVERRIDE_FILE" ]]; then
+    args+=(--file "$COMPOSE_OVERRIDE_FILE")
+  fi
   if [[ -f "$ENV_FILE" ]]; then
     args+=(--env-file "$ENV_FILE")
   fi

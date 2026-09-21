@@ -23,6 +23,7 @@ def opportunity_row(
     status: str = "OPEN",
     expires_at: datetime | None = None,
     cooldown_until: datetime | None = None,
+    opportunity_type: str = "INVESTMENT_FINANCING",
 ) -> Opportunity:
     return Opportunity(
         id=deterministic_uuid("lifecycle-opportunity", ref),
@@ -30,7 +31,7 @@ def opportunity_row(
         customer_id=deterministic_uuid("customer", "SME-00001"),
         customer_ref="SME-00001",
         customer_name="PME Lifecycle",
-        opportunity_type="INVESTMENT_FINANCING",
+        opportunity_type=opportunity_type,
         status=status,
         status_updated_at=NOW - timedelta(days=10),
         status_reason="Initial state",
@@ -529,6 +530,45 @@ def test_expire_due_function_updates_counter_exactly() -> None:
                 days=opportunity_api.lifecycle_policy({})["expired_cooldown_days"]
             )
     engine.dispose()
+
+
+def test_low_visibility_expires_active_cash_opportunity_with_audit(
+    lifecycle_client,
+) -> None:
+    _client, factory = lifecycle_client
+    with factory.begin() as session:
+        session.add(
+            opportunity_row(
+                ref="OPP-CASH-LOW",
+                expires_at=NOW + timedelta(days=30),
+                opportunity_type="CASH_INVESTMENT",
+            )
+        )
+    with factory.begin() as session:
+        suppressed = opportunity_api.suppress_low_visibility_cash_opportunities(
+            session,
+            customer_ref="SME-00001",
+            visibility_level="LOW",
+            as_of=NOW,
+            actor_subject_id="pipeline-test",
+            audit_correlation="visibility-low-test",
+        )
+        assert suppressed == 1
+    with factory() as session:
+        opportunity = session.scalar(
+            select(Opportunity).where(Opportunity.opportunity_ref == "OPP-CASH-LOW")
+        )
+        assert opportunity is not None
+        assert opportunity.status == "EXPIRED"
+        assert opportunity.status_reason == "Placement retiré : visibilité des flux faible"
+        audit = session.scalar(
+            select(AuditLog).where(
+                AuditLog.resource_id == "OPP-CASH-LOW",
+                AuditLog.action == "OPPORTUNITY_EXPIRED_LOW_VISIBILITY",
+            )
+        )
+        assert audit is not None
+        assert audit.correlation_id == "visibility-low-test"
 
 
 __all__ = ["opportunity_row"]

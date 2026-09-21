@@ -64,9 +64,43 @@ class Customer(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     scenario_code: Mapped[str] = mapped_column(String(40))
     incorporated_on: Mapped[date] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(20), default="ACTIVE")
+    banking_relationship: Mapped[str | None] = mapped_column(String(20))
+    banking_relationship_declared_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    banking_relationship_declared_by: Mapped[str | None] = mapped_column(String(120))
+    banking_relationship_reason: Mapped[str | None] = mapped_column(Text)
+    banking_relationship_source: Mapped[str | None] = mapped_column(String(30))
+    declared_turnover: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
+    declared_turnover_as_of: Mapped[date | None] = mapped_column(Date)
+    declared_turnover_entered_by: Mapped[str | None] = mapped_column(String(120))
+    declared_turnover_source: Mapped[str | None] = mapped_column(String(30))
     rm_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("customer.relationship_managers.id")
     )
+
+
+class CustomerBankingDeclaration(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "banking_relationship_declarations"
+    __table_args__ = (
+        Index(
+            "ix_banking_declarations_customer_time",
+            "customer_id",
+            "declared_at",
+        ),
+        {"schema": "customer"},
+    )
+    customer_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("customer.customers.id")
+    )
+    banking_relationship: Mapped[str] = mapped_column(String(20))
+    declared_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    declared_by: Mapped[str] = mapped_column(String(120))
+    reason: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(30))
+    declared_turnover: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
+    declared_turnover_as_of: Mapped[date | None] = mapped_column(Date)
+    declared_turnover_source: Mapped[str | None] = mapped_column(String(30))
 
 
 class PortfolioAssignment(Base, UUIDPrimaryKeyMixin):
@@ -203,6 +237,9 @@ class Transaction(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     country_code: Mapped[str] = mapped_column(String(2))
     status: Mapped[str] = mapped_column(String(20), default="BOOKED")
     source_system: Mapped[str] = mapped_column(String(40), default="MOCK_PAYMENTS")
+    counterparty_name: Mapped[str | None] = mapped_column(String(180))
+    remittance_information: Mapped[str | None] = mapped_column(String(500))
+    externally_domiciled: Mapped[bool] = mapped_column(Boolean, default=False)
     import_batch_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("integration.import_batches.id")
     )
@@ -377,6 +414,55 @@ class MetricDefinition(Base, UUIDPrimaryKeyMixin):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class FlowVisibilitySnapshot(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "flow_visibility_snapshots"
+    __table_args__ = (
+        UniqueConstraint("customer_id", "as_of_date", "calculation_version"),
+        Index("ix_flow_visibility_customer_asof", "customer_id", "as_of_date"),
+        {"schema": "analytics"},
+    )
+    customer_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
+    customer_ref: Mapped[str] = mapped_column(String(40))
+    as_of_date: Mapped[date] = mapped_column(Date)
+    level: Mapped[str] = mapped_column(String(20))
+    estimated_share: Mapped[Decimal | None] = mapped_column(Numeric(8, 6))
+    method: Mapped[str] = mapped_column(String(40))
+    evidence_json: Mapped[list] = mapped_column(JSON, default=list)
+    fingerprint_count_90d: Mapped[int] = mapped_column(Integer, default=0)
+    fingerprint_previous_90d: Mapped[int] = mapped_column(Integer, default=0)
+    categorization_coverage: Mapped[Decimal] = mapped_column(Numeric(8, 6), default=0)
+    calculation_version: Mapped[str] = mapped_column(String(40))
+    input_watermark: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    created_by: Mapped[str] = mapped_column(String(120))
+
+
+class FlowVisibilityPolicy(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "flow_visibility_policies"
+    __table_args__ = (
+        UniqueConstraint("policy_id", "version"),
+        Index(
+            "uq_flow_visibility_policy_active",
+            "policy_id",
+            unique=True,
+            postgresql_where=text("active = true"),
+            sqlite_where=text("active = 1"),
+        ),
+        {"schema": "analytics"},
+    )
+    policy_id: Mapped[str] = mapped_column(String(80))
+    version: Mapped[int] = mapped_column(Integer)
+    active: Mapped[bool] = mapped_column(Boolean, default=False)
+    configuration_json: Mapped[dict] = mapped_column(JSON)
+    justification: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    created_by: Mapped[str] = mapped_column(String(120))
+
+
 class MetricValue(Base):
     __tablename__ = "metric_values"
     __table_args__ = {"schema": "analytics"}
@@ -491,6 +577,9 @@ class Opportunity(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     what_text: Mapped[str] = mapped_column(Text, default="")
     when_text: Mapped[str] = mapped_column(Text, default="")
     recommended_products_json: Mapped[list] = mapped_column(JSON, default=list)
+    recommendation_nature: Mapped[str] = mapped_column(
+        String(30), default="NEED_DISCOVERY", server_default="NEED_DISCOVERY"
+    )
     explanation_json: Mapped[dict] = mapped_column(JSON, default=dict)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     engine_version: Mapped[str] = mapped_column(String(100), default="0.1.0")
@@ -558,6 +647,7 @@ class OpportunityAction(Base, UUIDPrimaryKeyMixin):
     action_ref: Mapped[str] = mapped_column(String(80), unique=True)
     opportunity_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
     opportunity_ref: Mapped[str] = mapped_column(String(80))
+    opportunity_type: Mapped[str | None] = mapped_column(String(80))
     customer_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
     customer_ref: Mapped[str] = mapped_column(String(40))
     action_type: Mapped[str] = mapped_column(String(40))
@@ -1115,6 +1205,19 @@ class FeatureMaterialization(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     sources_json: Mapped[list] = mapped_column(JSON)
     lineage_json: Mapped[list] = mapped_column(JSON, default=list)
     checksum: Mapped[str] = mapped_column(String(64))
+
+
+class FeatureSetRegistry(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "feature_set_registry"
+    __table_args__ = {"schema": "feature_store"}
+    feature_set_version: Mapped[str] = mapped_column(String(40), unique=True)
+    status: Mapped[str] = mapped_column(String(30))
+    definition_json: Mapped[dict] = mapped_column(JSON)
+    checksum: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    created_by: Mapped[str] = mapped_column(String(120))
 
 
 class ModelRegistry(Base, UUIDPrimaryKeyMixin, TimestampMixin):

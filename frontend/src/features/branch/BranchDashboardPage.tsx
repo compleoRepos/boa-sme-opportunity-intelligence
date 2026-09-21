@@ -18,6 +18,8 @@ export function BranchDashboardPage() {
   const data = dashboard.data
   const { kpis } = data
   const managers = [...data.relationshipManagers].sort((a, b) => b.highPriorityCustomers - a.highPriorityCustomers)
+  const domiciliation = data.opportunitiesByType?.find((item) => item.opportunityType === 'FLOW_DOMICILIATION')
+  const domiciliationShare = domiciliation?.share ?? (kpis.openOpportunities ? (domiciliation?.count || 0) / kpis.openOpportunities : 0)
 
   return <>
     <header className="page-head" data-demo="branch">
@@ -53,9 +55,10 @@ export function BranchDashboardPage() {
       <Panel eyebrow="Opportunités" title="Par secteur" id="by-sector"><BreakdownBars items={data.opportunitiesBySector} nameKey="sector" colorFor={() => CHART.teal} /></Panel>
       <Panel eyebrow="Opportunités" title="Par produit potentiel" id="by-product"><BreakdownBars items={data.opportunitiesByProduct} nameKey="product" colorFor={() => CHART.violet} labelFor={(item) => item.product || '—'} /></Panel>
     </section>
+    <div className="legend opportunity-legend" aria-label="Légende des types d’opportunité">{data.opportunitiesByType?.map((item) => item.opportunityType && <span key={item.opportunityType}><i style={{ background: OPPORTUNITY_COLORS[item.opportunityType] || CHART.blue }} /> {label(item.opportunityType)}</span>)}</div>
 
     <section className="grid cols-3">
-      <Panel eyebrow="Priorités clients" title="Distribution agence" id="priority-dist"><PriorityStack items={data.priorityDistribution} /></Panel>
+      <Panel eyebrow="Visibilité des flux" title="Répartition des PME" id="visibility-dist"><VisibilityStack items={data.visibilityDistribution || []} /></Panel>
       <Panel eyebrow="Évolution" title="Opportunités générées" id="timeline" tools={<span className="muted" style={{ fontSize: 12 }}>par date de génération</span>}><TimelineChart points={data.opportunityTimeline} name="Opportunités" />{(data.opportunityTimeline?.length || 0) <= 1 && <p className="faint" style={{ fontSize: 11, marginTop: 6 }}>Une seule exécution du moteur à ce jour : la courbe s’enrichira à chaque recalcul.</p>}</Panel>
       <Panel eyebrow="Actions commerciales" title="Actions et résultats" id="actions">
         {data.actionsByType?.length ? <div className="stack"><BreakdownBars items={data.actionsByType} nameKey="actionType" colorFor={() => CHART.blue} max={6} /><div className="divider" /><p className="eyebrow">Outcomes</p><BreakdownBars items={data.outcomes} nameKey="outcome" colorFor={(name) => OUTCOME_COLORS[name] || CHART.blue} max={6} /></div> : <EmptyState compact title="Aucune action enregistrée" message="Les actions des CC et leurs résultats apparaîtront ici en temps réel." />}
@@ -63,10 +66,17 @@ export function BranchDashboardPage() {
     </section>
 
     <section className="grid cols-2">
-      <Panel eyebrow="Conversions" title="Entonnoir commercial" id="funnel"><Funnel stages={data.conversionFunnel} /></Panel>
+      <Panel eyebrow="Conversions" title="Entonnoir commercial" id="funnel"><Funnel stages={data.conversionFunnel} /><div className="funnel-domiciliation"><span><i style={{ background: OPPORTUNITY_COLORS.FLOW_DOMICILIATION }} /> Domiciliation des flux</span><strong>{formatNumber(domiciliation?.count || 0)} · {formatPercent(domiciliationShare)}</strong></div></Panel>
       <Panel eyebrow="Répartition" title="Opportunités par CC" id="by-rm"><BreakdownBars items={data.opportunitiesByRelationshipManager} nameKey="relationshipManagerId" labelFor={(item) => item.relationshipManagerName || item.relationshipManagerId || '—'} colorFor={() => CHART.blue} onSelect={(id) => navigate(`/agence/cc/${encodeURIComponent(id)}`)} /></Panel>
     </section>
 
     <div className="notice neutral"><TrendingUp size={16} /><div><strong>Pilotage commercial uniquement</strong>Les priorités issues des règles ordonnent le travail de l’agence. Les propensions restent observées en shadow, sans effet sur cet ordre. Aucune de ces informations ne déclenche une décision de crédit. Types : {data.opportunitiesByType?.map((item) => label(item.opportunityType)).join(', ') || '—'}.</div></div>
   </>
+}
+
+const VISIBILITY_COLORS: Record<string, string> = { HIGH: CHART.green, PARTIAL: CHART.amber, LOW: CHART.red, UNKNOWN: '#94a3b8' }
+
+export function VisibilityStack({ items }: { items: Array<{ level: string; count: number; share?: number }> }) {
+  const total = items.reduce((sum, item) => sum + item.count, 0)
+  return <div className="visibility-stack"><div className="visibility-stack-bar" aria-hidden="true">{items.map((item) => item.count > 0 && <i key={item.level} style={{ width: `${(item.count / Math.max(total, 1)) * 100}%`, background: VISIBILITY_COLORS[item.level] }} />)}</div><ul>{items.map((item) => <li key={item.level}><i style={{ background: VISIBILITY_COLORS[item.level] }} /><span>{label(item.level)}</span><b className="num">{formatNumber(item.count)}</b><small className="num">{formatPercent(item.share ?? (total ? item.count / total : 0))}</small></li>)}</ul><p className="faint">HYPOTHÈSE À VALIDER AVEC BOA · données BOA et déclarations autorisées uniquement.</p></div>
 }

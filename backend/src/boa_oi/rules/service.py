@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from boa_oi.catalog import PRODUCTS_BY_CODE
 from boa_oi.models.entities import (
+    FlowVisibilityPolicy,
     Rule,
     RuleAction,
     RuleApproval,
@@ -426,6 +427,27 @@ def transition(
         for item in previous:
             item.status = "RETIRED"
         rule.active_version = version.version
+        recommendation = version.configuration_json.get("recommendation") or {}
+        if recommendation.get("opportunityType") == "FLOW_DOMICILIATION":
+            pending_policy = session.scalar(
+                select(FlowVisibilityPolicy)
+                .where(FlowVisibilityPolicy.active.is_(False))
+                .order_by(FlowVisibilityPolicy.version.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            if pending_policy is not None:
+                active_policies = list(
+                    session.scalars(
+                        select(FlowVisibilityPolicy)
+                        .where(FlowVisibilityPolicy.active.is_(True))
+                        .with_for_update()
+                    )
+                )
+                for policy in active_policies:
+                    policy.active = False
+                session.flush()
+                pending_policy.active = True
     if event == "disable":
         rule.disabled_reason = reason
     payload = dict(version.configuration_json)

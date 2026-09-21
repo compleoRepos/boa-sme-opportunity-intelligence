@@ -199,3 +199,75 @@ def test_configured_threshold_change_changes_decision(rule_set, valid_context_fa
     }
     assert OpportunityEngine(rule_set).evaluate(valid_context_factory(facts=facts))
     assert not OpportunityEngine(changed).evaluate(valid_context_factory(facts=facts))
+
+
+def test_flow_domiciliation_triggers_as_win_back_with_governed_copy(
+    rule_set, valid_context_factory
+):
+    raw = rule_set.model_dump(mode="python")
+    raw["opportunity_rules"]["FLOW_DOMICILIATION"]["enabled"] = True
+    engine = OpportunityEngine(RuleSetConfig.model_validate(raw))
+    facts = {
+        "flow_visibility_opportunity": True,
+        "inflow_growth_rate": 0.12,
+        "fingerprint_growth_90d": 0,
+        "declared_turnover_growth_rate": 0,
+        "no_recent_domiciliation_action": True,
+    }
+
+    candidates = engine.evaluate(
+        valid_context_factory(facts=facts, flow_visibility_level="PARTIAL")
+    )
+    candidate = next(item for item in candidates if item.opportunity_type == "FLOW_DOMICILIATION")
+
+    assert candidate.recommendation_nature == "WIN_BACK"
+    assert candidate.recommended_products == (
+        "BOA_PACK_BUSINESS_PME",
+        "BOA_BUSINESS_ONLINE",
+        "BOA_VIREMENT_MASSE",
+        "BOA_PRELEVEMENT_MASSE",
+    )
+    assert candidate.what == (
+        "Part de flux estimée faible ou partielle chez BANK OF AFRICA : proposer la "
+        "domiciliation des flux et des salaires."
+    )
+    assert candidate.when == "Contacter dans les 1 à 3 mois."
+    assert not any(item["name"] == "visibility" for item in candidate.confidence_components)
+
+
+def test_flow_domiciliation_does_not_trigger_after_recent_action(rule_set, valid_context_factory):
+    facts = {
+        "flow_visibility_opportunity": True,
+        "inflow_growth_rate": 0.12,
+        "fingerprint_growth_90d": 0,
+        "declared_turnover_growth_rate": 0,
+        "no_recent_domiciliation_action": False,
+    }
+
+    assert "FLOW_DOMICILIATION" not in types(
+        OpportunityEngine(rule_set),
+        valid_context_factory(facts=facts, flow_visibility_level="LOW"),
+    )
+
+
+def test_low_visibility_suppresses_cash_and_penalizes_other_sensitive_signal(
+    rule_set, valid_context_factory
+):
+    facts = {
+        "average_balance": 2000000,
+        "surplus_day_ratio": 0.9,
+        "surplus_persistence_periods": 3,
+        "credit_line_utilization": 0.1,
+        "inflow_growth_rate": -0.30,
+        "balance_growth_rate": -0.25,
+        "credit_utilization_change": 0.25,
+    }
+    candidates = OpportunityEngine(rule_set).evaluate(
+        valid_context_factory(facts=facts, flow_visibility_level="LOW")
+    )
+
+    assert "CASH_INVESTMENT" not in {item.opportunity_type for item in candidates}
+    stress = next(item for item in candidates if item.opportunity_type == "FINANCIAL_STRESS_SIGNAL")
+    visibility = next(item for item in stress.confidence_components if item["name"] == "visibility")
+    assert visibility["points"] == -25
+    assert visibility["reason"] == "Visibilité des flux faible : signal de niveau pondéré"

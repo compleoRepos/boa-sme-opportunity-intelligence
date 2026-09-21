@@ -46,6 +46,8 @@ class OpportunityRuleConfig(BaseModel):
     confidence_weights: dict[str, float]
     priority_defaults: dict[str, float]
     minimum_data_coverage: float = Field(default=0.83, ge=0, le=1)
+    visibility_sensitivity: Literal["ROBUST", "SENSITIVE"] = "ROBUST"
+    visibility_policy: dict[str, Any] = Field(default_factory=dict)
     lifecycle: LifecyclePolicyConfig = Field(default_factory=LifecyclePolicyConfig)
 
     @field_validator("confidence_weights")
@@ -68,6 +70,7 @@ class SignalRuleConfig(BaseModel):
     minimum_sample_size: int = Field(default=1, ge=1)
     require_confirmation: bool = True
     strong_evidence_margin: float = Field(default=0.50, ge=0)
+    visibility_sensitivity: Literal["ROBUST", "SENSITIVE"] = "ROBUST"
 
 
 class ConfidenceLevelsConfig(BaseModel):
@@ -119,12 +122,13 @@ class RuleSetConfig(BaseModel):
     opportunity_rules: dict[str, OpportunityRuleConfig]
 
     @model_validator(mode="after")
-    def exactly_four_mvp_rules(self) -> RuleSetConfig:
+    def exactly_five_mvp_rules(self) -> RuleSetConfig:
         required = {
             "INVESTMENT_FINANCING",
             "TRADE_FINANCE",
             "CASH_INVESTMENT",
             "FINANCIAL_STRESS_SIGNAL",
+            "FLOW_DOMICILIATION",
         }
         if set(self.opportunity_rules) != required:
             raise ValueError(f"opportunity rules must be exactly {sorted(required)}")

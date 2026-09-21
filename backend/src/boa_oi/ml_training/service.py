@@ -514,9 +514,9 @@ def execute_training_job(factory: sessionmaker[Session], job_id: UUID) -> None:
 
         label, start, end = STEPS[3]
         _step_start(factory, job_id, label, start)
-        from sklearn.linear_model import LogisticRegression  # type: ignore[import-not-found]
-        from sklearn.pipeline import make_pipeline  # type: ignore[import-not-found]
-        from sklearn.preprocessing import StandardScaler  # type: ignore[import-not-found]
+        from sklearn.linear_model import LogisticRegression  # type: ignore[import-untyped]
+        from sklearn.pipeline import make_pipeline  # type: ignore[import-untyped]
+        from sklearn.preprocessing import StandardScaler  # type: ignore[import-untyped]
 
         with factory() as session:
             job = session.get(MLTrainingJob, job_id)
@@ -542,7 +542,7 @@ def execute_training_job(factory: sessionmaker[Session], job_id: UUID) -> None:
 
         label, start, end = STEPS[4]
         _step_start(factory, job_id, label, start)
-        from sklearn.metrics import (  # type: ignore[import-not-found]
+        from sklearn.metrics import (  # type: ignore[import-untyped]
             average_precision_score,
             brier_score_loss,
             confusion_matrix,

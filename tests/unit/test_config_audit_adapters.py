@@ -20,8 +20,9 @@ from boa_oi.technical.ids import deterministic_uuid
 from pydantic import ValidationError
 
 
-def test_config_exactly_four_active_versioned_rules_and_checksum(rule_set):
-    assert len(rule_set.opportunity_rules) == 4 and rule_set.status == "ACTIVE"
+def test_config_exactly_five_active_versioned_rules_and_checksum(rule_set):
+    assert len(rule_set.opportunity_rules) == 5 and rule_set.status == "ACTIVE"
+    assert "FLOW_DOMICILIATION" in rule_set.opportunity_rules
     assert rule_set.checksum() == rule_set.checksum() and len(rule_set.checksum()) == 64
     for rule in rule_set.opportunity_rules.values():
         ensure_relational_language(rule.model_dump(mode="json"))

@@ -28,7 +28,12 @@ FAMILIES: dict[str, str] = {
 }
 
 # Ordre de préférence lorsqu'une famille est détenue par plusieurs produits.
-_OWNERSHIP_RANK = {"OWNED": 2, "UNDERUTILIZED": 1, "ABSENT": 0}
+_OWNERSHIP_RANK = {
+    "OWNED": 3,
+    "UNDERUTILIZED": 2,
+    "ABSENT_OR_ELSEWHERE": 1,
+    "ABSENT": 0,
+}
 
 
 @dataclass(frozen=True)
@@ -366,8 +371,9 @@ def family_status(gaps: list[dict[str, object]]) -> dict[str, str]:
     """Statut de détention par famille ET par produit, à partir de `/product-gaps`.
 
     Une famille est OWNED dès qu'un de ses produits est détenu, UNDERUTILIZED si le
-    meilleur produit détenu est sous-utilisé, ABSENT sinon. Les codes produits restent
-    présents pour les règles qui ciblent un produit précis.
+    meilleur produit détenu est sous-utilisé, ABSENT_OR_ELSEWHERE si la visibilité
+    multibancaire requalifie au moins une absence, ABSENT sinon. Les codes produits
+    restent présents pour les règles qui ciblent un produit précis.
     """
     status: dict[str, str] = {}
     for item in gaps:

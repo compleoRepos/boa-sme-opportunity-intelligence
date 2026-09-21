@@ -11,14 +11,15 @@ from typing import Annotated, Any, Literal
 
 from fastapi import Depends, Header, Query, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from boa_oi.analytics.domain import BalanceFact, MetricSnapshot, TransactionFact
 from boa_oi.analytics.service import SUPPORTED_WINDOWS, AnalyticsEngine
 from boa_oi.http_clients import service_request
-from boa_oi.models.entities import ImportBatch
+from boa_oi.models.entities import FlowVisibilityPolicy, ImportBatch
+from boa_oi.models.entities import FlowVisibilitySnapshot as FlowVisibilitySnapshotRecord
 from boa_oi.models.entities import MetricSnapshot as MetricSnapshotRecord
 from boa_oi.platform import (
     ANALYTICS_ROLES,
@@ -33,6 +34,7 @@ from boa_oi.platform import (
     require_roles,
 )
 from boa_oi.technical.ids import deterministic_uuid
+from boa_oi.visibility import VisibilityTransaction, estimate_flow_visibility
 
 app = create_service_app(
     "analytics-service", "Persisted financial metrics for 7/30/90/180/365-day windows."
@@ -46,6 +48,7 @@ CHECKPOINT_SOURCE = "ANALYTICS_CHECKPOINT"
 class AnalyticsInputs:
     transactions: tuple[TransactionFact, ...]
     balances: tuple[BalanceFact, ...]
+    customer: dict[str, Any] | None = None
 
 
 class RecomputeRequest(BaseModel):
@@ -86,7 +89,13 @@ def _canonical_hash(value: Any) -> str:
     return hashlib.sha256(encoded.encode()).hexdigest()
 
 
-def analytics_input_hash(inputs: AnalyticsInputs, *, as_of: date, periods: list[str]) -> str:
+def analytics_input_hash(
+    inputs: AnalyticsInputs,
+    *,
+    as_of: date,
+    periods: list[str],
+    visibility_policy: dict[str, Any] | None = None,
+) -> str:
     transactions = sorted(
         (
             {
@@ -122,9 +131,11 @@ def analytics_input_hash(inputs: AnalyticsInputs, *, as_of: date, periods: list[
         {
             "asOf": as_of.isoformat(),
             "calculationVersion": CALCULATION_VERSION,
+            "visibilityPolicy": visibility_policy or {},
             "periods": sorted(periods),
             "transactions": transactions,
             "balances": balances,
+            "customer": inputs.customer or {},
         }
     )
 
@@ -452,6 +463,13 @@ async def load_analytics_inputs(
         params={"pageSize": 100},
         incoming_authorization=auth,
     )
+    customer = await service_request(
+        "GET",
+        f"{dependency_url('customer')}/internal/v1/customers/{customer_id}",
+        correlation_id=corr,
+        params={"asOf": as_of.isoformat()},
+        incoming_authorization=auth,
+    )
     transactions = tuple(
         TransactionFact(
             transaction_ref=row["transactionId"],
@@ -462,7 +480,7 @@ async def load_analytics_inputs(
             amount=Decimal(str(row["amount"])),
             category=row.get("category") or "OTHER",
             is_international=bool(row.get("international")),
-            status="BOOKED",
+            status=row.get("status") or "BOOKED",
             is_internal_transfer=False,
         )
         for row in transaction_rows
@@ -490,7 +508,112 @@ async def load_analytics_inputs(
             )
             for row in balance_page["data"]
         )
-    return AnalyticsInputs(transactions=transactions, balances=tuple(balances))
+    return AnalyticsInputs(
+        transactions=transactions,
+        balances=tuple(balances),
+        customer={**customer, "transactionRows": transaction_rows},
+    )
+
+
+def active_visibility_policy(session: Session) -> tuple[int | None, dict[str, Any]]:
+    bind = session.get_bind()
+    if bind.dialect.name == "sqlite" and not inspect(bind).has_table(
+        FlowVisibilityPolicy.__tablename__, schema="analytics"
+    ):
+        return None, {}
+    row = session.scalar(
+        select(FlowVisibilityPolicy)
+        .where(FlowVisibilityPolicy.active.is_(True))
+        .order_by(FlowVisibilityPolicy.version.desc())
+        .limit(1)
+    )
+    return (row.version, dict(row.configuration_json)) if row is not None else (None, {})
+
+
+def persist_flow_visibility(
+    customer_id: str,
+    as_of: date,
+    inputs: AnalyticsInputs,
+    input_hash: str,
+    session: Session,
+) -> None:
+    customer = inputs.customer or {}
+    rows = customer.get("transactionRows", [])
+    declaration = customer.get("bankingRelationshipDeclaration") or {}
+    policy_version, policy = active_visibility_policy(session)
+    estimate = estimate_flow_visibility(
+        as_of=as_of,
+        banking_relationship=customer.get("bankingRelationship"),
+        relationship_as_of=(
+            datetime.fromisoformat(declaration["declaredAt"])
+            if declaration.get("declaredAt")
+            else None
+        ),
+        declared_turnover=(
+            Decimal(str(customer["declaredTurnover"]))
+            if customer.get("declaredTurnover") is not None
+            else None
+        ),
+        turnover_as_of=(
+            date.fromisoformat(customer["declaredTurnoverAsOf"])
+            if customer.get("declaredTurnoverAsOf")
+            else None
+        ),
+        transactions=(
+            VisibilityTransaction(
+                value_date=date.fromisoformat(row["valueDate"]),
+                direction=row["direction"],
+                amount=Decimal(str(row["amount"])),
+                category=row.get("category") or "OTHER",
+                status=row.get("status") or "BOOKED",
+            )
+            for row in rows
+        ),
+        high_share=float(policy.get("highShare", 0.70)),
+        partial_share=float(policy.get("partialShare", 0.30)),
+        fingerprint_threshold=int(policy.get("fingerprints90d", 2)),
+    )
+    calculation_version = (
+        f"{CALCULATION_VERSION}+visibility-policy-v{policy_version}"
+        if policy_version is not None
+        else f"{CALCULATION_VERSION}+visibility-policy-default"
+    )
+    session.execute(
+        pg_insert(FlowVisibilitySnapshotRecord)
+        .values(
+            id=deterministic_uuid("flow-visibility", customer_id, as_of, calculation_version),
+            customer_id=deterministic_uuid("customer", customer_id),
+            customer_ref=customer_id,
+            as_of_date=as_of,
+            level=estimate.level,
+            estimated_share=estimate.estimated_share,
+            method=estimate.method,
+            evidence_json=list(estimate.evidence),
+            fingerprint_count_90d=estimate.fingerprint_count_90d,
+            fingerprint_previous_90d=estimate.fingerprint_previous_90d,
+            categorization_coverage=estimate.categorization_coverage,
+            calculation_version=calculation_version,
+            input_watermark=input_hash,
+            created_by="analytics-service",
+        )
+        .on_conflict_do_update(
+            index_elements=[
+                FlowVisibilitySnapshotRecord.customer_id,
+                FlowVisibilitySnapshotRecord.as_of_date,
+                FlowVisibilitySnapshotRecord.calculation_version,
+            ],
+            set_={
+                "level": estimate.level,
+                "estimated_share": estimate.estimated_share,
+                "method": estimate.method,
+                "evidence_json": list(estimate.evidence),
+                "fingerprint_count_90d": estimate.fingerprint_count_90d,
+                "fingerprint_previous_90d": estimate.fingerprint_previous_90d,
+                "categorization_coverage": estimate.categorization_coverage,
+                "input_watermark": input_hash,
+            },
+        )
+    )
 
 
 def persist_analytics_metrics(
@@ -503,6 +626,7 @@ def persist_analytics_metrics(
 ) -> int:
     engine = AnalyticsEngine()
     count = 0
+    persist_flow_visibility(customer_id, as_of, inputs, input_hash, session)
     history_days, observed_from = observed_history(inputs.transactions, as_of)
     for period in periods:
         days = int(period.removesuffix("D"))
@@ -580,7 +704,13 @@ async def recompute_one(
 ) -> int:
     validate_periods(periods)
     inputs = await load_analytics_inputs(customer_id, as_of, request)
-    input_hash = analytics_input_hash(inputs, as_of=as_of, periods=periods)
+    policy_version, policy = active_visibility_policy(session)
+    input_hash = analytics_input_hash(
+        inputs,
+        as_of=as_of,
+        periods=periods,
+        visibility_policy={"version": policy_version, **policy},
+    )
     return persist_analytics_metrics(customer_id, as_of, periods, inputs, input_hash, session)
 
 
@@ -595,7 +725,13 @@ async def incremental_by_customer(
     evaluated_at = datetime.now(timezone.utc)
     for customer_id in payload.customerIds:
         inputs = await load_analytics_inputs(customer_id, payload.asOf, request)
-        input_hash = analytics_input_hash(inputs, as_of=payload.asOf, periods=payload.periods)
+        policy_version, policy = active_visibility_policy(session)
+        input_hash = analytics_input_hash(
+            inputs,
+            as_of=payload.asOf,
+            periods=payload.periods,
+            visibility_policy={"version": policy_version, **policy},
+        )
         ref = checkpoint_ref(
             "CUSTOMER",
             customer_ids=[customer_id],
@@ -638,11 +774,13 @@ async def incremental_by_batch(
         customer_id: await load_analytics_inputs(customer_id, payload.asOf, request)
         for customer_id in payload.customerIds
     }
+    policy_version, policy = active_visibility_policy(session)
     hashes = {
         customer_id: analytics_input_hash(
             inputs,
             as_of=payload.asOf,
             periods=payload.periods,
+            visibility_policy={"version": policy_version, **policy},
         )
         for customer_id, inputs in inputs_by_customer.items()
     }

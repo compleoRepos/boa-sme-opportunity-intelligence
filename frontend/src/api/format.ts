@@ -12,6 +12,7 @@ const defaultLabels: Record<string, string> = {
   PACKAGE: 'Forfait',
   DIGITAL: 'Banque à distance',
   CASH_INVESTMENT: 'Placement de trésorerie',
+  FLOW_DOMICILIATION: 'Domiciliation des flux',
   FINANCIAL_STRESS_SIGNAL: 'Signal de tension financière',
   INFLOW_GROWTH: 'Croissance des encaissements',
   OUTFLOW_GROWTH: 'Croissance des décaissements',
@@ -43,6 +44,16 @@ const defaultLabels: Record<string, string> = {
   HIGH: 'Élevée',
   MEDIUM: 'Moyenne',
   LOW: 'Faible',
+  PARTIAL: 'Partielle',
+  UNKNOWN: 'Inconnue',
+  EXCLUSIVE: 'Exclusive',
+  PRIMARY: 'Principale',
+  SECONDARY: 'Secondaire',
+  DECLARED: 'Déclarée',
+  TURNOVER_RATIO: 'Rapport encaissements / chiffre d’affaires',
+  TRANSACTION_FINGERPRINTS: 'Empreintes de multibancarisation',
+  BANKING_RELATIONSHIP_DECLARED: 'Relation bancaire déclarée',
+  visibility: 'Visibilité des flux',
   ACTIVE: 'Actif',
   DRAFT: 'Brouillon',
   VALIDATED: 'Validée',
@@ -234,7 +245,7 @@ export const formatShortDate = (value?: string | null) => {
 
 export const initials = (name?: string) => (name || '?').split(/\s+/).map((part) => part[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
 
-export const opportunityTone = (type?: string) => type === 'FINANCIAL_STRESS_SIGNAL' ? 'warning' : type === 'TRADE_FINANCE' ? 'teal' : type === 'CASH_INVESTMENT' ? 'violet' : 'info'
+export const opportunityTone = (type?: string) => type === 'FINANCIAL_STRESS_SIGNAL' ? 'warning' : type === 'TRADE_FINANCE' || type === 'FLOW_DOMICILIATION' ? 'teal' : type === 'CASH_INVESTMENT' ? 'violet' : 'info'
 
 export const formatDate = (value?: string | null, includeTime = false) => {
   if (!value) return '—'

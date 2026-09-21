@@ -57,7 +57,12 @@ def action_context(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[TestClient
     async def fake_service_request(method: str, url: str, **kwargs: Any) -> dict[str, Any]:
         calls.append((method, url, kwargs.get("json")))
         if method == "GET":
-            return {"opportunityId": "OPP-001", "customerId": "SME-00001", "status": "OPEN"}
+            return {
+                "opportunityId": "OPP-001",
+                "opportunityType": "FLOW_DOMICILIATION",
+                "customerId": "SME-00001",
+                "status": "OPEN",
+            }
         if app.state.transition_failures_remaining:
             app.state.transition_failures_remaining -= 1
             raise action_api.Problem(503, "DEPENDENCY_UNAVAILABLE", "simulated failure")
@@ -130,6 +135,7 @@ def test_create_action_transitions_opportunity_and_writes_audit(action_context):
     )
 
     assert response.status_code == 201
+    assert response.json()["opportunityType"] == "FLOW_DOMICILIATION"
     calls = client.app.state.test_transition_calls
     assert calls[-1][2] == {
         "status": "ACCEPTED",
@@ -137,6 +143,9 @@ def test_create_action_transitions_opportunity_and_writes_audit(action_context):
         "actorSubjectId": "rm-action-test",
     }
     with factory() as session:
+        action = session.scalar(select(OpportunityAction))
+        assert action is not None
+        assert action.opportunity_type == "FLOW_DOMICILIATION"
         audit = session.scalar(select(AuditLog).where(AuditLog.action == "ACTION_CREATED"))
         assert audit is not None
         assert audit.metadata_json["before"] is None

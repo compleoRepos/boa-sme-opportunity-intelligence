@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import datetime, timezone
+from typing import Literal
 
-from boa_oi.confidence import ConfidenceScoreCalculator
+from boa_oi.confidence import ConfidenceComponent, ConfidenceResult, ConfidenceScoreCalculator
 from boa_oi.priority import PriorityScoreCalculator
 from boa_oi.technical.config import RuleSetConfig
 from boa_oi.technical.ids import deterministic_uuid
+from boa_oi.visibility import visibility_explanation, visibility_penalty_points
 
 from .domain import OpportunityCandidate, OpportunityContext
 from .strategies import RuleBasedOpportunityStrategy, StatisticalOpportunityStrategy
@@ -47,6 +49,8 @@ class OpportunityEngine:
     def evaluate(self, context: OpportunityContext) -> tuple[OpportunityCandidate, ...]:
         candidates: list[OpportunityCandidate] = []
         for opportunity_type, rule in sorted(self.config.opportunity_rules.items()):
+            if opportunity_type == "CASH_INVESTMENT" and context.flow_visibility_level == "LOW":
+                continue
             if not rule.enabled or not self.statistical_guard.allows(context, rule):
                 continue
             matched, evidence = self.rule_strategy.evaluate(context, rule)
@@ -60,6 +64,39 @@ class OpportunityEngine:
             confidence = confidence_calculator.calculate(
                 context.confidence_factors or self._default_confidence(context, opportunity_type)
             )
+            if rule.visibility_sensitivity == "SENSITIVE":
+                flow_rule = self.config.opportunity_rules.get("FLOW_DOMICILIATION")
+                visibility_policy = flow_rule.visibility_policy if flow_rule else {}
+                penalty = visibility_penalty_points(
+                    context.flow_visibility_level,
+                    partial=int(visibility_policy.get("partialPenaltyPoints", -10)),
+                    low=int(visibility_policy.get("lowPenaltyPoints", -25)),
+                    unknown=int(visibility_policy.get("unknownPenaltyPoints", -5)),
+                )
+                adjusted_score = round(max(0.0, confidence.score + penalty / 100), 6)
+                adjusted_level: Literal["LOW", "MEDIUM", "HIGH"] = (
+                    "HIGH"
+                    if adjusted_score >= self.config.confidence_levels.high
+                    else "MEDIUM"
+                    if adjusted_score >= self.config.confidence_levels.medium
+                    else "LOW"
+                )
+                confidence = ConfidenceResult(
+                    score=adjusted_score,
+                    level=adjusted_level,
+                    components=(
+                        *confidence.components,
+                        ConfidenceComponent(
+                            name="visibility",
+                            weight=abs(float(penalty)),
+                            raw_value=float(penalty),
+                            normalized_value=1.0 if penalty == 0 else 0.0,
+                            points=float(penalty),
+                            reason=visibility_explanation(context.flow_visibility_level),
+                        ),
+                    ),
+                    maximum_points=confidence.maximum_points,
+                )
             priority_factors: dict[str, float | None] = dict(rule.priority_defaults)
             priority_factors.update(context.priority_factors)
             priority_factors["confidence"] = confidence.score
@@ -104,6 +141,11 @@ class OpportunityEngine:
                     what=rule.what,
                     when=rule.when,
                     recommended_products=rule.recommended_product_codes,
+                    recommendation_nature=(
+                        "WIN_BACK"
+                        if context.flow_visibility_level in {"PARTIAL", "LOW"}
+                        else "NEED_DISCOVERY"
+                    ),
                     evidence=evidence,
                     as_of_date=context.as_of_date,
                     generated_at=generated_at,

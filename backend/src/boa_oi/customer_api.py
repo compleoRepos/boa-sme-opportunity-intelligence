@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import hashlib
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import Depends, Header, Query, Request, status
 from pydantic import BaseModel, Field, field_validator, model_validator
-from sqlalchemy import and_, func, inspect, or_, select, update
+from sqlalchemy import and_, case, func, inspect, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, aliased
 
@@ -14,7 +15,9 @@ from boa_oi.audit.service import canonical_hash
 from boa_oi.models.entities import (
     AuditLog,
     Customer,
+    CustomerBankingDeclaration,
     CustomerImportReceipt,
+    FlowVisibilitySnapshot,
     OutboxMessage,
     PortfolioAssignment,
     PortfolioSyncEvent,
@@ -119,6 +122,16 @@ class CustomerImport(BaseModel):
     relationshipManagerId: str
     relationshipManagerName: str | None = None
     branchId: str = "BR-01"
+    bankingRelationship: Literal["EXCLUSIVE", "PRIMARY", "SECONDARY", "UNKNOWN"] | None = None
+    declaredTurnover: Decimal | None = Field(default=None, gt=0)
+    declaredTurnoverAsOf: date | None = None
+
+
+class BankingRelationshipDeclaration(BaseModel):
+    bankingRelationship: Literal["EXCLUSIVE", "PRIMARY", "SECONDARY", "UNKNOWN"]
+    reason: str = Field(min_length=8, max_length=1_000)
+    declaredTurnover: Decimal | None = Field(default=None, gt=0)
+    declaredTurnoverAsOf: date | None = None
 
 
 class CustomerImportBatch(BaseModel):
@@ -166,12 +179,93 @@ def serialize(
     customer: Customer,
     rm: RelationshipManager | None = None,
     assignment_branch_code: str | None = None,
+    flow_visibility: dict[str, Any] | None = None,
+    declaration: CustomerBankingDeclaration | None = None,
+    turnover_declaration: CustomerBankingDeclaration | None = None,
+    as_of: date | None = None,
 ) -> dict[str, Any]:
     branch_code = (
         assignment_branch_code
         if assignment_branch_code is not None
         else (rm.branch_code if rm else None)
     )
+    relationship = (
+        declaration.banking_relationship
+        if declaration is not None
+        else customer.banking_relationship or "UNKNOWN"
+        if as_of is None
+        else "UNKNOWN"
+    )
+    declared_at = (
+        declaration.declared_at
+        if declaration is not None
+        else customer.banking_relationship_declared_at
+        if as_of is None
+        else None
+    )
+    declared_by = (
+        declaration.declared_by
+        if declaration is not None
+        else customer.banking_relationship_declared_by
+        if as_of is None
+        else None
+    )
+    declaration_reason = (
+        declaration.reason
+        if declaration is not None
+        else customer.banking_relationship_reason
+        if as_of is None
+        else None
+    )
+    declaration_source = (
+        declaration.source
+        if declaration is not None
+        else customer.banking_relationship_source
+        if as_of is None
+        else None
+    )
+    declared_turnover = (
+        turnover_declaration.declared_turnover
+        if turnover_declaration is not None
+        else customer.declared_turnover
+        if as_of is None
+        else None
+    )
+    declared_turnover_as_of = (
+        turnover_declaration.declared_turnover_as_of
+        if turnover_declaration is not None
+        else customer.declared_turnover_as_of
+        if as_of is None
+        else None
+    )
+    effective_visibility = dict(flow_visibility or {})
+    visibility_as_of = effective_visibility.get("asOf")
+    if (
+        relationship in {"EXCLUSIVE", "PRIMARY", "SECONDARY"}
+        and declared_at is not None
+        and (
+            visibility_as_of is None
+            or date.fromisoformat(str(visibility_as_of)) < declared_at.date()
+        )
+    ):
+        effective_visibility = {
+            "level": {"EXCLUSIVE": "HIGH", "PRIMARY": "PARTIAL", "SECONDARY": "LOW"}[relationship],
+            "estimatedShare": None,
+            "method": "DECLARED",
+            "asOf": declared_at.date().isoformat(),
+            "evidence": [
+                {
+                    "fact": "BANKING_RELATIONSHIP_DECLARED",
+                    "value": relationship,
+                    "observedAt": declared_at.isoformat(),
+                }
+            ],
+            "fingerprintCount90d": 0,
+            "fingerprintPrevious90d": 0,
+            "fingerprintGrowth90d": 0,
+            "categorizationCoverage": 0,
+            "status": "PENDING_ANALYTICS_RECOMPUTE",
+        }
     return {
         "customerId": customer.customer_ref,
         "legalName": customer.legal_name,
@@ -184,6 +278,23 @@ def serialize(
         "branchName": branch_label(branch_code),
         "relationshipManagerId": rm.subject_id if rm else None,
         "relationshipManagerName": rm.display_name if rm else None,
+        "bankingRelationship": relationship,
+        "bankingRelationshipDeclaration": (
+            {
+                "value": relationship,
+                "declaredAt": declared_at.isoformat() if declared_at else None,
+                "declaredBy": declared_by,
+                "reason": declaration_reason,
+                "source": declaration_source,
+            }
+            if declaration_source
+            else None
+        ),
+        "declaredTurnover": float(declared_turnover) if declared_turnover is not None else None,
+        "declaredTurnoverAsOf": declared_turnover_as_of.isoformat()
+        if declared_turnover_as_of
+        else None,
+        "flowVisibility": effective_visibility,
         "status": customer.status,
         "incorporatedOn": (
             customer.incorporated_on.isoformat() if customer.incorporated_on else None
@@ -191,6 +302,93 @@ def serialize(
         "createdAt": customer.created_at.isoformat() if customer.created_at else None,
         "updatedAt": customer.updated_at.isoformat() if customer.updated_at else None,
     }
+
+
+def latest_flow_visibility(
+    session: Session, customer: Customer, *, as_of: date | None = None
+) -> dict[str, Any]:
+    bind = session.get_bind()
+    if bind.dialect.name == "sqlite" and not inspect(bind).has_table(
+        FlowVisibilitySnapshot.__tablename__, schema="analytics"
+    ):
+        return {
+            "level": "UNKNOWN",
+            "estimatedShare": None,
+            "method": "NONE",
+            "asOf": None,
+            "evidence": [],
+            "fingerprintCount90d": 0,
+            "fingerprintPrevious90d": 0,
+            "fingerprintGrowth90d": 0,
+            "categorizationCoverage": 0,
+        }
+    stmt = select(FlowVisibilitySnapshot).where(FlowVisibilitySnapshot.customer_id == customer.id)
+    if as_of is not None:
+        stmt = stmt.where(FlowVisibilitySnapshot.as_of_date <= as_of)
+    row = session.scalar(
+        stmt.order_by(
+            FlowVisibilitySnapshot.as_of_date.desc(),
+            FlowVisibilitySnapshot.created_at.desc(),
+        ).limit(1)
+    )
+    if row is None:
+        return {
+            "level": "UNKNOWN",
+            "estimatedShare": None,
+            "method": "NONE",
+            "asOf": None,
+            "evidence": [],
+            "fingerprintCount90d": 0,
+            "fingerprintPrevious90d": 0,
+            "fingerprintGrowth90d": 0,
+            "categorizationCoverage": 0,
+        }
+    return {
+        "level": row.level,
+        "estimatedShare": float(row.estimated_share) if row.estimated_share is not None else None,
+        "method": row.method,
+        "asOf": row.as_of_date.isoformat(),
+        "evidence": row.evidence_json,
+        "fingerprintCount90d": row.fingerprint_count_90d,
+        "fingerprintPrevious90d": row.fingerprint_previous_90d,
+        "fingerprintGrowth90d": row.fingerprint_count_90d - row.fingerprint_previous_90d,
+        "categorizationCoverage": float(row.categorization_coverage),
+    }
+
+
+def latest_banking_declarations(
+    session: Session, customer: Customer, *, as_of: date
+) -> tuple[CustomerBankingDeclaration | None, CustomerBankingDeclaration | None]:
+    bind = session.get_bind()
+    if bind.dialect.name == "sqlite" and not inspect(bind).has_table(
+        CustomerBankingDeclaration.__tablename__, schema="customer"
+    ):
+        return None, None
+    cutoff = datetime.combine(as_of + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+    relationship = session.scalar(
+        select(CustomerBankingDeclaration)
+        .where(
+            CustomerBankingDeclaration.customer_id == customer.id,
+            CustomerBankingDeclaration.declared_at < cutoff,
+        )
+        .order_by(CustomerBankingDeclaration.declared_at.desc())
+        .limit(1)
+    )
+    turnover = session.scalar(
+        select(CustomerBankingDeclaration)
+        .where(
+            CustomerBankingDeclaration.customer_id == customer.id,
+            CustomerBankingDeclaration.declared_at < cutoff,
+            CustomerBankingDeclaration.declared_turnover.is_not(None),
+            CustomerBankingDeclaration.declared_turnover_as_of <= as_of,
+        )
+        .order_by(
+            CustomerBankingDeclaration.declared_turnover_as_of.desc(),
+            CustomerBankingDeclaration.declared_at.desc(),
+        )
+        .limit(1)
+    )
+    return relationship, turnover
 
 
 @app.get(
@@ -272,7 +470,15 @@ def list_customers(
     rows = session.execute(stmt).all()
     return page_response(
         request,
-        [serialize(customer, manager, branch) for customer, manager, branch in rows],
+        [
+            serialize(
+                customer,
+                manager,
+                branch,
+                latest_flow_visibility(session, customer),
+            )
+            for customer, manager, branch in rows
+        ],
         page_size=page_size,
         offset=offset,
         total_count=None,
@@ -286,6 +492,7 @@ def list_customers(
 )
 def get_customer(
     customer_id: str,
+    as_of: Annotated[date | None, Query(alias="asOf")] = None,
     principal: Principal = Depends(current_principal),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
@@ -299,7 +506,19 @@ def get_customer(
     row = session.execute(stmt).first()
     if row is None:
         raise not_found("Customer")
-    return serialize(row[0], row[1], row[2])
+    customer = row[0]
+    relationship_declaration, turnover_declaration = (
+        latest_banking_declarations(session, customer, as_of=as_of) if as_of else (None, None)
+    )
+    return serialize(
+        customer,
+        row[1],
+        row[2],
+        latest_flow_visibility(session, customer, as_of=as_of),
+        declaration=relationship_declaration,
+        turnover_declaration=turnover_declaration,
+        as_of=as_of,
+    )
 
 
 @app.get(
@@ -313,7 +532,7 @@ def get_profile(
     principal: Principal = Depends(current_principal),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    return get_customer(customer_id, principal, session)
+    return get_customer(customer_id, principal=principal, session=session)
 
 
 @app.get(
@@ -326,13 +545,116 @@ def get_relationship(
     principal: Principal = Depends(current_principal),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    profile = get_customer(customer_id, principal, session)
+    profile = get_customer(customer_id, principal=principal, session=session)
     return {
         "customerId": customer_id,
         "relationshipManagerId": profile["relationshipManagerId"],
         "relationshipManagerName": profile["relationshipManagerName"],
         "branchId": profile["branchId"],
     }
+
+
+@app.put(
+    f"{PREFIX}/customers/{{customer_id}}/banking-relationship",
+    dependencies=[Depends(require_roles("RELATIONSHIP_MANAGER", "BRANCH_MANAGER"))],
+    tags=["Customers"],
+)
+def declare_banking_relationship(
+    customer_id: str,
+    payload: BankingRelationshipDeclaration,
+    request: Request,
+    principal: Principal = Depends(current_principal),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    stmt, rm, branch_code = _customer_statement(session)
+    scoped = scoped_customer_statement(
+        stmt.where(Customer.customer_ref == customer_id),
+        rm,
+        principal,
+        branch_code=branch_code,
+    )
+    row = session.execute(scoped).first()
+    if row is None:
+        raise Problem(
+            403,
+            "CUSTOMER_OUTSIDE_PORTFOLIO",
+            "La déclaration est réservée au CC du portefeuille ou au responsable de son agence.",
+        )
+    customer, manager, assigned_branch = row
+    before = {
+        "bankingRelationship": customer.banking_relationship,
+        "declaredTurnover": float(customer.declared_turnover)
+        if customer.declared_turnover is not None
+        else None,
+    }
+    now = datetime.now(timezone.utc)
+    customer.banking_relationship = payload.bankingRelationship
+    customer.banking_relationship_declared_at = now
+    customer.banking_relationship_declared_by = principal.username or principal.subject
+    customer.banking_relationship_reason = payload.reason
+    customer.banking_relationship_source = "RELATIONSHIP_MANAGER"
+    if payload.declaredTurnover is not None:
+        customer.declared_turnover = payload.declaredTurnover
+        customer.declared_turnover_as_of = payload.declaredTurnoverAsOf or now.date()
+        customer.declared_turnover_entered_by = principal.username or principal.subject
+        customer.declared_turnover_source = "RELATIONSHIP_MANAGER"
+    declaration = CustomerBankingDeclaration(
+        id=deterministic_uuid(
+            "banking-relationship-declaration",
+            customer.id,
+            principal.subject,
+            now.isoformat(),
+        ),
+        customer_id=customer.id,
+        banking_relationship=payload.bankingRelationship,
+        declared_at=now,
+        declared_by=principal.username or principal.subject,
+        reason=payload.reason,
+        source="RELATIONSHIP_MANAGER",
+        declared_turnover=payload.declaredTurnover,
+        declared_turnover_as_of=(
+            payload.declaredTurnoverAsOf or now.date()
+            if payload.declaredTurnover is not None
+            else None
+        ),
+        declared_turnover_source=(
+            "RELATIONSHIP_MANAGER" if payload.declaredTurnover is not None else None
+        ),
+    )
+    session.add(declaration)
+    after = {
+        "bankingRelationship": customer.banking_relationship,
+        "declaredTurnover": float(customer.declared_turnover)
+        if customer.declared_turnover is not None
+        else None,
+    }
+    session.add(
+        AuditLog(
+            id=deterministic_uuid(
+                "banking-relationship-audit",
+                customer.customer_ref,
+                principal.subject,
+                now.isoformat(),
+            ),
+            occurred_at=now,
+            actor_subject_id=principal.subject,
+            service_name="customer-service",
+            action="BANKING_RELATIONSHIP_DECLARED",
+            resource_type="CUSTOMER",
+            resource_id=customer.customer_ref,
+            correlation_id=correlation_id(request),
+            result="SUCCESS",
+            metadata_json={"before": before, "after": after, "reason": payload.reason},
+        )
+    )
+    session.commit()
+    return serialize(
+        customer,
+        manager,
+        assigned_branch,
+        latest_flow_visibility(session, customer),
+        declaration,
+    )
 
 
 def _utc(value: datetime) -> datetime:
@@ -783,6 +1105,7 @@ def import_customers(
     imported = 0
     assignment_table_available = _assignment_table_available(session)
     for item in batch.customers:
+        imported_at = datetime.now(timezone.utc)
         rm_id = deterministic_uuid("rm", item.relationshipManagerId)
         customer_uuid = deterministic_uuid("customer", item.customerId)
         session.execute(
@@ -807,21 +1130,43 @@ def import_customers(
             )
             .on_conflict_do_nothing(index_elements=[Sector.code])
         )
+        customer_insert = pg_insert(Customer).values(
+            id=customer_uuid,
+            customer_ref=item.customerId,
+            legal_name=item.legalName,
+            sector_code=item.sector,
+            segment_code=item.segment,
+            scenario_code=item.scenarioCode,
+            incorporated_on=item.incorporatedOn,
+            status=item.status,
+            rm_id=rm_id,
+            banking_relationship=item.bankingRelationship,
+            banking_relationship_declared_at=(
+                imported_at if item.bankingRelationship is not None else None
+            ),
+            banking_relationship_declared_by=(
+                batch.sourceSystem if item.bankingRelationship is not None else None
+            ),
+            banking_relationship_reason=(
+                f"Import SI {batch.sourceSystem} / lot {batch.externalBatchId}"
+                if item.bankingRelationship is not None
+                else None
+            ),
+            banking_relationship_source=(
+                "INFORMATION_SYSTEM" if item.bankingRelationship is not None else None
+            ),
+            declared_turnover=item.declaredTurnover,
+            declared_turnover_as_of=item.declaredTurnoverAsOf,
+            declared_turnover_entered_by=(
+                batch.sourceSystem if item.declaredTurnover is not None else None
+            ),
+            declared_turnover_source=(
+                "INFORMATION_SYSTEM" if item.declaredTurnover is not None else None
+            ),
+            created_by="banking-integration",
+        )
         session.execute(
-            pg_insert(Customer)
-            .values(
-                id=customer_uuid,
-                customer_ref=item.customerId,
-                legal_name=item.legalName,
-                sector_code=item.sector,
-                segment_code=item.segment,
-                scenario_code=item.scenarioCode,
-                incorporated_on=item.incorporatedOn,
-                status=item.status,
-                rm_id=rm_id,
-                created_by="banking-integration",
-            )
-            .on_conflict_do_update(
+            customer_insert.on_conflict_do_update(
                 index_elements=[Customer.customer_ref],
                 set_={
                     "legal_name": item.legalName,
@@ -829,6 +1174,96 @@ def import_customers(
                     "segment_code": item.segment,
                     "status": item.status,
                     "rm_id": rm_id,
+                    "banking_relationship": case(
+                        (
+                            Customer.banking_relationship_source == "RELATIONSHIP_MANAGER",
+                            Customer.banking_relationship,
+                        ),
+                        else_=func.coalesce(
+                            customer_insert.excluded.banking_relationship,
+                            Customer.banking_relationship,
+                        ),
+                    ),
+                    "banking_relationship_declared_at": case(
+                        (
+                            Customer.banking_relationship_source == "RELATIONSHIP_MANAGER",
+                            Customer.banking_relationship_declared_at,
+                        ),
+                        else_=func.coalesce(
+                            customer_insert.excluded.banking_relationship_declared_at,
+                            Customer.banking_relationship_declared_at,
+                        ),
+                    ),
+                    "banking_relationship_declared_by": case(
+                        (
+                            Customer.banking_relationship_source == "RELATIONSHIP_MANAGER",
+                            Customer.banking_relationship_declared_by,
+                        ),
+                        else_=func.coalesce(
+                            customer_insert.excluded.banking_relationship_declared_by,
+                            Customer.banking_relationship_declared_by,
+                        ),
+                    ),
+                    "banking_relationship_reason": case(
+                        (
+                            Customer.banking_relationship_source == "RELATIONSHIP_MANAGER",
+                            Customer.banking_relationship_reason,
+                        ),
+                        else_=func.coalesce(
+                            customer_insert.excluded.banking_relationship_reason,
+                            Customer.banking_relationship_reason,
+                        ),
+                    ),
+                    "banking_relationship_source": case(
+                        (
+                            Customer.banking_relationship_source == "RELATIONSHIP_MANAGER",
+                            Customer.banking_relationship_source,
+                        ),
+                        else_=func.coalesce(
+                            customer_insert.excluded.banking_relationship_source,
+                            Customer.banking_relationship_source,
+                        ),
+                    ),
+                    "declared_turnover": case(
+                        (
+                            Customer.declared_turnover_source == "RELATIONSHIP_MANAGER",
+                            Customer.declared_turnover,
+                        ),
+                        else_=func.coalesce(
+                            customer_insert.excluded.declared_turnover,
+                            Customer.declared_turnover,
+                        ),
+                    ),
+                    "declared_turnover_as_of": case(
+                        (
+                            Customer.declared_turnover_source == "RELATIONSHIP_MANAGER",
+                            Customer.declared_turnover_as_of,
+                        ),
+                        else_=func.coalesce(
+                            customer_insert.excluded.declared_turnover_as_of,
+                            Customer.declared_turnover_as_of,
+                        ),
+                    ),
+                    "declared_turnover_entered_by": case(
+                        (
+                            Customer.declared_turnover_source == "RELATIONSHIP_MANAGER",
+                            Customer.declared_turnover_entered_by,
+                        ),
+                        else_=func.coalesce(
+                            customer_insert.excluded.declared_turnover_entered_by,
+                            Customer.declared_turnover_entered_by,
+                        ),
+                    ),
+                    "declared_turnover_source": case(
+                        (
+                            Customer.declared_turnover_source == "RELATIONSHIP_MANAGER",
+                            Customer.declared_turnover_source,
+                        ),
+                        else_=func.coalesce(
+                            customer_insert.excluded.declared_turnover_source,
+                            Customer.declared_turnover_source,
+                        ),
+                    ),
                 },
             )
         )

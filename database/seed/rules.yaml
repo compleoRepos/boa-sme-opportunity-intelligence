@@ -13,14 +13,14 @@ priority:
   p2: 60
   p3: 40
 signal_rules:
-  INFLOW_GROWTH: {version: '1', metric: inflow_amount, value_field: growth_rate, operator: gt, threshold: 0.25, minimum_sample_size: 6, require_confirmation: true, strong_evidence_margin: 0.50}
-  OUTFLOW_GROWTH: {version: '1', metric: outflow_amount, value_field: growth_rate, operator: gt, threshold: 0.20, minimum_sample_size: 6, require_confirmation: true, strong_evidence_margin: 0.50}
-  SUPPLIER_PAYMENT_GROWTH: {version: '1', metric: supplier_payment_amount, value_field: growth_rate, operator: gt, threshold: 0.20, minimum_sample_size: 3, require_confirmation: true, strong_evidence_margin: 0.50}
-  INTERNATIONAL_FLOW_GROWTH: {version: '1', metric: international_flow_amount, value_field: growth_rate, operator: gt, threshold: 0.30, minimum_sample_size: 2, require_confirmation: true, strong_evidence_margin: 0.50}
-  BALANCE_SURPLUS: {version: '1', metric: average_balance, value_field: current_value, operator: gt, threshold: 1000000, minimum_sample_size: 75, require_confirmation: true, strong_evidence_margin: 0.50}
-  BALANCE_DECLINE: {version: '1', metric: average_balance, value_field: growth_rate, operator: lt, threshold: -0.20, minimum_sample_size: 75, require_confirmation: true, strong_evidence_margin: 0.50}
-  CREDIT_UTILIZATION_INCREASE: {version: '1', metric: credit_line_utilization, value_field: change, operator: gt, threshold: 0.20, minimum_sample_size: 75, require_confirmation: true, strong_evidence_margin: 0.50}
-  TRANSACTION_VOLUME_GROWTH: {version: '1', metric: transaction_count, value_field: growth_rate, operator: gt, threshold: 0.15, minimum_sample_size: 6, require_confirmation: true, strong_evidence_margin: 0.50}
+  INFLOW_GROWTH: {version: '1', metric: inflow_amount, value_field: growth_rate, operator: gt, threshold: 0.25, minimum_sample_size: 6, require_confirmation: true, strong_evidence_margin: 0.50, visibility_sensitivity: ROBUST}
+  OUTFLOW_GROWTH: {version: '1', metric: outflow_amount, value_field: growth_rate, operator: gt, threshold: 0.20, minimum_sample_size: 6, require_confirmation: true, strong_evidence_margin: 0.50, visibility_sensitivity: ROBUST}
+  SUPPLIER_PAYMENT_GROWTH: {version: '1', metric: supplier_payment_amount, value_field: growth_rate, operator: gt, threshold: 0.20, minimum_sample_size: 3, require_confirmation: true, strong_evidence_margin: 0.50, visibility_sensitivity: ROBUST}
+  INTERNATIONAL_FLOW_GROWTH: {version: '1', metric: international_flow_amount, value_field: growth_rate, operator: gt, threshold: 0.30, minimum_sample_size: 2, require_confirmation: true, strong_evidence_margin: 0.50, visibility_sensitivity: ROBUST}
+  BALANCE_SURPLUS: {version: '1', metric: average_balance, value_field: current_value, operator: gt, threshold: 1000000, minimum_sample_size: 75, require_confirmation: true, strong_evidence_margin: 0.50, visibility_sensitivity: SENSITIVE}
+  BALANCE_DECLINE: {version: '1', metric: average_balance, value_field: growth_rate, operator: lt, threshold: -0.20, minimum_sample_size: 75, require_confirmation: true, strong_evidence_margin: 0.50, visibility_sensitivity: SENSITIVE}
+  CREDIT_UTILIZATION_INCREASE: {version: '1', metric: credit_line_utilization, value_field: change, operator: gt, threshold: 0.20, minimum_sample_size: 75, require_confirmation: true, strong_evidence_margin: 0.50, visibility_sensitivity: SENSITIVE}
+  TRANSACTION_VOLUME_GROWTH: {version: '1', metric: transaction_count, value_field: growth_rate, operator: gt, threshold: 0.15, minimum_sample_size: 6, require_confirmation: true, strong_evidence_margin: 0.50, visibility_sensitivity: ROBUST}
 opportunity_rules:
   INVESTMENT_FINANCING:
     version: '1'
@@ -29,6 +29,7 @@ opportunity_rules:
     when: Contacter dans les 1 à 3 mois.
     recommended_product_codes: [BOA_CREDIT_MLTD_DIRECT, BOA_BAIL_ENTREPRISE, BOA_ISTITMAR_MAROC_PME]
     minimum_data_coverage: 0.83
+    visibility_sensitivity: ROBUST
     lifecycle: {validity_days: 90, dismissed_cooldown_days: 30, converted_cooldown_days: 180, deferred_cooldown_days: 30, expired_cooldown_days: 7}
     all_conditions:
       - {key: inflow_growth_rate, operator: gt, value: 0.25, label: Inflow growth}
@@ -44,6 +45,7 @@ opportunity_rules:
     when: Contacter dans les 3 mois.
     recommended_product_codes: [BOA_CREDIT_DOCUMENTAIRE, BOA_FINANCEMENT_IMPORTATIONS, BOA_PREFINANCEMENT_EXPORT]
     minimum_data_coverage: 0.83
+    visibility_sensitivity: ROBUST
     lifecycle: {validity_days: 90, dismissed_cooldown_days: 30, converted_cooldown_days: 180, deferred_cooldown_days: 30, expired_cooldown_days: 7}
     all_conditions:
       - {key: international_flow_growth_rate, operator: gt, value: 0.30, label: International flow growth}
@@ -59,6 +61,7 @@ opportunity_rules:
     when: Contacter dans le mois.
     recommended_product_codes: [BOA_DEPOT_A_TERME, BOA_BON_DE_CAISSE, BOA_OPCVM]
     minimum_data_coverage: 0.83
+    visibility_sensitivity: SENSITIVE
     lifecycle: {validity_days: 60, dismissed_cooldown_days: 30, converted_cooldown_days: 180, deferred_cooldown_days: 30, expired_cooldown_days: 7}
     all_conditions:
       - {key: average_balance, operator: gt, value: 1000000, label: High average balance}
@@ -74,6 +77,7 @@ opportunity_rules:
     when: Prise de contact relationnelle dans le mois.
     recommended_product_codes: [BOA_PACK_BUSINESS_PME, BOA_DAMANE_ATASSYIR]
     minimum_data_coverage: 0.83
+    visibility_sensitivity: SENSITIVE
     lifecycle: {validity_days: 30, dismissed_cooldown_days: 30, converted_cooldown_days: 180, deferred_cooldown_days: 30, expired_cooldown_days: 7}
     all_conditions:
       - {key: credit_utilization_change, operator: gt, value: 0.20, label: Increasing credit utilization}
@@ -82,3 +86,31 @@ opportunity_rules:
       - {key: balance_growth_rate, operator: lt, value: -0.20, label: Balance decline}
     confidence_weights: {signal_strength: 40, persistence: 15, baseline_separation: 15, recency: 10, data_quality: 10, corroboration: 10}
     priority_defaults: {signal_strength: 0.90, urgency: 1.0, recency: 1.0, relationship_context: 0.75, product_gap: 0.0}
+  FLOW_DOMICILIATION:
+    enabled: false
+    version: '1'
+    horizon: 1-3_MONTHS
+    what: "Part de flux estimée faible ou partielle chez BANK OF AFRICA : proposer la domiciliation des flux et des salaires."
+    when: Contacter dans les 1 à 3 mois.
+    recommended_product_codes: [BOA_PACK_BUSINESS_PME, BOA_BUSINESS_ONLINE, BOA_VIREMENT_MASSE, BOA_PRELEVEMENT_MASSE]
+    minimum_data_coverage: 0.83
+    visibility_sensitivity: ROBUST
+    visibility_policy:
+      highShare: 0.70
+      partialShare: 0.30
+      fingerprints90d: 2
+      partialPenaltyPoints: -10
+      lowPenaltyPoints: -25
+      unknownPenaltyPoints: -5
+      domiciliationCooldownDays: 180
+      status: HYPOTHÈSE À VALIDER AVEC BOA
+    lifecycle: {validity_days: 90, dismissed_cooldown_days: 180, converted_cooldown_days: 180, deferred_cooldown_days: 180, expired_cooldown_days: 7}
+    all_conditions:
+      - {key: flow_visibility_opportunity, operator: eq, value: true, label: Visibilité des flux partielle ou faible}
+      - {key: no_recent_domiciliation_action, operator: eq, value: true, label: Aucune action de domiciliation depuis 180 jours}
+    any_conditions:
+      - {key: inflow_growth_rate, operator: gt, value: 0, label: Croissance des encaissements chez BOA}
+      - {key: fingerprint_growth_90d, operator: gt, value: 0, label: Empreintes de multibancarisation en hausse sur 90 jours}
+      - {key: declared_turnover_growth_rate, operator: gt, value: 0, label: Chiffre d'affaires déclaré en hausse}
+    confidence_weights: {signal_strength: 35, persistence: 15, baseline_separation: 10, product_gap: 10, recency: 10, data_quality: 10, corroboration: 10}
+    priority_defaults: {signal_strength: 0.85, urgency: 0.70, recency: 1.0, relationship_context: 0.75, product_gap: 0.80}

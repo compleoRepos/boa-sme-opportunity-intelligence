@@ -7,7 +7,7 @@ import { ExportButton } from '../export/ExportButton'
 import { EmptyState, ErrorState, Kpi, NoResults, Panel, Segmented, SkeletonStack } from '../../ui'
 import { PriorityRow } from './PriorityRow'
 
-type Filter = 'today' | 'all' | 'P1' | 'P2' | 'opportunities' | 'actions'
+type Filter = 'today' | 'all' | 'P1' | 'P2' | 'opportunities' | 'actions' | 'limitedVisibility'
 type Sort = 'priority' | 'name'
 
 const greeting = () => {
@@ -25,6 +25,7 @@ export function selectCustomers(data: RelationshipManagerDashboard, filter: Filt
       case 'P2': return customer.priorityLevel === 'P2'
       case 'opportunities': return customer.openOpportunities.length > 0
       case 'actions': return customer.nextActions.length > 0
+      case 'limitedVisibility': return customer.flowVisibility?.level === 'PARTIAL' || customer.flowVisibility?.level === 'LOW'
       default: return true
     }
   })
@@ -49,6 +50,7 @@ export function CcDashboardPage() {
   const { kpis, scope } = data
   const withSignal = data.portfolio.filter((customer) => customer.openOpportunities.length > 0).length
   const todayCount = data.portfolio.filter((customer) => customer.priorityLevel === 'P1' || customer.nextActions.length > 0).length
+  const limitedVisibilityCount = data.portfolio.filter((customer) => customer.flowVisibility?.level === 'PARTIAL' || customer.flowVisibility?.level === 'LOW').length
 
   return <>
     <header className="page-head">
@@ -77,7 +79,7 @@ export function CcDashboardPage() {
           </div>
         </header>
         <div className="list-filters">
-          <Segmented ariaLabel="Filtre de priorité" value={filter} onChange={setFilter} options={[{ value: 'today', label: `Aujourd’hui · ${todayCount}` }, { value: 'P1', label: `P1 · ${kpis.highPriorityCustomers}` }, { value: 'P2', label: 'P2' }, { value: 'opportunities', label: 'Avec opportunité' }, { value: 'actions', label: 'Actions dues' }, { value: 'all', label: `Toutes · ${kpis.portfolioCustomers}` }]} />
+          <Segmented ariaLabel="Filtre de priorité" value={filter} onChange={setFilter} options={[{ value: 'today', label: `Aujourd’hui · ${todayCount}` }, { value: 'P1', label: `P1 · ${kpis.highPriorityCustomers}` }, { value: 'P2', label: 'P2' }, { value: 'limitedVisibility', label: `Visibilité partielle ou faible · ${limitedVisibilityCount}` }, { value: 'opportunities', label: 'Avec opportunité' }, { value: 'actions', label: 'Actions dues' }, { value: 'all', label: `Toutes · ${kpis.portfolioCustomers}` }]} />
         </div>
         {!data.portfolio.length ? <EmptyState title="Aucune PME affectée" message="Votre portefeuille ne contient aucune PME active pour le moment." /> : !rows.length ? <NoResults /> : <div className="priority-list">{rows.map((customer, index) => <PriorityRow customer={customer} index={index} key={customer.customerId} />)}</div>}
       </Panel>

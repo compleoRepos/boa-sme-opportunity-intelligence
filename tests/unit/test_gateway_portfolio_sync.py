@@ -76,9 +76,49 @@ def test_gateway_denies_commercial_role_before_proxy(monkeypatch):
     assert called is False
 
 
+def test_gateway_proxies_banking_relationship_declaration(monkeypatch):
+    captured: dict[str, Any] = {}
+
+    async def fake_service_request(method: str, url: str, **kwargs: Any) -> dict[str, Any]:
+        captured.update({"method": method, "url": url, **kwargs})
+        return {
+            "customerId": "SME-00042",
+            "bankingRelationship": "SECONDARY",
+            "flowVisibility": {"level": "UNKNOWN", "method": "NONE"},
+        }
+
+    monkeypatch.setenv("CUSTOMER_SERVICE_URL", "http://customer:8080")
+    monkeypatch.setattr(gateway_api, "service_request", fake_service_request)
+    app = application_for("api-gateway")
+    app.dependency_overrides[current_principal] = lambda: principal("RELATIONSHIP_MANAGER")
+    client = TestClient(app)
+    payload = {
+        "bankingRelationship": "SECONDARY",
+        "reason": "Déclaration confirmée pendant l'entretien client.",
+    }
+
+    response = client.put(
+        "/api/v1/customers/SME-00042/banking-relationship",
+        headers={"Authorization": "Bearer unit-test", "X-Dev-Principal": "ahmed"},
+        json=payload,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["bankingRelationship"] == "SECONDARY"
+    assert captured["method"] == "PUT"
+    assert captured["url"] == (
+        "http://customer:8080/internal/v1/customers/SME-00042/banking-relationship"
+    )
+    assert captured["json"] == payload
+    assert captured["incoming_authorization"] == "Bearer unit-test"
+    assert captured["dev_principal"] == "ahmed"
+
+
 def test_gateway_openapi_documents_portfolio_sync_contract():
     paths = application_for("api-gateway").openapi()["paths"]
     assert "/api/v1/admin/portfolio-assignments/sync" in paths
     assert "post" in paths["/api/v1/admin/portfolio-assignments/sync"]
     assert "/api/v1/admin/portfolio-assignments" in paths
     assert "get" in paths["/api/v1/admin/portfolio-assignments"]
+    assert "/api/v1/customers/{customer_id}/banking-relationship" in paths
+    assert "put" in paths["/api/v1/customers/{customer_id}/banking-relationship"]

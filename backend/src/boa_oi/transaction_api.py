@@ -70,6 +70,9 @@ class TransactionIn(StrictImportModel):
     sourceSystem: str = Field(
         default="BANKING_ADAPTER", min_length=1, max_length=40, pattern=r"^[A-Z][A-Z0-9_]*$"
     )
+    counterpartyName: str | None = Field(default=None, max_length=180)
+    remittanceInformation: str | None = Field(default=None, max_length=500)
+    externallyDomiciled: bool = False
 
     @field_validator("bookingDate")
     @classmethod
@@ -128,6 +131,9 @@ def serialize(tx: Transaction) -> dict[str, Any]:
         "sourceSystem": tx.source_system,
         "externalReference": tx.transaction_ref,
         "categoryVersion": tx.category_version,
+        "counterpartyName": tx.counterparty_name,
+        "remittanceInformation": tx.remittance_information,
+        "externallyDomiciled": tx.externally_domiciled,
         "importBatchId": str(tx.import_batch_id) if tx.import_batch_id else None,
         "sourceRecordHash": tx.source_record_hash,
     }
@@ -590,13 +596,16 @@ def import_transactions(
         raw = item.model_dump(mode="json")
         row_hash = canonical_row_hash(raw)
         source_key = (item.sourceSystem, item.transactionId)
+        effective_category = (
+            "INTER_BANK_SELF_TRANSFER" if item.externallyDomiciled else item.category
+        )
         if source_key in seen:
             if seen[source_key] == row_hash:
                 duplicate_count += 1
                 continue
             reason_code = "DUPLICATE_SOURCE_RECORD_CONFLICT"
             field_name = "transactionId"
-        elif item.category not in category_versions:
+        elif effective_category not in category_versions:
             reason_code = "UNKNOWN_OR_INACTIVE_CATEGORY"
             field_name = "category"
         else:
@@ -613,12 +622,15 @@ def import_transactions(
                     "amount": item.amount,
                     "currency": item.currency,
                     "transaction_type": item.type,
-                    "category": item.category,
-                    "category_version": category_versions[item.category],
+                    "category": effective_category,
+                    "category_version": category_versions[effective_category],
                     "is_international": item.international,
                     "country_code": item.countryCode,
                     "status": item.status,
                     "source_system": item.sourceSystem,
+                    "counterparty_name": item.counterpartyName,
+                    "remittance_information": item.remittanceInformation,
+                    "externally_domiciled": item.externallyDomiciled,
                     "import_batch_id": manifest.id,
                     "source_record_hash": row_hash,
                     "created_by": "governed-ingestion",

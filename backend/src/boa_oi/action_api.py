@@ -140,6 +140,7 @@ def serialize(item: OpportunityAction) -> dict[str, Any]:
     return {
         "actionId": item.action_ref,
         "opportunityId": item.opportunity_ref,
+        "opportunityType": item.opportunity_type,
         "customerId": item.customer_ref,
         "actionType": item.action_type,
         "status": item.status,
@@ -697,6 +698,7 @@ async def create_action(
         action_ref=action_ref,
         opportunity_id=deterministic_uuid("opportunity-row", payload.opportunityId),
         opportunity_ref=payload.opportunityId,
+        opportunity_type=str(opportunity.get("opportunityType") or "") or None,
         customer_id=deterministic_uuid("customer", payload.customerId),
         customer_ref=payload.customerId,
         action_type=payload.actionType,

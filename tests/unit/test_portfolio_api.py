@@ -8,6 +8,7 @@ import pytest
 from boa_oi.api import application_for
 from boa_oi.models.entities import (
     Customer,
+    FlowVisibilitySnapshot,
     Opportunity,
     OpportunityAction,
     PropensityScoreRecord,
@@ -50,12 +51,13 @@ def factory_and_ids():
     tables = [
         RelationshipManager.__mapper__.local_table,
         Customer.__mapper__.local_table,
+        FlowVisibilitySnapshot.__mapper__.local_table,
         PropensityScoreRecord.__mapper__.local_table,
         Opportunity.__mapper__.local_table,
         OpportunityAction.__mapper__.local_table,
     ]
     with engine.connect() as connection:
-        for schema in ("customer", "ml", "opportunity", "action"):
+        for schema in ("customer", "analytics", "ml", "opportunity", "action"):
             connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS '{schema}'")
         for table in tables:
             cast(Table, table).create(connection)
@@ -130,6 +132,42 @@ def factory_and_ids():
                     created_by="unit-test",
                 )
             )
+        session.add_all(
+            [
+                FlowVisibilitySnapshot(
+                    id=deterministic_uuid("flow-visibility", "SME-00001"),
+                    customer_id=customers["SME-00001"][0],
+                    customer_ref="SME-00001",
+                    as_of_date=date(2026, 9, 30),
+                    level="HIGH",
+                    estimated_share=Decimal("0.82"),
+                    method="TURNOVER_RATIO",
+                    evidence_json=[{"fact": "TURNOVER_RATIO", "value": 0.82}],
+                    fingerprint_count_90d=0,
+                    fingerprint_previous_90d=0,
+                    categorization_coverage=Decimal("1.0"),
+                    calculation_version="visibility-v1",
+                    input_watermark="unit-test-high",
+                    created_by="unit-test",
+                ),
+                FlowVisibilitySnapshot(
+                    id=deterministic_uuid("flow-visibility", "SME-00002"),
+                    customer_id=customers["SME-00002"][0],
+                    customer_ref="SME-00002",
+                    as_of_date=date(2026, 9, 30),
+                    level="LOW",
+                    estimated_share=Decimal("0.25"),
+                    method="DECLARED",
+                    evidence_json=[{"fact": "BANKING_RELATIONSHIP_DECLARED"}],
+                    fingerprint_count_90d=2,
+                    fingerprint_previous_90d=1,
+                    categorization_coverage=Decimal("0.95"),
+                    calculation_version="visibility-v1",
+                    input_watermark="unit-test-low",
+                    created_by="unit-test",
+                ),
+            ]
+        )
     return factory, customers
 
 
@@ -163,6 +201,16 @@ def test_cc_cannot_escape_own_portfolio_with_query_parameters(monkeypatch):
     forbidden_detail = customer_client.get("/internal/v1/customers/SME-00002")
     assert forbidden_detail.status_code == 404
 
+    forbidden_declaration = customer_client.put(
+        "/internal/v1/customers/SME-00002/banking-relationship",
+        json={
+            "bankingRelationship": "SECONDARY",
+            "reason": "Déclaration confirmée pendant l'entretien client.",
+        },
+    )
+    assert forbidden_declaration.status_code == 403
+    assert forbidden_declaration.json()["code"] == "CUSTOMER_OUTSIDE_PORTFOLIO"
+
 
 def test_branch_scope_is_consolidated_but_cannot_cross_branch(monkeypatch):
     monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
@@ -176,6 +224,31 @@ def test_branch_scope_is_consolidated_but_cannot_cross_branch(monkeypatch):
     assert {item["relationshipManagerId"] for item in dashboard.json()["relationshipManagers"]} == {
         "rm-01",
         "rm-02",
+    }
+    assert dashboard.json()["visibilityDistribution"] == [
+        {"level": "HIGH", "count": 1, "share": 0.5},
+        {"level": "PARTIAL", "count": 0, "share": 0.0},
+        {"level": "LOW", "count": 1, "share": 0.5},
+        {"level": "UNKNOWN", "count": 0, "share": 0.0},
+    ]
+    rm_one = portfolio_client.get("/internal/v1/dashboards/relationship-managers/rm-01")
+    rm_two = portfolio_client.get("/internal/v1/dashboards/relationship-managers/rm-02")
+    assert {
+        item["customerId"]: item["flowVisibility"]
+        for item in rm_one.json()["portfolio"] + rm_two.json()["portfolio"]
+    } == {
+        "SME-00001": {
+            "level": "HIGH",
+            "estimatedShare": 0.82,
+            "method": "TURNOVER_RATIO",
+            "asOf": "2026-09-30",
+        },
+        "SME-00002": {
+            "level": "LOW",
+            "estimatedShare": 0.25,
+            "method": "DECLARED",
+            "asOf": "2026-09-30",
+        },
     }
     cross_branch = portfolio_client.get("/internal/v1/dashboards/relationship-managers/rm-03")
     assert cross_branch.status_code == 404

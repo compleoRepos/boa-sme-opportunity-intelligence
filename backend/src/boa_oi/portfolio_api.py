@@ -17,6 +17,7 @@ from boa_oi.export_xlsx import MAX_EXPORT_ROWS, XLSX_MIME, build_workbook, portf
 from boa_oi.models.entities import (
     AuditLog,
     Customer,
+    FlowVisibilitySnapshot,
     Opportunity,
     OpportunityAction,
     PortfolioAssignment,
@@ -166,6 +167,40 @@ def _latest_scores(session: Session, customer_ids: list[Any]) -> dict[Any, Prope
     return {record.customer_id: record for record in records}
 
 
+def _latest_visibility(
+    session: Session, customer_ids: list[Any]
+) -> dict[Any, FlowVisibilitySnapshot]:
+    if not customer_ids:
+        return {}
+    bind = session.get_bind()
+    if bind.dialect.name == "sqlite" and not inspect(bind).has_table(
+        FlowVisibilitySnapshot.__tablename__, schema="analytics"
+    ):
+        return {}
+    ranked = (
+        select(
+            FlowVisibilitySnapshot.id.label("id"),
+            func.row_number()
+            .over(
+                partition_by=FlowVisibilitySnapshot.customer_id,
+                order_by=(
+                    FlowVisibilitySnapshot.as_of_date.desc(),
+                    FlowVisibilitySnapshot.created_at.desc(),
+                ),
+            )
+            .label("position"),
+        )
+        .where(FlowVisibilitySnapshot.customer_id.in_(customer_ids))
+        .subquery()
+    )
+    records = session.scalars(
+        select(FlowVisibilitySnapshot)
+        .join(ranked, FlowVisibilitySnapshot.id == ranked.c.id)
+        .where(ranked.c.position == 1)
+    )
+    return {record.customer_id: record for record in records}
+
+
 def _opportunities(session: Session, customer_ids: list[Any]) -> dict[Any, list[Opportunity]]:
     result: dict[Any, list[Opportunity]] = {customer_id: [] for customer_id in customer_ids}
     if not customer_ids:
@@ -228,6 +263,7 @@ def _portfolio_payload(
 ) -> dict[str, Any]:
     customer_ids = [customer.id for customer, _manager, _branch_code in rows]
     scores = _latest_scores(session, customer_ids)
+    visibility = _latest_visibility(session, customer_ids)
     opportunities = _opportunities(session, customer_ids)
     actions = _actions(session, customer_ids)
     now = datetime.now(timezone.utc)
@@ -238,8 +274,12 @@ def _portfolio_payload(
     contacted = 0
     all_open_opportunities = 0
     due_actions = 0
+    visibility_distribution: Counter[str] = Counter()
     for customer, manager, branch_code in rows:
         score_record = scores.get(customer.id)
+        visibility_record = visibility.get(customer.id)
+        visibility_level = visibility_record.level if visibility_record else "UNKNOWN"
+        visibility_distribution[visibility_level] += 1
         propensity = float(score_record.score) if score_record else 0.0
         customer_opportunities = opportunities.get(customer.id, [])
         customer_actions = actions.get(customer.id, [])
@@ -268,6 +308,19 @@ def _portfolio_payload(
                 "relationshipManagerName": manager.display_name,
                 "branchId": branch_code,
                 "branchName": branch_label(branch_code),
+                "bankingRelationship": customer.banking_relationship or "UNKNOWN",
+                "flowVisibility": {
+                    "level": visibility_level,
+                    "estimatedShare": (
+                        float(visibility_record.estimated_share)
+                        if visibility_record and visibility_record.estimated_share is not None
+                        else None
+                    ),
+                    "method": visibility_record.method if visibility_record else "NONE",
+                    "asOf": (
+                        visibility_record.as_of_date.isoformat() if visibility_record else None
+                    ),
+                },
                 "propensityScore": propensity,
                 "combinedPriorityScore": combined,
                 "priorityLevel": priority_level,
@@ -323,6 +376,14 @@ def _portfolio_payload(
     return {
         "portfolio": portfolio,
         "priorityDistribution": distribution_payload,
+        "visibilityDistribution": [
+            {
+                "level": level,
+                "count": visibility_distribution[level],
+                "share": visibility_distribution[level] / total if total else 0.0,
+            }
+            for level in ("HIGH", "PARTIAL", "LOW", "UNKNOWN")
+        ],
         "kpis": {
             "portfolioCustomers": total,
             "highPriorityCustomers": distribution["P1"],
