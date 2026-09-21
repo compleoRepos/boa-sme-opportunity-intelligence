@@ -5,6 +5,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import cast
+from uuid import UUID
 
 import pytest
 from boa_oi.api import application_for
@@ -568,9 +569,19 @@ def test_internal_materialize_score_batch_model_and_outcome_endpoints(monkeypatc
         },
     )
     assert manifest.status_code == 200
-    assert manifest.json()["status"] == "BLOCKED"
-    assert "BOA_HISTORICAL_LABELS_UNAVAILABLE" in manifest.json()["activationBlockers"]
-    assert len(manifest.json()["manifestHash"]) == 64
+    manifest_body = manifest.json()
+    assert manifest_body["status"] == "BLOCKED"
+    assert UUID(manifest_body["id"])
+    assert "BOA_HISTORICAL_LABELS_UNAVAILABLE" in manifest_body["activationBlockers"]
+    assert len(manifest_body["manifestHash"]) == 64
+    manifests = ml_client.get("/internal/v1/ml/datasets/manifests")
+    assert manifests.status_code == 200
+    listed_manifest = next(
+        item
+        for item in manifests.json()["data"]
+        if item["manifestVersion"] == manifest_body["manifestVersion"]
+    )
+    assert listed_manifest["id"] == manifest_body["id"]
     calibration_without_evidence = ml_client.post(
         "/internal/v1/ml/governance/evaluation/metrics",
         json={

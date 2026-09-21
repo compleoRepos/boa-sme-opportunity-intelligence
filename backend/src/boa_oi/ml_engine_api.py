@@ -422,6 +422,7 @@ def materialize_outcomes(
 
 def _serialize_manifest(record: MLDatasetManifest) -> dict[str, Any]:
     return {
+        "id": str(record.id),
         "manifestVersion": record.manifest_version,
         "sourceKind": record.source_kind,
         "purpose": record.purpose,

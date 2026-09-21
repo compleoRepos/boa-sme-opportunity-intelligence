@@ -84,7 +84,6 @@ class SimulatePayload(BaseModel):
 
     reason: str = Field(min_length=1)
     simulation_id: str | None = Field(default=None, alias="simulationId")
-    sample: dict[str, Any] = Field(default_factory=dict)
 
 
 def _actor(principal: Principal) -> str:
@@ -257,18 +256,31 @@ def _transition(
 def simulate(
     policy_id: str,
     version: int,
-    payload: SimulatePayload,
-    request: Request,
-    session: Session = Depends(get_session),
-    principal: Principal = Depends(require_roles(*AUTHOR_ROLES)),
+    _payload: SimulatePayload,
+    _request: Request,
+    _session: Session = Depends(get_session),
+    _principal: Principal = Depends(require_roles(*AUTHOR_ROLES)),
 ) -> dict[str, Any]:
-    mutation = MutationPayload(reason=payload.reason, simulationId=payload.simulation_id)
-    result = _transition(
-        policy_id, version, PolicyStatus.SIMULATED, mutation, request, session, principal
+    raise Problem(
+        501,
+        "NOT_IMPLEMENTED",
+        (
+            "Policy simulation is unavailable: the opportunity service does not own a "
+            "persisted, point-in-time dataset containing both rule and ML scores for a "
+            "deterministic before/after comparison. The policy remains DRAFT."
+        ),
+        details=[
+            {
+                "policyId": policy_id,
+                "version": version,
+                "requiredOutputs": [
+                    "priorityDistributionBeforeAfter",
+                    "movementsUpDown",
+                    "top10Changes",
+                ],
+            }
+        ],
     )
-    result["simulationId"] = result.get("simulationId") or payload.simulation_id
-    result["sample"] = payload.sample
-    return result
 
 
 @router.post("/{policy_id}/versions/{version}/submit")
