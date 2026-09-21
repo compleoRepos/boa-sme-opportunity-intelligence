@@ -51,6 +51,7 @@ function HomeRoute() {
   const { hasRole } = useAuth()
   if (hasRole('BRANCH_MANAGER')) return <BranchDashboardPage />
   if (hasRole('RELATIONSHIP_MANAGER')) return <CcDashboardPage />
+  if (hasRole('ML_STEWARD')) return <Navigate to="/back-office/studio-ml" replace />
   return <Navigate to="/back-office" replace />
 }
 

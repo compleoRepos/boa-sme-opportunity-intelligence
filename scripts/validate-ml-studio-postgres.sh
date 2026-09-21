@@ -3,9 +3,8 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 NAME="${ML_STUDIO_POSTGRES_CONTAINER:-boa-ml-studio-pg-$$}"
-PORT="${ML_STUDIO_POSTGRES_PORT:-55439}"
+PORT="${ML_STUDIO_POSTGRES_PORT:-}"
 IMAGE="${ML_STUDIO_POSTGRES_IMAGE:-postgres:16.15-alpine}"
-URL="postgresql+psycopg://postgres:postgres@127.0.0.1:${PORT}/boa_ml_studio"
 
 if docker info >/dev/null 2>&1; then
   DOCKER=(docker)
@@ -18,11 +17,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
+publish=("-p" "127.0.0.1::5432")
+if [[ -n "$PORT" ]]; then
+  publish=("-p" "127.0.0.1:${PORT}:5432")
+fi
 "${DOCKER[@]}" run -d --rm --name "$NAME" \
   -e POSTGRES_PASSWORD=postgres \
   -e POSTGRES_DB=boa_ml_studio \
-  -p "127.0.0.1:${PORT}:5432" \
+  "${publish[@]}" \
   "$IMAGE" >/dev/null
+if [[ -z "$PORT" ]]; then
+  PORT=$("${DOCKER[@]}" port "$NAME" 5432/tcp | awk -F: 'NR==1 {print $NF}')
+fi
+URL="postgresql+psycopg://postgres:postgres@127.0.0.1:${PORT}/boa_ml_studio"
 
 ready=false
 for _ in $(seq 1 60); do

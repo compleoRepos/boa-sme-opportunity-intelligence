@@ -960,6 +960,36 @@ export interface MlModelComparison {
   }>
 }
 
+export interface ScoringPolicySimulation {
+  computedAt: string
+  source: string
+  sampleCount: number
+  skippedWithoutShadowScore: number
+  priorityDistribution: {
+    before: Record<'P1' | 'P2' | 'P3' | 'P4', number>
+    after: Record<'P1' | 'P2' | 'P3' | 'P4', number>
+  }
+  movements: { up: number; down: number; unchanged: number }
+  top10Changes: Array<{
+    opportunityId: string
+    customerId: string
+    customerName: string
+    beforeScore: number
+    afterScore: number
+    beforePriority: string
+    afterPriority: string
+    direction: 'up' | 'down' | 'unchanged'
+    absoluteDifference: number
+    contributions: Array<{
+      component: 'RULES' | 'ML_SHADOW'
+      rawScore: number
+      weight: number
+      weightedScore: number
+    }>
+  }>
+  limitations: string[]
+}
+
 export interface ScoringPolicyVersionView {
   policyId: string
   version: number
@@ -974,6 +1004,7 @@ export interface ScoringPolicyVersionView {
   simulationId?: string | null
   operationalMode?: string
   mlObservationMode?: string
+  simulation?: ScoringPolicySimulation
 }
 
 export interface ScoringPolicyView {

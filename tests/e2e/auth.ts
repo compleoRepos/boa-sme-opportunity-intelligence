@@ -15,6 +15,7 @@ export const accounts = {
   agence: { persona: 'agence', username: process.env.E2E_BRANCH_USERNAME || 'branch.demo', password: process.env.E2E_BRANCH_PASSWORD || 'DevOnly-Branch1-ChangeMe!' },
   backoffice: { persona: 'backoffice', username: process.env.E2E_BUSINESS_ANALYST_USERNAME || 'business.analyst.demo', password: process.env.E2E_BUSINESS_ANALYST_PASSWORD || 'DevOnly-BusinessAnalyst1-ChangeMe!' },
   analyste: { persona: 'backoffice', username: process.env.E2E_ANALYST_USERNAME || 'analyst.demo', password: process.env.E2E_ANALYST_PASSWORD || 'DevOnly-Analyst1-ChangeMe!' },
+  karim: { persona: 'ml-01', username: process.env.E2E_ML_STEWARD_USERNAME || 'ml.steward.demo', password: process.env.E2E_ML_STEWARD_PASSWORD || 'DevOnly-MlSteward1-ChangeMe!' },
   admin: { persona: 'backoffice', username: process.env.E2E_ADMIN_USERNAME || 'admin.demo', password: process.env.E2E_ADMIN_PASSWORD || 'DevOnly-Admin1-ChangeMe!' },
   approbateur: { persona: 'approbateur', username: process.env.E2E_RULE_APPROVER_USERNAME || 'rule.approver.demo', password: process.env.E2E_RULE_APPROVER_PASSWORD || 'DevOnly-RuleApprover1-ChangeMe!' },
 } as const
@@ -23,7 +24,7 @@ export async function login(page: Page, account: keyof typeof accounts) {
   const target = accounts[account]
   await page.goto('/login')
   if (devMode) {
-    await page.getByRole('button', { name: new RegExp(target.persona === 'cc' ? 'Ahmed' : target.persona === 'agence' ? 'Salma' : target.persona === 'approbateur' ? 'Nadia' : 'Youssef') }).click()
+    await page.getByRole('button', { name: new RegExp(target.persona === 'cc' ? 'Ahmed' : target.persona === 'agence' ? 'Salma' : target.persona === 'approbateur' ? 'Nadia' : target.persona === 'ml-01' ? 'Karim' : 'Youssef') }).click()
   } else {
     // Keycloak peut être déclenché automatiquement par l'initialisation OIDC ou manuellement
     // depuis l'écran local. Le helper accepte les deux comportements sans attendre un bouton

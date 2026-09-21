@@ -157,6 +157,9 @@ function TrainingTab() {
   const selectedManifest = trainable.find((item) => item.id === manifestId)
   const canTrain = auth.hasRole('ML_STEWARD') || auth.hasRole('ADMIN')
   useEffect(() => { if (!selectedId && activeJob) setSelectedId(activeJob.id) }, [activeJob, selectedId])
+  useEffect(() => {
+    if (current.data?.terminal) void history.refetch()
+  }, [current.data?.terminal, current.data?.updatedAt])
   const submit = (event: FormEvent) => {
     event.preventDefault()
     start.mutate({ manifestId, algorithm: 'LOGISTIC_REGRESSION', seed, justification }, { onSuccess: (job) => { setSelectedId(job.id); toast.push('success', 'Entraînement placé dans la file CPU') } })
@@ -209,8 +212,9 @@ function ComparisonTab() {
   useEffect(() => {
     if (!runs.data?.runs.length) return
     const champion = runs.data.runs.find((item) => item.status === 'CHAMPION')
-    const candidate = runs.data.runs.find((item) => item.modelVersion !== champion?.modelVersion)
-    setLeft((value) => value || champion?.modelVersion || runs.data!.runs[0]!.modelVersion)
+    const primary = champion || runs.data.runs[0]!
+    const candidate = runs.data.runs.find((item) => item.modelVersion !== primary.modelVersion)
+    setLeft((value) => value || primary.modelVersion)
     setRight((value) => value || candidate?.modelVersion || '')
   }, [runs.data])
   const comparison = useMlModelComparison(left, right)
@@ -274,7 +278,11 @@ function PolicyTab() {
         {!target ? <EmptyState compact title="Aucune version" /> : <div className="stack"><div className="grid cols-2"><MiniMetric label="Statut" value={target.status} /><MiniMetric label="Ratio" value={`${formatPercent(target.weights.rules)} / ${formatPercent(target.weights.ml)}`} /><MiniMetric label="Auteur" value={target.authorId} /><MiniMetric label="Simulation" value={target.simulationId || '—'} /></div><PolicyActions policy={target} onAction={(next) => setDialog({ kind: 'policy', policy: target, transition: next })} gate3Passed={gate3?.status === 'PASSED'} gate3Reason={gate3?.missingCondition} /></div>}
       </Panel>
     </div>
-    <Panel eyebrow="Simulation" title="Impact portefeuille fourni par l’API"><EmptyState compact title="Simulation d’impact non implémentée" message="Le backend refuse explicitement cette transition tant qu’un jeu point-in-time réunissant scores règles et scores ML n’est pas disponible. Aucune distribution avant/après, montée, descente ou variation du top 10 n’est inventée." /></Panel>
+    <Panel eyebrow="Simulation" title="Impact portefeuille fourni par l’API">{created?.simulation ? <div className="stack">
+      <div className="grid cols-4"><MiniMetric label="Opportunités simulées" value={created.simulation.sampleCount} /><MiniMetric label="Montées" value={created.simulation.movements.up} /><MiniMetric label="Descentes" value={created.simulation.movements.down} /><MiniMetric label="Inchangées" value={created.simulation.movements.unchanged} /></div>
+      <div className="table-wrap"><table><thead><tr><th>PME</th><th>Avant</th><th>Après</th><th>Écart</th><th>Contribution</th></tr></thead><tbody>{created.simulation.top10Changes.map((item) => <tr key={item.opportunityId}><td><strong>{item.customerName}</strong><small className="block mono">{item.customerId}</small></td><td>{item.beforePriority} · {item.beforeScore.toFixed(1)}</td><td>{item.afterPriority} · {item.afterScore.toFixed(1)}</td><td>{item.direction} · {item.absoluteDifference.toFixed(1)}</td><td>{item.contributions.map((value) => `${value.component} ${value.weight * 100} %`).join(' · ')}</td></tr>)}</tbody></table></div>
+      <div className="notice warning"><LockKeyhole size={16} /><div><strong>Simulation uniquement.</strong> Calcul fondé sur les opportunités et scores shadow persistés ; aucune activation, aucune décision de crédit et aucune performance de production revendiquée.</div></div>
+    </div> : <EmptyState compact title="Aucune simulation exécutée" message="Créez une version puis lancez Simuler. Le serveur exige des opportunités portant un score ML shadow persisté et refuse de fabriquer un résultat." />}</Panel>
     {transition.isError && <div className="notice danger" role="alert"><XCircle size={16} /><div><strong>Transition refusée</strong>{transition.error.message}</div></div>}
     {dialog?.kind === 'policy' && <ReasonDialog title={`${label(dialog.transition)} la politique`} pending={transition.isPending} onClose={() => setDialog(undefined)} onConfirm={(dialogReason) => executeDialog(dialog, dialogReason)} />}
   </div>
@@ -286,7 +294,7 @@ function PolicyActions({ policy, onAction, gate3Passed, gate3Reason }: { policy:
   const approver = auth.hasRole('RULE_APPROVER') || auth.hasRole('ADMIN')
   const selfApproval = policy.authorId === auth.username
   return <div className="stack"><div className="row wrap">
-    {author && policy.status === 'DRAFT' && <Button size="sm" icon={<FlaskConical size={14} />} onClick={() => onAction('simulate')} disabled title="Simulation indisponible : dataset point-in-time règles/ML non implémenté côté serveur.">Simuler · indisponible</Button>}
+    {author && policy.status === 'DRAFT' && <Button size="sm" icon={<FlaskConical size={14} />} onClick={() => onAction('simulate')}>Simuler</Button>}
     {author && policy.status === 'SIMULATED' && <Button size="sm" variant="primary" icon={<Send size={14} />} onClick={() => onAction('submit')}>Soumettre</Button>}
     {approver && policy.status === 'SUBMITTED' && <Button size="sm" variant="success" icon={<Check size={14} />} onClick={() => onAction('approve')} disabled={selfApproval} title={selfApproval ? 'L’auteur ne peut pas approuver sa propre politique.' : undefined}>Approuver</Button>}
     {approver && policy.status === 'APPROVED' && <Button size="sm" icon={<UploadCloud size={14} />} onClick={() => onAction('publish')}>Publier</Button>}

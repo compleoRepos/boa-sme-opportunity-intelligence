@@ -291,6 +291,10 @@ test('Scoring Policy hybride simulable mais non activable sans labels BOA', asyn
   const approver = await approverContext.newPage()
   await login(approver, 'approbateur')
   const approverAuthorization = await authenticatedHeader(approver, '/back-office/regles')
+  const adminContext = await browser.newContext()
+  const admin = await adminContext.newPage()
+  await login(admin, 'admin')
+  const adminAuthorization = await authenticatedHeader(admin, '/back-office')
   const trace = `e2e-policy-${Date.now()}`
   const analystHeaders = {
     Authorization: analystAuthorization,
@@ -299,6 +303,11 @@ test('Scoring Policy hybride simulable mais non activable sans labels BOA', asyn
   }
   const approverHeaders = {
     Authorization: approverAuthorization,
+    'Content-Type': 'application/json',
+    'X-Correlation-ID': trace,
+  }
+  const adminHeaders = {
+    Authorization: adminAuthorization,
     'Content-Type': 'application/json',
     'X-Correlation-ID': trace,
   }
@@ -324,12 +333,14 @@ test('Scoring Policy hybride simulable mais non activable sans labels BOA', asyn
       data: {
         reason: 'simulation POC sans performance de production',
         simulationId,
-        sample: { customers: 500, dataset: 'synthetic-seed-2026-09' },
       },
     },
   )
   expect(simulated.status()).toBe(202)
-  expect((await simulated.json()).simulationId).toBe(simulationId)
+  const simulation = await simulated.json()
+  expect(simulation.simulationId).toBe(simulationId)
+  expect(simulation.simulation.sampleCount).toBeGreaterThan(0)
+  expect(simulation.simulation.source).toBe('PERSISTED_OPPORTUNITIES_WITH_ML_SHADOW')
   const submitted = await analyst.request.post(
     `/api/v1/admin/scoring-policies/${policyId}/versions/${version}/submit`,
     { headers: analystHeaders, data: { reason: 'soumission E2E', simulationId } },
@@ -350,10 +361,10 @@ test('Scoring Policy hybride simulable mais non activable sans labels BOA', asyn
     )
     expect(response.status()).toBe(202)
   }
-  const blockedActivation = await approver.request.post(
+  const blockedActivation = await admin.request.post(
     `/api/v1/admin/scoring-policies/${policyId}/versions/${version}/activate`,
     {
-      headers: approverHeaders,
+      headers: adminHeaders,
       data: { reason: 'activation interdite sans labels BOA', simulationId },
     },
   )
@@ -369,4 +380,5 @@ test('Scoring Policy hybride simulable mais non activable sans labels BOA', asyn
   expect(Number(baseline.weights.ml)).toBe(0)
   await analystContext.close()
   await approverContext.close()
+  await adminContext.close()
 })

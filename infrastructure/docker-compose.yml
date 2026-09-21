@@ -461,7 +461,7 @@ services:
 
   notification-worker:
     <<: *backend
-    entrypoint: ["/sbin/tini", "--", "python", "-m", "boa_oi.notification_worker"]
+    entrypoint: ["/usr/bin/tini", "--", "python", "-m", "boa_oi.notification_worker"]
     environment:
       <<: *backend-environment
       DATABASE_URL: postgresql+psycopg://notification_service:${NOTIFICATION_DB_PASSWORD:-DevOnly-NotificationDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Dnotification
