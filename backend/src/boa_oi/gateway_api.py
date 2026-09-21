@@ -45,7 +45,7 @@ SERVICES = {
     "portfolio": "PORTFOLIO_SERVICE_URL",
     "notification": "NOTIFICATION_SERVICE_URL",
 }
-GLOBAL_ANALYTICS_ROLES = ("DATA_ANALYST", "ADMIN", "SERVICE")
+GLOBAL_ANALYTICS_ROLES = ("DATA_ANALYST", "ML_STEWARD", "ADMIN", "SERVICE")
 
 
 def target(service: str) -> str:
@@ -323,7 +323,13 @@ for public_path, service, internal_path, roles in GET_ROUTES:
     register_get(public_path, service, internal_path, roles)
 
 
-RULE_READ_ROLES = ("BUSINESS_ANALYST", "RULE_APPROVER", "DATA_ANALYST", "ADMIN")
+RULE_READ_ROLES = (
+    "BUSINESS_ANALYST",
+    "RULE_APPROVER",
+    "DATA_ANALYST",
+    "ML_STEWARD",
+    "ADMIN",
+)
 RULE_AUTHOR_ROLES = ("BUSINESS_ANALYST", "ADMIN")
 RULE_APPROVER_ROLES = ("RULE_APPROVER", "ADMIN")
 
@@ -492,17 +498,27 @@ async def scoring_policy_governance(
 async def ml_governance(
     request: Request,
     subpath: str = "",
-    _principal: Principal = Depends(require_roles("DATA_ANALYST", "RULE_APPROVER", "ADMIN")),
+    _principal: Principal = Depends(
+        require_roles("DATA_ANALYST", "ML_STEWARD", "RULE_APPROVER", "ADMIN")
+    ),
 ) -> JSONResponse:
     path = "ml/governance" + (f"/{subpath}" if subpath else "")
     body = await json_body(request) if request.method != "GET" else None
-    return await proxy(request, "ml-engine", path, body=body)
+    return await proxy(
+        request,
+        "ml-engine",
+        path,
+        body=body,
+        idempotency_key=request.headers.get("Idempotency-Key"),
+    )
 
 
 @app.post("/api/v1/admin/ml/outcomes/materialize", tags=["ML governance"])
 async def materialize_ml_outcomes(
     request: Request,
-    _principal: Principal = Depends(require_roles("DATA_ANALYST", "ADMIN", "SERVICE")),
+    _principal: Principal = Depends(
+        require_roles("DATA_ANALYST", "ML_STEWARD", "ADMIN", "SERVICE")
+    ),
 ) -> JSONResponse:
     return await proxy(
         request,
@@ -515,7 +531,9 @@ async def materialize_ml_outcomes(
 @app.get("/api/v1/admin/ml/outcomes/snapshots", tags=["ML governance"])
 async def list_ml_outcome_snapshots(
     request: Request,
-    _principal: Principal = Depends(require_roles("DATA_ANALYST", "ADMIN", "SERVICE")),
+    _principal: Principal = Depends(
+        require_roles("DATA_ANALYST", "ML_STEWARD", "RULE_APPROVER", "ADMIN", "SERVICE")
+    ),
 ) -> JSONResponse:
     return await proxy(request, "ml-engine", "ml/outcomes/snapshots")
 
@@ -527,7 +545,9 @@ async def list_ml_outcome_snapshots(
 )
 async def ml_dataset_manifests(
     request: Request,
-    _principal: Principal = Depends(require_roles("DATA_ANALYST", "ADMIN", "SERVICE")),
+    _principal: Principal = Depends(
+        require_roles("DATA_ANALYST", "ML_STEWARD", "RULE_APPROVER", "ADMIN", "SERVICE")
+    ),
 ) -> JSONResponse:
     body = await json_body(request) if request.method == "POST" else None
     return await proxy(request, "ml-engine", "ml/datasets/manifests", body=body)

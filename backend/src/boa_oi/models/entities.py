@@ -1119,7 +1119,7 @@ class ModelRegistry(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __table_args__ = (
         CheckConstraint(
             "status IN ('REGISTERED','VALIDATING','SUBMITTED','APPROVED','CHALLENGER',"
-            "'CHAMPION','ACTIVE','RETIRED')",
+            "'CHAMPION','ACTIVE','RETIRED','DEMO_ONLY')",
             name="status",
         ),
         CheckConstraint("score_type = 'SALES_PROPENSITY'", name="score_type"),
@@ -1256,7 +1256,7 @@ class MLTrainingRun(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         UniqueConstraint("model_id", "model_version"),
         CheckConstraint(
             "status IN ('DRAFT','REGISTERED','VALIDATING','SUBMITTED','APPROVED','CHALLENGER',"
-            "'CHAMPION','RETIRED','REJECTED')",
+            "'CHAMPION','RETIRED','REJECTED','DEMO_ONLY')",
             name="status",
         ),
         {"schema": "ml"},
@@ -1309,6 +1309,80 @@ class MLDatasetManifest(Base, UUIDPrimaryKeyMixin):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     created_by: Mapped[str] = mapped_column(String(120))
+
+
+class MLTrainingExample(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "training_examples"
+    __table_args__ = (
+        UniqueConstraint("manifest_id", "entity_ref", "observation_as_of"),
+        CheckConstraint("split IN ('TRAIN','TEST')", name="split"),
+        CheckConstraint(
+            "source_kind IN ('BOA_HISTORICAL_OBSERVED','DEMO_SYNTHETIC_LABELS')",
+            name="source_kind",
+        ),
+        CheckConstraint("label_available_from > observation_as_of", name="label_time"),
+        Index("ix_ml_training_examples_manifest_split", "manifest_id", "split"),
+        {"schema": "ml"},
+    )
+    manifest_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("ml.dataset_manifests.id", ondelete="CASCADE")
+    )
+    entity_ref: Mapped[str] = mapped_column(String(80))
+    split: Mapped[str] = mapped_column(String(20))
+    observation_as_of: Mapped[date] = mapped_column(Date)
+    label_available_from: Mapped[date] = mapped_column(Date)
+    feature_values_json: Mapped[dict] = mapped_column(JSON)
+    label: Mapped[bool] = mapped_column(Boolean)
+    source_kind: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class MLTrainingJob(Base, UUIDPrimaryKeyMixin):
+    __tablename__ = "training_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('QUEUED','RUNNING','SUCCEEDED','FAILED','INSUFFICIENT_DATA','CANCELLED')",
+            name="status",
+        ),
+        CheckConstraint("percentage BETWEEN 0 AND 100", name="percentage"),
+        CheckConstraint("algorithm = 'LOGISTIC_REGRESSION'", name="algorithm"),
+        Index("ix_ml_training_jobs_created", "created_at"),
+        Index(
+            "uq_ml_training_jobs_active_manifest",
+            "manifest_id",
+            unique=True,
+            postgresql_where=text("status IN ('QUEUED','RUNNING')"),
+            sqlite_where=text("status IN ('QUEUED','RUNNING')"),
+        ),
+        {"schema": "ml"},
+    )
+    manifest_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("ml.dataset_manifests.id", ondelete="RESTRICT")
+    )
+    algorithm: Mapped[str] = mapped_column(String(40), default="LOGISTIC_REGRESSION")
+    seed: Mapped[int] = mapped_column(Integer)
+    justification: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="QUEUED")
+    current_step: Mapped[str | None] = mapped_column(String(80))
+    percentage: Mapped[int] = mapped_column(Integer, default=0)
+    steps_json: Mapped[list] = mapped_column(JSON, default=list)
+    result_json: Mapped[dict | None] = mapped_column(JSON)
+    error_json: Mapped[dict | None] = mapped_column(JSON)
+    cancellation_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    author: Mapped[str] = mapped_column(String(120))
+    idempotency_key: Mapped[str] = mapped_column(String(200), unique=True)
+    request_hash: Mapped[str] = mapped_column(String(64))
+    correlation_id: Mapped[str] = mapped_column(String(128))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
 
 class MLEvaluationSnapshot(Base, UUIDPrimaryKeyMixin):

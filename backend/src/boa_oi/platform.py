@@ -233,6 +233,7 @@ async def current_principal(
             roles={
                 "ADMIN",
                 "DATA_ANALYST",
+                "ML_STEWARD",
                 "BRANCH_MANAGER",
                 "RELATIONSHIP_MANAGER",
                 "SERVICE",
@@ -551,6 +552,7 @@ READ_ROLES = (
     "BRANCH_MANAGER",
     "DATA_ANALYST",
     "BUSINESS_ANALYST",
+    "ML_STEWARD",
     "RULE_APPROVER",
     "ADMIN",
     "SERVICE",

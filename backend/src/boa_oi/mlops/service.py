@@ -810,6 +810,8 @@ class MLOpsGovernanceService:
     def _transition(
         self, run: RunRecord, target: str, *, actor: str, trace_id: str, reason: str | None
     ) -> RunRecord:
+        if run.source_kind == "DEMO_SYNTHETIC_LABELS" or run.status == "DEMO_ONLY":
+            raise ConflictError("DEMO_ONLY models cannot enter the governed release workflow")
         old = run.as_dict()
         allowed = {
             "REGISTERED": {"VALIDATING"},
@@ -840,6 +842,8 @@ class MLOpsGovernanceService:
         reason: str | None = None,
     ) -> RunRecord:
         run = self.get(model_id, model_version)
+        if run.source_kind == "DEMO_SYNTHETIC_LABELS" or run.status == "DEMO_ONLY":
+            raise ConflictError("DEMO_ONLY models cannot be submitted")
         if not run.validation.get("valid"):
             raise ConflictError("lineage must be validated before submission")
         return self._transition(run, "SUBMITTED", actor=actor, trace_id=trace_id, reason=reason)
@@ -853,8 +857,11 @@ class MLOpsGovernanceService:
         trace_id: str,
         reason: str | None = None,
     ) -> RunRecord:
+        run = self.get(model_id, model_version)
+        if run.source_kind == "DEMO_SYNTHETIC_LABELS" or run.status == "DEMO_ONLY":
+            raise ConflictError("DEMO_ONLY models cannot be approved")
         return self._transition(
-            self.get(model_id, model_version),
+            run,
             "APPROVED",
             actor=actor,
             trace_id=trace_id,
@@ -871,6 +878,8 @@ class MLOpsGovernanceService:
         reason: str | None = None,
     ) -> RunRecord:
         run = self.get(model_id, model_version)
+        if run.source_kind == "DEMO_SYNTHETIC_LABELS" or run.status == "DEMO_ONLY":
+            raise ConflictError("ML_ACTIVATION_BLOCKED: DEMO_SYNTHETIC_LABELS_NON_PROMOTABLE")
         blockers = activation_blockers(
             deployment_mode=run.deployment_mode,
             source_kind=run.source_kind,

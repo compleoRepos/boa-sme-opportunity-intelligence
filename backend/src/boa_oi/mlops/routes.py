@@ -30,11 +30,11 @@ from boa_oi.technical.ids import deterministic_uuid
 PREFIX = "/internal/v1/ml/governance"
 router = APIRouter(prefix=PREFIX, tags=["ML governance"])
 governance_router = router
-AUTHOR_ROLES = ("DATA_ANALYST", "ADMIN")
+AUTHOR_ROLES = ("DATA_ANALYST", "ML_STEWARD", "ADMIN")
 EVALUATION_ROLES = ("DATA_ANALYST", "ADMIN", "SERVICE")
 APPROVER_ROLES = ("RULE_APPROVER", "ADMIN")
 RELEASE_ROLES = ("ADMIN",)
-GOVERNANCE_READ_ROLES = ("DATA_ANALYST", "RULE_APPROVER", "ADMIN", "SERVICE")
+GOVERNANCE_READ_ROLES = ("DATA_ANALYST", "ML_STEWARD", "RULE_APPROVER", "ADMIN", "SERVICE")
 
 
 class ArtifactPayload(BaseModel):
@@ -69,6 +69,9 @@ class GovernancePayload(BaseModel):
     horizonDays: int = Field(gt=0, le=3650)
     reason: str = Field(min_length=1)
     artifact: ArtifactPayload
+    registryStatus: Literal["CHALLENGER", "DEMO_ONLY"] | None = None
+    promotable: bool | None = None
+    promotionBlockers: list[str] = Field(default_factory=list)
 
 
 class TransitionPayload(BaseModel):
@@ -150,6 +153,15 @@ def register_run(
             select(ModelRegistry).where(ModelRegistry.model_version == payload.modelVersion)
         ):
             raise ConflictError("model artifact version already exists")
+        demo_only = payload.lineage.get("sourceKind") == "DEMO_SYNTHETIC_LABELS"
+        expected_status = "DEMO_ONLY" if demo_only else "CHALLENGER"
+        if payload.registryStatus is not None and payload.registryStatus != expected_status:
+            raise ValidationError("registryStatus must match the governed dataset source")
+        if payload.promotable is not None and payload.promotable == demo_only:
+            raise ValidationError("promotable must match the governed dataset source")
+        required_blocker = "DEMO_SYNTHETIC_LABELS_NON_PROMOTABLE"
+        if demo_only and required_blocker not in payload.promotionBlockers:
+            raise ValidationError("DEMO_ONLY payload must declare its promotion blocker")
         actor = _actor(principal)
         session.add(
             ModelRegistry(
@@ -157,7 +169,7 @@ def register_run(
                 model_version=payload.modelVersion,
                 score_type="SALES_PROPENSITY",
                 algorithm=payload.artifact.algorithm,
-                status="CHALLENGER",
+                status="DEMO_ONLY" if demo_only else "CHALLENGER",
                 feature_set_version=payload.featureVersion,
                 feature_order_json=payload.artifact.featureOrder,
                 coefficients_json=payload.artifact.coefficients,
@@ -189,6 +201,21 @@ def register_run(
             trace_id=_trace(request),
             reason=payload.reason,
         )
+        if demo_only:
+            run.status = "DEMO_ONLY"
+            run.activation_gate_status = "BLOCKED"
+            run.activation_gate_blockers = list(
+                dict.fromkeys(
+                    ["DEMO_SYNTHETIC_LABELS_NON_PROMOTABLE", *run.activation_gate_blockers]
+                )
+            )
+            run.validation = {
+                **run.validation,
+                "demoOnly": True,
+                "activationGateStatus": "BLOCKED",
+                "activationBlockers": run.activation_gate_blockers,
+            }
+            service.repository.save(run)
     except (NotFoundError, ConflictError, ValidationError) as exc:
         raise _error(exc) from exc
     return _response(run)

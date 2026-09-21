@@ -110,6 +110,9 @@ class ScoringPolicyVersion(BaseModel):
         # component names stay configurable.
         if sum(converted.values(), Decimal("0")) != Decimal("1"):
             raise ValueError("weights must sum exactly to 1")
+        ml_weight = converted.get("ml", converted.get("propensity", Decimal("0")))
+        if ml_weight > Decimal("0.5"):
+            raise ValueError("ML weight must not exceed 0.5")
         return converted
 
     @model_validator(mode="after")

@@ -33,6 +33,10 @@
         "description": "Read analytics, signals and diagnostics"
       },
       {
+        "name": "ML_STEWARD",
+        "description": "Steward governed model data, training and submission"
+      },
+      {
         "name": "SERVICE",
         "description": "Technical role for authenticated service-to-service calls"
       },
@@ -910,6 +914,36 @@
       ]
     },
     {
+      "username": "ml.steward.demo",
+      "email": "ml.steward.demo@synthetic.invalid",
+      "firstName": "Karim",
+      "lastName": "Bennani",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "branchIds": [
+          "ALL"
+        ],
+        "customerScope": [
+          "analytics"
+        ],
+        "synthetic": [
+          "true"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DevOnly-MlSteward1-ChangeMe!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ML_STEWARD",
+        "DATA_ANALYST"
+      ]
+    },
+    {
       "username": "business.analyst.demo",
       "email": "business.analyst.demo@synthetic.invalid",
       "firstName": "Demo",
@@ -1000,6 +1034,7 @@
         "BRANCH_MANAGER",
         "ADMIN",
         "DATA_ANALYST",
+        "ML_STEWARD",
         "SERVICE",
         "NOTIFICATION_DIGEST_READER",
         "BUSINESS_ANALYST",

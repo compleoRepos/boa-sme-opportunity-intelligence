@@ -14,6 +14,7 @@ from boa_oi.features.service import materialize_customer
 from boa_oi.http_clients import service_request
 from boa_oi.ml.governance import canonical_digest, dataset_manifest_blockers
 from boa_oi.ml.service import active_model, score_materialization, serialize_model, serialize_score
+from boa_oi.ml_training.routes import router as ml_training_router
 from boa_oi.mlops.routes import router as ml_governance_router
 from boa_oi.models.entities import (
     ActionOutcome,
@@ -40,10 +41,11 @@ app = create_service_app(
     "Deterministic CPU-only logistic sales propensity scoring with per-feature explanations.",
 )
 app.include_router(ml_governance_router)
+app.include_router(ml_training_router)
 app.include_router(operations_router)
 PREFIX = "/internal/v1/ml"
 ML_SCORE_ROLES = ("DATA_ANALYST", "ADMIN", "SERVICE")
-ML_GOVERNANCE_ROLES = ("DATA_ANALYST", "ADMIN", "SERVICE")
+ML_GOVERNANCE_ROLES = ("DATA_ANALYST", "ML_STEWARD", "RULE_APPROVER", "ADMIN", "SERVICE")
 
 
 class ScoreRequest(BaseModel):
@@ -289,7 +291,7 @@ def outcome_snapshots(
 
 @app.post(
     f"{PREFIX}/outcomes/materialize",
-    dependencies=[Depends(require_roles("DATA_ANALYST", "ADMIN", "SERVICE"))],
+    dependencies=[Depends(require_roles("DATA_ANALYST", "ML_STEWARD", "ADMIN", "SERVICE"))],
     tags=["Future Outcome Labels"],
 )
 def materialize_outcomes(
@@ -441,7 +443,7 @@ def _serialize_manifest(record: MLDatasetManifest) -> dict[str, Any]:
 
 @app.post(
     f"{PREFIX}/datasets/manifests",
-    dependencies=[Depends(require_roles("DATA_ANALYST", "ADMIN", "SERVICE"))],
+    dependencies=[Depends(require_roles("DATA_ANALYST", "ML_STEWARD", "ADMIN", "SERVICE"))],
     tags=["ML Dataset Governance"],
 )
 def create_dataset_manifest(

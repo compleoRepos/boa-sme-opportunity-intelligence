@@ -16,6 +16,8 @@ from boa_oi.models.entities import (
     AccountBalance,
     Customer,
     CustomerProduct,
+    MLDatasetManifest,
+    MLTrainingExample,
     Opportunity,
     OpportunityRule,
     OutboxMessage,
@@ -78,6 +80,20 @@ PRODUCTS = (
     ("TERM_DEPOSIT", "Term Deposit", "INVESTMENT"),
     ("LIQUIDITY_INVESTMENT", "Liquidity Investment", "INVESTMENT"),
 )
+DEMO_ML_MANIFEST_VERSION = "demo-synthetic-labels-2026-v1"
+DEMO_ML_EXAMPLE_COUNT = 240
+DEMO_ML_FEATURES = (
+    "cash_inflow_growth_90d",
+    "supplier_payment_growth_90d",
+    "international_activity_ratio_90d",
+    "balance_strength_90d",
+    "activity_density_90d",
+    "analytics_coverage_90d",
+    "customer_tenure_ratio",
+    "segment_medium",
+    "confirmed_signal_ratio",
+    "published_rule_match_strength",
+)
 
 
 @dataclass(frozen=True)
@@ -93,6 +109,60 @@ def rng_for(*parts: object) -> random.Random:
 
 def scenario_for(index: int) -> str:
     return SCENARIOS[(index - 1) % len(SCENARIOS)]
+
+
+def demo_training_example(index: int) -> dict:
+    """Create one deterministic and explicitly synthetic commercial propensity example."""
+    scenario = scenario_for(index)
+    rng = rng_for("ml-training", index)
+    growth = scenario == "GROWTH_COMPANY"
+    international = scenario == "INTERNATIONAL_GROWTH"
+    surplus = scenario == "CASH_SURPLUS"
+    false_positive = scenario.startswith("FALSE_POSITIVE")
+    positive_rates = {
+        "GROWTH_COMPANY": 0.80,
+        "INTERNATIONAL_GROWTH": 0.70,
+        "CASH_SURPLUS": 0.50,
+        "STABLE_COMPANY": 0.20,
+        "FINANCIAL_STRESS": 0.10,
+        "NORMAL_CUSTOMER": 0.15,
+        "FALSE_POSITIVE_SEASONAL": 0.0,
+        "FALSE_POSITIVE_ONE_OFF": 0.0,
+    }
+    # Draw independently for every chronological example so TRAIN and TEST both
+    # retain positives; false-positive scenarios are deterministically negative.
+    label = False if false_positive else rng.random() < positive_rates[scenario]
+    observation = date(2026, 1, 1) + timedelta(days=index - 1)
+    feature_values = {
+        "cash_inflow_growth_90d": round((0.55 if growth else 0.10) + rng.uniform(-0.12, 0.12), 6),
+        "supplier_payment_growth_90d": round(
+            (0.38 if growth else 0.08) + rng.uniform(-0.1, 0.1), 6
+        ),
+        "international_activity_ratio_90d": round(
+            (0.72 if international else 0.08) + rng.uniform(-0.06, 0.06), 6
+        ),
+        "balance_strength_90d": round((0.70 if surplus else 0.45) + rng.uniform(-0.12, 0.12), 6),
+        "activity_density_90d": round((0.75 if growth else 0.48) + rng.uniform(-0.1, 0.1), 6),
+        "analytics_coverage_90d": round(0.92 + rng.uniform(-0.05, 0.05), 6),
+        "customer_tenure_ratio": round(0.35 + (index % 15) / 20, 6),
+        "segment_medium": float(index % 3 == 0),
+        "confirmed_signal_ratio": round((0.78 if label else 0.25) + rng.uniform(-0.1, 0.1), 6),
+        "published_rule_match_strength": round(
+            (0.80 if label else (0.72 if false_positive else 0.30)) + rng.uniform(-0.08, 0.08),
+            6,
+        ),
+    }
+    return {
+        "id": deterministic_uuid("ml-training-example", DEMO_ML_MANIFEST_VERSION, index),
+        "manifest_id": deterministic_uuid("ml-dataset-manifest", DEMO_ML_MANIFEST_VERSION),
+        "entity_ref": f"SME-{index:05d}",
+        "split": "TRAIN" if index <= 192 else "TEST",
+        "observation_as_of": observation,
+        "label_available_from": observation + timedelta(days=90),
+        "feature_values_json": {key: feature_values[key] for key in DEMO_ML_FEATURES},
+        "label": label,
+        "source_kind": "DEMO_SYNTHETIC_LABELS",
+    }
 
 
 def monthly_multiplier(scenario: str, month_index: int, sector: str) -> float:
@@ -597,6 +667,59 @@ def seed(database_url: str, batch_size: int = 1000) -> dict:
                     ]
                 )
             )
+        demo_examples = [
+            demo_training_example(index) for index in range(1, DEMO_ML_EXAMPLE_COUNT + 1)
+        ]
+        demo_manifest_id = deterministic_uuid("ml-dataset-manifest", DEMO_ML_MANIFEST_VERSION)
+        demo_manifest_payload = {
+            "manifestVersion": DEMO_ML_MANIFEST_VERSION,
+            "sourceKind": "DEMO_SYNTHETIC_LABELS",
+            "purpose": "DEMONSTRATION_ONLY",
+            "targetOutcome": "ANY_COMMERCIAL_OPPORTUNITY",
+            "labelDefinitionVersion": "demo-commercial-conversion-90d-v1",
+            "horizonDays": 90,
+            "population": {
+                "segment": "PME",
+                "featureSetVersion": "sales-features-v2",
+                "dataClassification": "SYNTHETIC_DEMO_ONLY",
+            },
+            "trainingCutoff": "2026-07-11",
+            "rowCount": DEMO_ML_EXAMPLE_COUNT,
+        }
+        demo_manifest_hash = hashlib.sha256(
+            json.dumps(demo_manifest_payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        session.execute(
+            pg_insert(MLDatasetManifest)
+            .values(
+                id=demo_manifest_id,
+                manifest_version=DEMO_ML_MANIFEST_VERSION,
+                source_kind="DEMO_SYNTHETIC_LABELS",
+                purpose="DEMONSTRATION_ONLY",
+                target_outcome="ANY_COMMERCIAL_OPPORTUNITY",
+                label_definition_version="demo-commercial-conversion-90d-v1",
+                horizon_days=90,
+                population_json=demo_manifest_payload["population"],
+                exclusions_json=[
+                    "FALSE_POSITIVE_SYNTHETIC_LABEL_ALWAYS_NEGATIVE",
+                    "NEVER_PROMOTABLE",
+                ],
+                training_cutoff=date(2026, 7, 11),
+                feature_snapshot_ids_json=[],
+                label_snapshot_ids_json=[str(item["id"]) for item in demo_examples],
+                row_count=DEMO_ML_EXAMPLE_COUNT,
+                manifest_hash=demo_manifest_hash,
+                status="TRAINING_READY",
+                blockers_json=["DEMO_SYNTHETIC_LABELS_NON_PROMOTABLE"],
+                created_by="demo-data-generator",
+            )
+            .on_conflict_do_nothing(index_elements=[MLDatasetManifest.manifest_version])
+        )
+        session.execute(
+            pg_insert(MLTrainingExample)
+            .values(demo_examples)
+            .on_conflict_do_nothing(index_elements=[MLTrainingExample.id])
+        )
         session.execute(
             pg_insert(OutboxMessage)
             .values(

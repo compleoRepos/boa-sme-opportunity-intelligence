@@ -35,9 +35,17 @@ from boa_oi.scoring_policy.service import (
 router = APIRouter(prefix="/internal/v1/scoring-policies", tags=["Scoring policies"])
 app_router = router
 PREFIX = "/internal/v1/scoring-policies"
-READ_ROLES = ("DATA_ANALYST", "BUSINESS_ANALYST", "RULE_APPROVER", "ADMIN", "SERVICE")
-AUTHOR_ROLES = ("DATA_ANALYST", "BUSINESS_ANALYST", "ADMIN")
+READ_ROLES = (
+    "DATA_ANALYST",
+    "BUSINESS_ANALYST",
+    "ML_STEWARD",
+    "RULE_APPROVER",
+    "ADMIN",
+    "SERVICE",
+)
+AUTHOR_ROLES = ("DATA_ANALYST", "BUSINESS_ANALYST", "ML_STEWARD", "ADMIN")
 APPROVER_ROLES = ("RULE_APPROVER", "ADMIN")
+PUBLISHER_ROLES = ("RULE_APPROVER", "ADMIN")
 OPERATOR_ROLES = ("RULE_APPROVER", "ADMIN", "SERVICE")
 
 
@@ -140,7 +148,14 @@ def list_policies(
     "/active",
     dependencies=[
         Depends(
-            require_roles("SERVICE", "DATA_ANALYST", "BUSINESS_ANALYST", "RULE_APPROVER", "ADMIN")
+            require_roles(
+                "SERVICE",
+                "DATA_ANALYST",
+                "BUSINESS_ANALYST",
+                "ML_STEWARD",
+                "RULE_APPROVER",
+                "ADMIN",
+            )
         )
     ],
 )
@@ -291,7 +306,7 @@ def publish(
     payload: MutationPayload,
     request: Request,
     session: Session = Depends(get_session),
-    principal: Principal = Depends(require_roles(*OPERATOR_ROLES)),
+    principal: Principal = Depends(require_roles(*PUBLISHER_ROLES)),
 ) -> dict[str, Any]:
     return _transition(
         policy_id, version, PolicyStatus.PUBLISHED, payload, request, session, principal
@@ -305,7 +320,7 @@ def activate(
     payload: MutationPayload,
     request: Request,
     session: Session = Depends(get_session),
-    principal: Principal = Depends(require_roles(*OPERATOR_ROLES)),
+    principal: Principal = Depends(require_roles("ADMIN", "SERVICE")),
 ) -> dict[str, Any]:
     return _transition(
         policy_id, version, PolicyStatus.ACTIVE, payload, request, session, principal

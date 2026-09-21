@@ -18,6 +18,7 @@ replace_literal 'DevOnly-Rm1-ChangeMe!' "${RM_DEMO_PASSWORD:-DevOnly-Rm1-ChangeM
 replace_literal 'DevOnly-Branch1-ChangeMe!' "${BRANCH_MANAGER_DEMO_PASSWORD:-DevOnly-Branch1-ChangeMe!}"
 replace_literal 'DevOnly-Admin1-ChangeMe!' "${ADMIN_DEMO_PASSWORD:-DevOnly-Admin1-ChangeMe!}"
 replace_literal 'DevOnly-Analyst1-ChangeMe!' "${ANALYST_DEMO_PASSWORD:-DevOnly-Analyst1-ChangeMe!}"
+replace_literal 'DevOnly-MlSteward1-ChangeMe!' "${ML_STEWARD_DEMO_PASSWORD:-DevOnly-MlSteward1-ChangeMe!}"
 replace_literal 'DevOnly-BusinessAnalyst1-ChangeMe!' "${BUSINESS_ANALYST_DEMO_PASSWORD:-DevOnly-BusinessAnalyst1-ChangeMe!}"
 replace_literal 'DevOnly-RuleApprover1-ChangeMe!' "${RULE_APPROVER_DEMO_PASSWORD:-DevOnly-RuleApprover1-ChangeMe!}"
 replace_literal 'DevOnly-GatewayClient-ChangeMe!' "${API_GATEWAY_CLIENT_SECRET:-DevOnly-GatewayClient-ChangeMe!}"
