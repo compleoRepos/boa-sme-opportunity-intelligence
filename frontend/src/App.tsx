@@ -5,13 +5,14 @@ import { configureApiAuth } from './api/client'
 import { setRuntimeLabels } from './api/format'
 import { useLabelCatalog } from './api/hooks'
 import { AuthProvider, useAuth } from './auth/AuthProvider'
-import { ProtectedRoute, RoleRoute, RuleStudioRoute } from './auth/ProtectedRoute'
+import { MlStudioRoute, ProtectedRoute, RoleRoute, RuleStudioRoute } from './auth/ProtectedRoute'
 import { AuditPage, BackOfficeHomePage, EngineThresholdsPage, LabelsPage, ModelsPage, NotificationsPage, SimulationsPage } from './features/backoffice/BackOfficePages'
 import { BranchDashboardPage } from './features/branch/BranchDashboardPage'
 import { RmPortfolioPage } from './features/branch/RmPortfolioPage'
 import { CustomerSheetPage } from './features/customer/CustomerSheetPage'
 import { CcDashboardPage } from './features/dashboard/CcDashboardPage'
 import { DemoProvider } from './features/demo/DemoGuide'
+import { MlStudioPage } from './features/ml-studio/MlStudioPage'
 import { RuleBuilderPage } from './features/rules/RuleBuilderPage'
 import { RuleDetailPage } from './features/rules/RuleDetailPage'
 import { RuleStudioPage } from './features/rules/RuleStudioPage'
@@ -84,6 +85,7 @@ function ApplicationRoutes() {
         <Route path="back-office/regles/nouvelle" element={<RuleStudioRoute><RuleBuilderPage /></RuleStudioRoute>} />
         <Route path="back-office/regles/:ruleId" element={<RuleStudioRoute><RuleDetailPage /></RuleStudioRoute>} />
         <Route path="back-office/regles/:ruleId/modifier" element={<RuleStudioRoute><RuleBuilderPage /></RuleStudioRoute>} />
+        <Route path="back-office/studio-ml" element={<MlStudioRoute><MlStudioPage /></MlStudioRoute>} />
         <Route path="back-office/simulations" element={<RuleStudioRoute><SimulationsPage /></RuleStudioRoute>} />
         <Route path="back-office/modeles" element={<RuleStudioRoute><ModelsPage /></RuleStudioRoute>} />
         <Route path="back-office/audit" element={<RuleStudioRoute><AuditPage /></RuleStudioRoute>} />

@@ -1,4 +1,4 @@
-export type Role = 'RELATIONSHIP_MANAGER' | 'BRANCH_MANAGER' | 'ADMIN' | 'DATA_ANALYST' | 'BUSINESS_ANALYST' | 'RULE_APPROVER'
+export type Role = 'RELATIONSHIP_MANAGER' | 'BRANCH_MANAGER' | 'ADMIN' | 'DATA_ANALYST' | 'BUSINESS_ANALYST' | 'ML_STEWARD' | 'RULE_APPROVER'
 
 export interface PageMeta {
   pageSize: number
@@ -760,4 +760,261 @@ export interface NotificationDelivery {
   lastError?: string | null
   correlationId: string
   createdAt: string
+}
+
+export type MlTrainingStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'INSUFFICIENT_DATA' | 'CANCELLED'
+
+export interface MlTrainingStep {
+  name: string
+  status: 'RUNNING' | 'COMPLETED' | string
+  startedAt?: string
+  completedAt?: string
+  durationMs?: number
+  detail?: string
+}
+
+export interface MlTrainingResult {
+  modelId: string
+  modelVersion: string
+  featureVersion: string
+  datasetVersion: string
+  trainingPeriodFrom: string
+  trainingPeriodTo: string
+  validationPeriodFrom: string
+  validationPeriodTo: string
+  testPeriodFrom?: string | null
+  testPeriodTo?: string | null
+  codeVersion: string
+  hyperparameters: Record<string, unknown>
+  metrics: Record<string, unknown>
+  lineage: {
+    datasetId: string
+    featureSetVersion: string
+    trainingCutoff: string
+    sourceSnapshots: string[]
+    codeRevision: string
+    labelDefinition: string
+    datasetManifestHash: string
+    sourceKind: string
+    targetOutcome: string
+    horizonDays: number
+    population: Record<string, unknown>
+    examples?: unknown[]
+  }
+  deploymentMode: 'POC_SHADOW'
+  datasetManifestHash: string
+  artifactChecksum: string
+  targetOutcome: string
+  horizonDays: number
+  reason: string
+  artifact: {
+    algorithm: string
+    featureOrder: string[]
+    coefficients: Record<string, number>
+    intercept: number
+    threshold: number
+  }
+  registryStatus: 'CHALLENGER' | 'DEMO_ONLY'
+  promotable: boolean
+  promotionBlockers: string[]
+  [key: string]: unknown
+}
+
+export interface MlTrainingJob {
+  id: string
+  manifestId: string
+  algorithm: 'LOGISTIC_REGRESSION'
+  seed: number
+  justification: string
+  status: MlTrainingStatus
+  currentStep?: string | null
+  percentage: number
+  steps: MlTrainingStep[]
+  result?: MlTrainingResult | null
+  error?: { code?: string; message?: string; details?: unknown } | null
+  cancellationRequested: boolean
+  author: string
+  correlationId: string
+  startedAt?: string | null
+  completedAt?: string | null
+  createdAt?: string | null
+  updatedAt?: string | null
+  terminal: boolean
+}
+
+export interface MlDatasetManifest {
+  id: string
+  manifestVersion: string
+  sourceKind: string
+  purpose: string
+  targetOutcome: string
+  labelDefinitionVersion: string
+  horizonDays: number
+  population: Record<string, unknown>
+  exclusions: string[]
+  trainingCutoff: string
+  featureSnapshotIds?: string[]
+  labelSnapshotIds?: string[]
+  rowCount: number
+  manifestHash: string
+  status: string
+  activationBlockers: string[]
+  createdAt?: string | null
+}
+
+export interface MlStudioGate {
+  gate: string
+  label: string
+  status: 'PASSED' | 'BLOCKED' | string
+  actor?: string | null
+  at?: string | null
+  missingCondition?: string | null
+}
+
+export interface MlStudioSummary {
+  mode: 'RULES_ONLY' | 'ML_SHADOW' | 'HYBRID_RERANK' | string
+  weights: { rules: number; ml: number }
+  productionPerformanceClaim: boolean
+  champion?: { modelVersion: string; status: string; updatedAt: string } | null
+  labels: { available: number; mature: number }
+  latestEvaluation?: {
+    brierScore?: number | null
+    expectedCalibrationError?: number | null
+    status: string
+    createdAt: string
+  } | null
+  gates: MlStudioGate[]
+  targetDefinitions: Array<{
+    version: string
+    name: string
+    targetOutcome: string
+    horizonDays: number
+    population: Record<string, unknown>
+    status: string
+  }>
+  assumptions: {
+    minimumExamples: number
+    minimumPositives: number
+    maximumMlWeight: number
+    status: string
+  }
+}
+
+export interface MlGovernanceRun {
+  modelId: string
+  modelVersion: string
+  featureVersion: string
+  datasetVersion: string
+  metrics: Record<string, unknown>
+  lineage?: Record<string, unknown>
+  deploymentMode?: string
+  datasetManifestHash?: string | null
+  artifactChecksum?: string | null
+  sourceKind: string
+  activationGateStatus: string
+  activationGateBlockers: string[]
+  status: string
+  approvedBy?: string | null
+  approvedAt?: string | null
+  author: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MlGovernanceAudit {
+  action: string
+  userId: string
+  objectType: string
+  objectId: string
+  objectVersion?: string | null
+  reason?: string | null
+  traceId: string
+  timestamp: string
+  oldValue?: unknown
+  newValue?: unknown
+}
+
+export interface MlModelComparison {
+  comparable: boolean
+  reason?: string
+  message?: string
+  testDataset?: string
+  testCount?: number
+  rankingChangeRate?: number
+  models?: Array<{
+    modelVersion: string
+    status: string
+    featureSetVersion: string
+    metrics: Record<string, unknown>
+  }>
+  largestChanges?: Array<{
+    entityRef: string
+    leftScore: number
+    rightScore: number
+    leftPriority: string
+    rightPriority: string
+    absoluteDifference: number
+    contributions: Array<{ feature: string; left: number; right: number }>
+  }>
+}
+
+export interface ScoringPolicyVersionView {
+  policyId: string
+  version: number
+  weights: { rules: number; ml: number }
+  status: string
+  effectiveFrom?: string | null
+  authorId: string
+  approverId?: string | null
+  approvalReason?: string | null
+  approvedAt?: string | null
+  reason?: string | null
+  simulationId?: string | null
+  operationalMode?: string
+  mlObservationMode?: string
+}
+
+export interface ScoringPolicyView {
+  policyId: string
+  currentVersion: number
+  activeVersion?: number | null
+  versions: ScoringPolicyVersionView[]
+  active?: ScoringPolicyVersionView | null
+}
+
+export interface MlOutcomeMaterializationInput {
+  snapshotVersion: string
+  labelDefinitionVersion: string
+  targetOutcome: string
+  horizonDays: number
+  population: Record<string, unknown>
+  observationAsOf: string
+  labelAvailableFrom: string
+}
+
+export interface MlOutcomeMaterializationResult {
+  snapshotVersion: string
+  labelDefinitionVersion: string
+  targetOutcome: string
+  horizonDays: number
+  labelsWritten: number
+  sourceEventsRead: number
+  observationAsOf: string
+  labelAvailableFrom: string
+  automaticTraining: boolean
+  trainingReady: boolean
+  activationBlockers: string[]
+  purpose: string
+}
+
+export interface MlDatasetManifestInput {
+  manifestVersion: string
+  snapshotVersion: string
+  labelDefinitionVersion: string
+  purpose: string
+  targetOutcome: string
+  horizonDays: number
+  population: Record<string, unknown>
+  exclusions: string[]
+  trainingCutoff: string
 }

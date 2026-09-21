@@ -24,7 +24,8 @@ export function AppShell() {
   const sidebarRef = useDialogA11y<HTMLElement>(() => setMobileOpen(false), { active: mobileModal, inertAppRoot: false })
   const isBranchManager = auth.hasRole('BRANCH_MANAGER')
   const isRm = auth.hasRole('RELATIONSHIP_MANAGER') && !isBranchManager
-  const canBackOffice = auth.hasRole('ADMIN') || auth.hasRole('BUSINESS_ANALYST') || auth.hasRole('RULE_APPROVER') || auth.hasRole('DATA_ANALYST')
+  const canMlStudio = auth.hasRole('ML_STEWARD') || auth.hasRole('RULE_APPROVER') || auth.hasRole('ADMIN')
+  const canBackOffice = auth.hasRole('ADMIN') || auth.hasRole('BUSINESS_ANALYST') || auth.hasRole('RULE_APPROVER') || auth.hasRole('DATA_ANALYST') || auth.hasRole('ML_STEWARD')
   const dashboard = useRelationshipManagerDashboard(isRm)
   const crumbs = useBreadcrumbs()
 
@@ -73,7 +74,7 @@ export function AppShell() {
     return () => document.removeEventListener('mousedown', onClick)
   }, [profileOpen])
 
-  const roleLabel = isBranchManager ? 'Responsable d’agence' : isRm ? 'Chargé de clientèle PME' : auth.hasRole('ADMIN') || auth.hasRole('BUSINESS_ANALYST') ? 'Digital Factory · Back office' : auth.hasRole('RULE_APPROVER') ? 'Approbation des règles' : canBackOffice ? 'Analyse de données' : auth.roles[0]?.replaceAll('_', ' ') || auth.username
+  const roleLabel = isBranchManager ? 'Responsable d’agence' : isRm ? 'Chargé de clientèle PME' : auth.hasRole('ML_STEWARD') ? 'Responsable modèles · Digital Factory' : auth.hasRole('ADMIN') || auth.hasRole('BUSINESS_ANALYST') ? 'Digital Factory · Back office' : auth.hasRole('RULE_APPROVER') ? 'Approbation des règles' : canBackOffice ? 'Analyse de données' : auth.roles[0]?.replaceAll('_', ' ') || auth.username
   const priorities = dashboard.data?.kpis.highPriorityCustomers
   const actionsDue = dashboard.data?.kpis.actionsDue
 
@@ -98,12 +99,13 @@ export function AppShell() {
     if (canBackOffice) {
       items.push({ to: '/back-office', label: 'Back office métier', icon: Database, end: true, section: 'Gouvernance' })
       items.push({ to: '/back-office/regles', label: 'Rule Studio', icon: GitBranch })
+      if (canMlStudio) items.push({ to: '/back-office/studio-ml', label: 'Studio ML', icon: Cpu })
       items.push({ to: '/back-office/simulations', label: 'Simulations', icon: FlaskConical })
       items.push({ to: '/back-office/modeles', label: 'ML Governance', icon: Cpu })
       items.push({ to: '/back-office/audit', label: 'Audit', icon: ShieldCheck })
     }
     return items
-  }, [isRm, isBranchManager, canBackOffice, priorities, actionsDue])
+  }, [isRm, isBranchManager, canBackOffice, canMlStudio, priorities, actionsDue])
 
   const submitSearch = (event: FormEvent) => {
     event.preventDefault()

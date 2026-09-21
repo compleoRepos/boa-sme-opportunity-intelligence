@@ -12,6 +12,7 @@ const staticLabels: Array<[string, string]> = [
   ['/produits', 'Catalogue'],
   ['/back-office', 'Back office'],
   ['/back-office/regles', 'Rule Studio'],
+  ['/back-office/studio-ml', 'Studio ML'],
   ['/back-office/simulations', 'Simulations'],
   ['/back-office/modeles', 'ML Governance'],
   ['/back-office/audit', 'Audit'],

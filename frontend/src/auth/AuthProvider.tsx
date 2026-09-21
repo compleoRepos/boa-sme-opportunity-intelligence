@@ -40,7 +40,7 @@ const keycloak = authDisabled
       clientId,
     })
 
-const knownRoles: Role[] = ['RELATIONSHIP_MANAGER', 'BRANCH_MANAGER', 'ADMIN', 'DATA_ANALYST', 'BUSINESS_ANALYST', 'RULE_APPROVER']
+const knownRoles: Role[] = ['RELATIONSHIP_MANAGER', 'BRANCH_MANAGER', 'ADMIN', 'DATA_ANALYST', 'BUSINESS_ANALYST', 'ML_STEWARD', 'RULE_APPROVER']
 
 function extractRoles(token?: BoaToken) {
   const all = [...(token?.realm_access?.roles ?? []), ...(token?.resource_access?.[clientId]?.roles ?? [])]

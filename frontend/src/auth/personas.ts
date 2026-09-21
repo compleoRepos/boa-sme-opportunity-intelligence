@@ -38,6 +38,16 @@ export const DEV_PERSONAS: DevPersona[] = [
     branchIds: ['ALL'],
   },
   {
+    id: 'ml-01',
+    label: 'Karim Bennani',
+    description: 'Responsable modèles · Digital Factory',
+    subject: 'ml-01',
+    username: 'karim.bennani',
+    displayName: 'Karim Bennani',
+    roles: ['ML_STEWARD', 'DATA_ANALYST'],
+    branchIds: ['ALL'],
+  },
+  {
     id: 'backoffice',
     label: 'Youssef Tazi',
     description: 'Digital Factory · Rule Studio, ML governance, audit',

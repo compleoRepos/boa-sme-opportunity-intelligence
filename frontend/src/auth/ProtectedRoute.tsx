@@ -25,3 +25,7 @@ export function RoleRoute({ roles, children }: { roles: Role[]; children: React.
 export function RuleStudioRoute({ children }: { children: React.ReactNode }) {
   return <RoleRoute roles={['BUSINESS_ANALYST', 'RULE_APPROVER', 'ADMIN']}>{children}</RoleRoute>
 }
+
+export function MlStudioRoute({ children }: { children: React.ReactNode }) {
+  return <RoleRoute roles={['ML_STEWARD', 'RULE_APPROVER', 'ADMIN']}>{children}</RoleRoute>
+}
