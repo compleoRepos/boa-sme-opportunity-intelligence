@@ -511,6 +511,7 @@ def create_service_app(service_name: str, description: str, *, database: bool = 
         operation_id=f"{service_name.replace('-', '_')}_ready",
     )
     def ready() -> dict[str, str]:
+        engine = None
         if database:
             try:
                 factory = getattr(app.state, "session_factory", None)
@@ -523,6 +524,9 @@ def create_service_app(service_name: str, description: str, *, database: bool = 
                 raise Problem(
                     503, "DATABASE_UNAVAILABLE", "The service database is unavailable."
                 ) from exc
+        readiness_check = getattr(app.state, "readiness_check", None)
+        if readiness_check is not None:
+            readiness_check(engine)
         return {"status": "ready", "service": service_name}
 
     @app.get(

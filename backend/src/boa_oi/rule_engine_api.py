@@ -41,6 +41,7 @@ def evaluate(
                 "matched": True,
                 "customerId": payload.customerId,
                 "ruleId": rule.rule_id,
+                "ruleName": rule.name,
                 "ruleVersion": version.version,
                 "engineVersion": ENGINE_VERSION,
                 "opportunityType": recommendation["opportunityType"],

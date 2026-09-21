@@ -1,0 +1,230 @@
+{
+  "runId": "playwright-catalog-20260921T001625Z",
+  "generatedAt": "2026-09-21T00:11:38.383Z",
+  "status": "PASS",
+  "command": "cd tests/e2e && playwright test --config playwright.config.ts --reporter=json",
+  "sourceRevision": {
+    "baseCommit": "01026c452e23bb81ebcf09b3e8c41a61beaefd61",
+    "sourceDigest": "99c2462dcddca28b4c7ffe32916f2bc36a2f839dedec1bb3d432e0d14d38c110"
+  },
+  "stats": {
+    "startTime": "2026-09-21T00:11:38.383Z",
+    "duration": 220293.027,
+    "expected": 20,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "tests": [
+    {
+      "title": "accessibilité WCAG : dashboard CC et drawer Opportunity",
+      "file": "accessibility.spec.ts",
+      "line": 26,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 18363,
+      "retry": 0
+    },
+    {
+      "title": "accessibilité WCAG : dashboard agence",
+      "file": "accessibility.spec.ts",
+      "line": 49,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 9966,
+      "retry": 0
+    },
+    {
+      "title": "accessibilité WCAG : back office administrateur",
+      "file": "accessibility.spec.ts",
+      "line": 55,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 7457,
+      "retry": 0
+    },
+    {
+      "title": "navigation clavier mobile : menu borné, Échap et lien d’évitement",
+      "file": "accessibility.spec.ts",
+      "line": 62,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 7331,
+      "retry": 0
+    },
+    {
+      "title": "un CC télécharge un vrai classeur limité à son portefeuille",
+      "file": "export-xlsx.spec.ts",
+      "line": 6,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 7123,
+      "retry": 0
+    },
+    {
+      "title": "gouvernance persistée, readiness prudente et RBAC administratif",
+      "file": "governance.spec.ts",
+      "line": 18,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 14038,
+      "retry": 0
+    },
+    {
+      "title": "workflow MLOps shadow avec séparation des rôles et promotion bloquée",
+      "file": "governance.spec.ts",
+      "line": 116,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 20373,
+      "retry": 0
+    },
+    {
+      "title": "Scoring Policy hybride simulable mais non activable sans labels BOA",
+      "file": "governance.spec.ts",
+      "line": 285,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 13612,
+      "retry": 0
+    },
+    {
+      "title": "administrateur : versionner puis restaurer un libellé sans changer son code",
+      "file": "labels.spec.ts",
+      "line": 4,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 7914,
+      "retry": 0
+    },
+    {
+      "title": "notification : une action planifiée par le CC produit un email SMTP audité",
+      "file": "notifications.spec.ts",
+      "line": 6,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 14018,
+      "retry": 0
+    },
+    {
+      "title": "administrateur : configure et génère la synthèse quotidienne d’un CC",
+      "file": "notifications.spec.ts",
+      "line": 42,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 8298,
+      "retry": 0
+    },
+    {
+      "title": "catalogue indicatif : 28 produits, 7 familles et provenance publique",
+      "file": "product-catalog.spec.ts",
+      "line": 5,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 6828,
+      "retry": 0
+    },
+    {
+      "title": "preuve responsive : dashboard CC desktop",
+      "file": "responsive-captures.spec.ts",
+      "line": 52,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 7501,
+      "retry": 0
+    },
+    {
+      "title": "preuve responsive : dashboard agence tablette",
+      "file": "responsive-captures.spec.ts",
+      "line": 63,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 7834,
+      "retry": 0
+    },
+    {
+      "title": "preuve responsive : fiche PME mobile",
+      "file": "responsive-captures.spec.ts",
+      "line": 74,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 7806,
+      "retry": 0
+    },
+    {
+      "title": "cockpit CC : dashboard → fiche PME → opportunité → action → dashboard mis à jour",
+      "file": "rm-opportunity.spec.ts",
+      "line": 4,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 13333,
+      "retry": 0
+    },
+    {
+      "title": "dashboard agence : drill-down CC → portefeuille → PME → opportunité",
+      "file": "rm-opportunity.spec.ts",
+      "line": 91,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 12366,
+      "retry": 0
+    },
+    {
+      "title": "la navigation reste utilisable en largeur tablette",
+      "file": "rm-opportunity.spec.ts",
+      "line": 132,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 7762,
+      "retry": 0
+    },
+    {
+      "title": "Rule Studio : création visuelle → validation → simulation → soumission → approbation → publication",
+      "file": "rule-studio.spec.ts",
+      "line": 15,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 19372,
+      "retry": 0
+    },
+    {
+      "title": "ML Governance expose le registre réel des modèles",
+      "file": "rule-studio.spec.ts",
+      "line": 68,
+      "ok": true,
+      "expectedStatus": "passed",
+      "status": "passed",
+      "durationMs": 6792,
+      "retry": 0
+    }
+  ],
+  "scope": {
+    "environment": "Docker local",
+    "data": "synthetic",
+    "creditDecision": false,
+    "mlMode": "POC_SHADOW",
+    "priorityMode": "RULES_ONLY"
+  },
+  "limitations": [
+    "Ce rapport prouve vingt parcours Playwright sur la stack Docker locale synthétique ; il ne démontre ni capacité de production ni performance commerciale BOA."
+  ]
+}

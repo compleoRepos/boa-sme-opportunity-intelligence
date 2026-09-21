@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from boa_oi.api import application_for
 from boa_oi.http_clients import HttpBankingAdapter
 from fastapi.testclient import TestClient
@@ -99,3 +101,24 @@ def test_gateway_registers_all_frontend_routes(monkeypatch):
         "/api/v1/admin/pipeline",
     }
     assert required <= paths
+
+
+def test_relationship_manager_cannot_trigger_global_opportunity_generation(monkeypatch):
+    monkeypatch.setenv("BOA_AUTH_DISABLED", "true")
+    principal = json.dumps(
+        {
+            "subject": "rm-limited",
+            "roles": ["RELATIONSHIP_MANAGER"],
+            "relationshipManagerIds": ["rm-limited"],
+        }
+    )
+    response = TestClient(
+        application_for("opportunity-service"), raise_server_exceptions=False
+    ).post(
+        "/internal/v1/opportunities/generate",
+        headers={"X-Dev-Principal": principal, "Idempotency-Key": "cc-forbidden-generate"},
+        json={"customerIds": ["SME-00001"], "asOf": "2026-09-30"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "FORBIDDEN"

@@ -3,7 +3,7 @@
 > **Photographie historique du 19 septembre 2026.** Les absences et compteurs constatés ici ont alimenté les lots ultérieurs et ne doivent pas être lus comme état courant. Le pack bancaire, les preuves de charge, l’ingestion gouvernée et le verrou ML shadow ont été ajoutés sur `feat/pilot-readiness` après cet audit.
 
 **Dépôt audité :** `/home/ubuntu/btp-suivi-projets/boa-sme-opportunity-intelligence`
-**Exigences comparées :** `/home/ubuntu/upload/Pasted_content_100.txt`
+**Exigences comparées :** source externe non versionnée ; voir la [note de provenance][1].
 **Date de l’audit :** 2026-09-19
 **Périmètre :** historique Git, branches de référence, tests et résultats collectés, documents de pitch/démonstration/FAQ/pilote, et éléments vérifiables liés aux exigences. Aucun code n’a été modifié.
 
@@ -163,7 +163,7 @@ Aucune commande d’exécution de tests, de stack ou de pipeline n’a été lan
 
 ## Références locales
 
-[1]: /home/ubuntu/upload/Pasted_content_100.txt "Exigences de réalisation et livrables"
+[1]: ../SOURCE-NOTE.md "Note de provenance de la source d’exigences externe non versionnée"
 [2]: /home/ubuntu/btp-suivi-projets/boa-sme-opportunity-intelligence/docs/demo-scenario.md "Scénario de démonstration présent dans le dépôt"
 [3]: /home/ubuntu/btp-suivi-projets/boa-sme-opportunity-intelligence/docs/ml-acceptance.md "Checklist d’acceptation ML"
 [4]: /home/ubuntu/btp-suivi-projets/boa-sme-opportunity-intelligence/docs/final-status.md "Statut final technique"

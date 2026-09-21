@@ -199,6 +199,8 @@ Scopes recommandés : `customers:read`, `accounts:read`, `transactions:read`, `a
 
 ## 6. Corrélation, traçabilité et idempotence
 
+Pour les traitements synchrones du pilote, une réponse `status: "COMPLETED"` est émise **après commit** des écritures du service. Analytics garantit ainsi la visibilité des snapshots avant l’appel Signals, Signals celle des signaux avant Opportunity, et Opportunity celle des opportunités/audits avant les dashboards. Un statut `ACCEPTED` reste réservé à un traitement réellement différé et ne doit pas être interprété comme une donnée immédiatement lisible.
+
 `X-Correlation-ID` identifie une requête utilisateur de bout en bout. `traceparent` identifie le span distribué. Les deux sont enregistrés dans les logs structurés avec `service`, `route`, `subject`, `statusCode`, `durationMs` et, lorsque pertinent, `resourceId`.
 
 Les créations d’actions et déclenchements d’import/recalcul exigent `Idempotency-Key`. Une répétition avec la même clé et un corps identique retourne la réponse initiale. Une répétition avec un corps différent retourne `409 IDEMPOTENCY_KEY_REUSED`.
@@ -258,7 +260,14 @@ Codes minimaux :
 | `UNKNOWN_FILTER` | 400 | Filtre non supporté |
 | `INVALID_CURSOR` | 400 | Curseur absent, expiré ou incompatible avec le tri |
 | `STATE_CONFLICT` | 409 | Transition d’état non autorisée |
+| `UNKNOWN_RULE_PRODUCT_CODES` | 409 | Une règle publiée existante référence un code absent du catalogue actif ; la génération échoue sans recommandation partielle |
+| `UNAVAILABLE_RULE_PRODUCT_CODES` | 409 | Un code connu d’une règle correspondante est absent ou inactif dans Product Service ; la génération échoue avant persistance |
 | `IDEMPOTENCY_KEY_REUSED` | 409 | Clé réutilisée avec un contenu différent |
+| `RULE_VALIDATION_FAILED` | 422 | Une règle à créer ou modifier est invalide, notamment si `recommendation.products` contient un code absent du catalogue exécuté |
+| `UNKNOWN_CATALOG_PRODUCT` | 422 | Un import produit tente d’introduire un code hors du catalogue pilote gouverné |
+| `CATALOG_PRODUCT_MISMATCH` | 422 | La famille ou l’URL source importée diverge du catalogue pilote gouverné |
+| `OWNERSHIP_PRODUCT_UNAVAILABLE` | 422 | Une détention importée référence un produit gouverné absent ou inactif dans la base et non fourni actif dans le même lot |
+| `PRODUCT_CATALOG_NOT_READY` | 503 | Les 28 produits gouvernés ne sont pas tous actifs et cohérents ; Product Service reste non ready |
 | `PRECONDITION_FAILED` | 412 | ETag obsolète |
 | `RATE_LIMIT_EXCEEDED` | 429 | Quota dépassé |
 | `DEPENDENCY_UNAVAILABLE` | 503 | Service dépendant non disponible |
@@ -589,8 +598,8 @@ Une méthode de calibration `PLATT` ou `ISOTONIC` sans référence de preuve est
 
 | Méthode | Route | Autorisation | Notes |
 |---|---|---|---|
-| `GET` | `/api/v1/products` | `products:read` | Produits actifs par défaut; `active` filtrable pour admin |
-| `GET` | `/api/v1/products/{productId}` | `products:read` | Détail et règles d’éligibilité publiables |
+| `GET` | `/api/v1/products` | `products:read` | Produits actifs par défaut; filtres `category`, `family`, `targetSegment`, `currency` et `active` |
+| `GET` | `/api/v1/products/{productId}` | `products:read` | Détail, famille, description, source publique et informations d’éligibilité |
 | `GET` | `/api/v1/admin/rules` | `rules:read` | `ADMIN` ou scope analytique dédié |
 | `PATCH` | `/api/v1/admin/rules/{ruleId}` | `rules:write` | Admin uniquement; versionne la configuration |
 | `GET` | `/api/v1/admin/engine` | `rules:read` | Versions moteur, règles et configuration active |
@@ -930,7 +939,7 @@ paths:
     get:
       operationId: listProducts
       security: [{ serviceOAuth2: [products:read] }]
-      parameters: [PageSize, Cursor, Category, TargetSegment, Currency, Active]
+      parameters: [PageSize, Cursor, Category, Family, TargetSegment, Currency, Active]
       responses:
         '200': { description: Product page }
   /products/{productId}:
@@ -947,7 +956,11 @@ paths:
         '200': { description: Gaps de catalogue normalisés }
 ```
 
-Un produit contient `productId`, `name`, `category`, `eligibilityRules`, `targetSegment`, `currency` et `active`. L’Opportunity Service ne fabrique pas les noms de produits; il référence les `productId` retournés par ce service.
+Un produit contient `productId`, `name`, `description`, `category`, `family`, `sourceUrl`, `eligibilityRules`, `targetSegment`, `currency` et `active`. Le référentiel de démonstration est issu de pages publiques ; ses ciblages et critères restent **HYPOTHÈSE À VALIDER AVEC BOA**. L’Opportunity Service ne fabrique pas les noms et raisonne sur la famille pour la lacune, puis référence les `productId` précis retournés par ce service.
+
+À la création ou à la modification d’une règle Rule Studio, chaque élément de `recommendation.products` doit être un code du catalogue exécuté ; un code inconnu produit `422 RULE_VALIDATION_FAILED`. Pour préserver les configurations réelles non identifiées, la migration `0018` ne réécrit que les règles synthétiques connues créées par `demo-data-generator`. Si une ancienne règle publiée non migrée correspond et référence un code inconnu, Opportunity retourne `409 UNKNOWN_RULE_PRODUCT_CODES` : aucune liste de recommandations vide ou partielle n’est persistée silencieusement.
+
+Les routes internes `/customers/{customerId}/products` et `/customers/{customerId}/product-gaps` réappliquent l’autorisation objet via Customer Service pour un CC ou un responsable d’agence ; le contrôle Gateway n’est pas l’unique barrière. Les rôles opérationnels globaux `ADMIN`, `SERVICE` et `DATA_ANALYST` conservent leur portée explicite. L’import admin refuse un code hors du référentiel pilote, une divergence de famille/provenance et toute détention vers un produit inconnu, absent ou inactif ; ces contrôles précèdent toute écriture afin de conserver l’atomicité du lot. Enfin, `/ready` retourne `503 PRODUCT_CATALOG_NOT_READY` tant que le seed gouverné n’a pas matérialisé exactement les 28 produits actifs attendus. Une migration de schéma seule n’est donc jamais interprétée comme un catalogue exploitable.
 
 ### 10.9 Action Service
 

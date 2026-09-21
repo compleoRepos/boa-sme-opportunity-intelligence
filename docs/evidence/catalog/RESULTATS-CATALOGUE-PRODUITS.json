@@ -1,0 +1,223 @@
+{
+  "runId": "product-catalog-20260921T000906Z-3020325",
+  "generatedAt": "2026-09-21T00:11:37Z",
+  "status": "PASS",
+  "sourceRevision": {
+    "baseCommit": "01026c452e23bb81ebcf09b3e8c41a61beaefd61",
+    "sourceDigest": "794334f7310c2a451e6feaa85056c4f8515b0a2a18d220f584f8bd78d4f76e86",
+    "files": [
+      "backend/src/boa_oi/catalog.py",
+      "backend/src/boa_oi/analytics_api.py",
+      "backend/src/boa_oi/signal_api.py",
+      "backend/src/boa_oi/feature_store_api.py",
+      "backend/src/boa_oi/ml/service.py",
+      "backend/src/boa_oi/models/entities.py",
+      "backend/src/boa_oi/platform.py",
+      "backend/src/boa_oi/product_api.py",
+      "backend/src/boa_oi/rule_management_api.py",
+      "backend/src/boa_oi/rule_engine_api.py",
+      "backend/src/boa_oi/rules/domain.py",
+      "backend/src/boa_oi/rules/service.py",
+      "backend/src/boa_oi/opportunity_api.py",
+      "backend/src/boa_oi/technical/reference.py",
+      "database/migrations/versions/0001_initial.py",
+      "database/migrations/versions/0018_product_catalog.py",
+      "database/seed/generate.py",
+      "database/seed/rule-studio.json",
+      "database/seed/rules.yaml",
+      "frontend/src/pages/ProductsPage.tsx",
+      "frontend/src/features/rules/RuleBlocks.tsx",
+      "scripts/validate-product-catalog.sh"
+    ]
+  },
+  "scope": {
+    "fixture": "synthetic",
+    "customerRef": "SME-00035",
+    "asOf": "2026-09-30",
+    "migrationVersion": "0018_product_catalog"
+  },
+  "counts": {
+    "activeProducts": 28,
+    "families": 7,
+    "tradeFinanceProducts": 6,
+    "tradeFinanceGaps": 6
+  },
+  "pipeline": {
+    "analytics": {
+      "jobId": "f5eaea1a-0442-56f1-8a77-e039f79a5c3f",
+      "status": "COMPLETED",
+      "customers": 1,
+      "processed": 0,
+      "skipped": 1,
+      "metrics": 0,
+      "asOf": "2026-09-30",
+      "mode": "INCREMENTAL",
+      "checkpointScope": "CUSTOMER",
+      "lastEvaluatedAt": "2026-09-21T00:11:26.567243Z"
+    },
+    "signals": {
+      "jobId": "43bf04aa-fdb2-57d9-a309-1be88fd1b445",
+      "status": "COMPLETED",
+      "signals": 4,
+      "customers": 1,
+      "asOf": "2026-09-30"
+    }
+  },
+  "generation": {
+    "status": "COMPLETED",
+    "opportunities": 3,
+    "created": 0,
+    "refreshed": 3,
+    "scoringPolicy": {
+      "policyId": "commercial-rules-shadow-poc",
+      "version": 1,
+      "rulesWeight": 1.0,
+      "mlWeight": 0.0,
+      "configuredRulesWeight": 1.0,
+      "configuredMlWeight": 0.0
+    },
+    "executionModes": {
+      "POC_SHADOW": 1,
+      "RULES_ONLY": 0
+    }
+  },
+  "opportunityRecommendations": [
+    {
+      "products": [
+        {
+          "name": "Crédit MLTD Direct",
+          "active": true,
+          "family": "INVESTMENT_FINANCING",
+          "category": "FINANCING",
+          "currency": [
+            "MAD"
+          ],
+          "productId": "BOA_CREDIT_MLTD_DIRECT",
+          "sourceUrl": "https://www.bankofafrica.ma/fr/entreprises/credit-moyen-et-long-terme/credit-mltd-direct",
+          "description": "Crédit à moyen et long terme pour l'acquisition de terrains, locaux, fonds de commerce, constructions et équipements ; jusqu'à 70 % de l'investissement sur 7 à 12 ans selon le type de crédit.",
+          "targetSegment": [
+            "ENTERPRISE"
+          ],
+          "eligibilityRules": {
+            "durationYears": [
+              7,
+              12
+            ],
+            "maxFinancingRatio": 0.7
+          }
+        }
+      ],
+      "ruleVersion": "SYNTHETIC_GROWTH_REVIEW:v1",
+      "opportunityType": "GROWTH_FINANCING"
+    },
+    {
+      "products": [
+        {
+          "name": "Crédit MLTD Direct",
+          "active": true,
+          "family": "INVESTMENT_FINANCING",
+          "category": "FINANCING",
+          "currency": [
+            "MAD"
+          ],
+          "productId": "BOA_CREDIT_MLTD_DIRECT",
+          "sourceUrl": "https://www.bankofafrica.ma/fr/entreprises/credit-moyen-et-long-terme/credit-mltd-direct",
+          "description": "Crédit à moyen et long terme pour l'acquisition de terrains, locaux, fonds de commerce, constructions et équipements ; jusqu'à 70 % de l'investissement sur 7 à 12 ans selon le type de crédit.",
+          "targetSegment": [
+            "ENTERPRISE"
+          ],
+          "eligibilityRules": {
+            "durationYears": [
+              7,
+              12
+            ],
+            "maxFinancingRatio": 0.7
+          }
+        }
+      ],
+      "ruleVersion": "RULE-EF12BFCF63B3:v1",
+      "opportunityType": "INVESTMENT_FINANCING"
+    },
+    {
+      "products": [
+        {
+          "name": "Crédit documentaire",
+          "active": true,
+          "family": "TRADE_FINANCE",
+          "category": "TRADE",
+          "currency": [
+            "MAD"
+          ],
+          "productId": "BOA_CREDIT_DOCUMENTAIRE",
+          "sourceUrl": "https://www.bankofafrica.ma/fr/entreprises/reglement-linternational/credit-documentaire",
+          "description": "Sécurisation des paiements à l'import et à l'export : paiement garanti contre remise des documents d'expédition.",
+          "targetSegment": [
+            "ENTERPRISE"
+          ],
+          "eligibilityRules": {}
+        },
+        {
+          "name": "Financement des Importations",
+          "active": true,
+          "family": "TRADE_FINANCE",
+          "category": "TRADE",
+          "currency": [
+            "MAD"
+          ],
+          "productId": "BOA_FINANCEMENT_IMPORTATIONS",
+          "sourceUrl": "https://www.bankofafrica.ma/fr/entreprises/financements-linternational/financement-des-importations",
+          "description": "Ligne de crédit permettant de régler les importations sans déséquilibrer la trésorerie et en optimisant la rotation des stocks.",
+          "targetSegment": [
+            "ENTERPRISE"
+          ],
+          "eligibilityRules": {}
+        },
+        {
+          "name": "Préfinancement à l'exportation",
+          "active": true,
+          "family": "TRADE_FINANCE",
+          "category": "TRADE",
+          "currency": [
+            "MAD"
+          ],
+          "productId": "BOA_PREFINANCEMENT_EXPORT",
+          "sourceUrl": "https://www.bankofafrica.ma/fr/entreprises/financements-linternational/prefinancement-lexportation",
+          "description": "Ligne de crédit finançant le cycle de production des exportateurs (matières premières, stockage, exploitation) jusqu'à six mois, prorogeable.",
+          "targetSegment": [
+            "ENTERPRISE"
+          ],
+          "eligibilityRules": {}
+        }
+      ],
+      "ruleVersion": "1",
+      "opportunityType": "TRADE_FINANCE"
+    }
+  ],
+  "checks": {
+    "catalogue28": true,
+    "productServiceReady": true,
+    "families7": true,
+    "officialSourceUrlsPresent": true,
+    "familyFilter": true,
+    "cursorPaginationWithoutExactCount": true,
+    "tradeFinanceGapByFamily": true,
+    "preciseProductsOnly": true,
+    "activeRulesWithoutLegacyProductCodes": true,
+    "activeRulesWithoutUnknownProductCodes": true,
+    "ruleStudioUnknownProductRejected": true,
+    "unknownOwnershipProductRejected": true,
+    "analyticsCurrent": true,
+    "signalsRecomputed": true,
+    "legacyFamiliesInactive": true,
+    "rulesOnlyPriority": true,
+    "mlWeightZero": true,
+    "migration0018": true,
+    "ruleVersionWidth80": true
+  },
+  "limitations": [
+    "Fixture et détentions entièrement synthétiques : ce run ne mesure ni adéquation commerciale BOA, ni taux de conversion, ni performance de production.",
+    "Les pages publiques attestent la présence et la nature générale des produits ; ciblages, éligibilité, tarification et disponibilité restent HYPOTHÈSE À VALIDER AVEC BOA.",
+    "Le ML reste POC_SHADOW CPU-only, sans influence sur la priorité ou les recommandations ; aucune décision de crédit ne résulte du système.",
+    "Le script vidéo optionnel reste non exécuté et ne constitue pas une preuve de production."
+  ]
+}

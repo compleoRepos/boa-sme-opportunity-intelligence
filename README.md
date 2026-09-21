@@ -28,12 +28,18 @@ Les règles Rule Studio de démonstration (`database/seed/rule-studio.json`) se 
 ```bash
 ./scripts/validate.sh
 ./scripts/validate-ml-integration.sh
+./scripts/validate-product-catalog-migration.sh
+./scripts/validate-product-catalog.sh
 ```
 
-La seconde commande vérifie les services Docker, la lignée Rule Studio/Signals/Feature Store/ML, l’absence d’influence du score shadow sur Opportunity/Portfolio, la Scoring Policy active `RULES_ONLY`, les labels candidats, le manifest point-in-time bloqué, l’évaluation descriptive sans claim de production, l’absence de dépendance LLM/GPU et le moindre privilège SQL. Elle produit une preuve JSON sous `docs/evidence/ml/`.
+La validation ML vérifie les services Docker, la lignée Rule Studio/Signals/Feature Store/ML, l’absence d’influence du score shadow sur Opportunity/Portfolio, la Scoring Policy active `RULES_ONLY`, les labels candidats, le manifest point-in-time bloqué, l’évaluation descriptive sans claim de production, l’absence de dépendance LLM/GPU et le moindre privilège SQL. Les deux validations catalogue prouvent séparément les migrations PostgreSQL vierge/existante/rollback et la chaîne Analytics → Signals → Opportunity → produits précis. Elles produisent des preuves JSON sous `docs/evidence/ml/` et `docs/evidence/catalog/`.
 
 ## Documentation
 
 Consultez `architecture/architecture.md`, `docs/api.md`, `docs/ux-architecture.md`, `docs/demo-scenario.md`, `docs/ml-engine.md`, `docs/finalization-status-2026-09-19.md`, `docs/industrialization-governance.md`, `docs/portfolio-scoping.md` et `docs/test-plan.md`.
 
 Toutes les données et identités de démonstration sont synthétiques.
+
+### Référentiel indicatif de produits BANK OF AFRICA
+
+Le référentiel indicatif (28 pages produit publiques relevées sur bankofafrica.ma, regroupées en 7 familles) est décrit dans [`docs/catalogue-produits.md`](docs/catalogue-produits.md) et qualifié par le [rapport du lot 12](docs/lots/LOT-12-CATALOGUE-PRODUITS-BOA.md). Les ciblages et critères restent à valider avec BOA ; ce référentiel n'est pas contractuel. Rule Studio refuse les nouveaux codes inconnus et Opportunity échoue explicitement sur une règle publiée obsolète ou un produit devenu indisponible, au lieu de masquer sa recommandation. Product Service réapplique le scope client côté backend et reste non ready tant que le seed gouverné n'a pas matérialisé exactement le catalogue attendu. Rechargement des seules données synthétiques : `python database/seed/generate.py --database-url "$DATABASE_URL" --products-only`.

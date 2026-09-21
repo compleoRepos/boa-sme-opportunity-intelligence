@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import hashlib
 from datetime import date, timedelta
 from typing import Annotated, Any
 
 from fastapi import Query
 
+from boa_oi.catalog import BOA_PRODUCTS, PRODUCTS_BY_CODE, as_payload, demo_ownerships
 from boa_oi.mock_data import (
     END_DATE,
-    PRODUCTS,
     SECTORS,
     START_DATE,
     generate_balance_rows,
@@ -138,34 +137,20 @@ def transactions(
 def products(
     customer_count: Annotated[int, Query(alias="customerCount", ge=1, le=500)] = 8,
 ) -> dict[str, Any]:
-    catalog = [
-        {
-            "productId": code,
-            "name": name,
-            "category": category,
-            "eligibilityRules": {},
-            "targetSegment": ["SMALL", "MEDIUM"],
-            "currency": ["MAD"],
-            "active": True,
-        }
-        for code, name, category in PRODUCTS
-    ]
+    catalog = [as_payload(item) for item in BOA_PRODUCTS]
     ownerships = []
     for index in range(1, bounded(customer_count) + 1):
         ref = f"SME-{index:05d}"
-        scenario = scenario_for(index)
-        for code, _name, _category in PRODUCTS:
-            owned = int(hashlib.sha256(f"{ref}|{code}".encode()).hexdigest(), 16) % 5 == 0
-            if owned and not (scenario == "INTERNATIONAL_GROWTH" and code == "TRADE_FINANCE"):
-                ownerships.append(
-                    {
-                        "customerId": ref,
-                        "productId": code,
-                        "status": "ACTIVE",
-                        "openedOn": (START_DATE - timedelta(days=200)).isoformat(),
-                        "utilizationRatio": 0.55,
-                    }
-                )
+        for code in demo_ownerships(ref, scenario_for(index)):
+            ownerships.append(
+                {
+                    "customerId": ref,
+                    "productId": code,
+                    "status": "ACTIVE",
+                    "openedOn": (START_DATE - timedelta(days=200)).isoformat(),
+                    "utilizationRatio": 0.55,
+                }
+            )
     return {"products": catalog, "ownerships": ownerships}
 
 
@@ -192,7 +177,8 @@ def trade_finance_ownership(customer_id: str) -> dict[str, Any]:
         (
             row
             for row in all_products["ownerships"]
-            if row["customerId"] == customer_id and row["productId"] == "TRADE_FINANCE"
+            if row["customerId"] == customer_id
+            and PRODUCTS_BY_CODE[row["productId"]].family == "TRADE_FINANCE"
         ),
         None,
     )

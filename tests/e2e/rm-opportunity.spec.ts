@@ -33,6 +33,13 @@ test('cockpit CC : dashboard → fiche PME → opportunité → action → dashb
     (await page.request.get('/api/v1/customers/SME-00006', { headers: apiHeaders })).status(),
   ).toBe(404)
   expect(
+    (
+      await page.request.get('/api/v1/customers/SME-00006/products', {
+        headers: apiHeaders,
+      })
+    ).status(),
+  ).toBe(404)
+  expect(
     (await page.request.get('/api/v1/opportunities', { headers: apiHeaders })).status(),
   ).toBe(403)
 

@@ -129,6 +129,16 @@ Les prochaines décisions ne peuvent pas être inventées par le dépôt : donn�
 | Simulation | « Le résultat vient de l’API de simulation si le job aboutit. » | Un nombre de correspondances ou un gain annoncé avant exécution. |
 | Production | « La readiness du POC est gouvernée mais reste `BLOCKED` pour la production. » | « Le produit est prêt pour la production bancaire ». |
 
+## 5. Enregistrement vidéo optionnel
+
+[`scripts/record-demo.cjs`](../scripts/record-demo.cjs) automatise la navigation dans la stack locale et produit plusieurs séquences WebM ainsi qu'un fichier de marques temporelles. Ces séquences techniques peuvent servir au montage des cinq actes ci-dessus, mais ne remplacent ni le scénario, ni les tests E2E, ni les artefacts de preuve.
+
+```bash
+node scripts/record-demo.cjs
+```
+
+Le script doit être exécuté uniquement sur le jeu de données synthétique local. Une vidéo produite ne démontre pas une capacité de production, une performance ML, une intégration AWS ou une validation BOA.
+
 ## Références internes
 
 [1]: ../README.md "README du dépôt et mode local"
@@ -148,7 +158,8 @@ Les prochaines décisions ne peuvent pas être inventées par le dépôt : donn�
 [15]: ./rule-studio.md "Spécification Rule Studio et invariants de gouvernance"
 [16]: ./industrialization-governance.md "Gouvernance d’industrialisation et sujets à valider"
 [17]: ../tests/e2e/auth.ts "Personas et authentification E2E"
+[18]: ../scripts/record-demo.cjs "Automatisation optionnelle de l'enregistrement local"
 
-[1] [2] [3] [4] [5] [6] [7] [8] [9] [10] [11] [12] [13] [14] [15] [16] [17]
+[1] [2] [3] [4] [5] [6] [7] [8] [9] [10] [11] [12] [13] [14] [15] [16] [17] [18]
 
 > **Rappel final :** aucune décision de crédit ; ML classique CPU-only en POC/shadow faute de labels BOA matures ; aucun LLM/GPU requis ; aucune performance bancaire réelle annoncée.

@@ -63,7 +63,7 @@ flowchart LR
 | Données | PostgreSQL, une instance Docker avec une base logique par service au MVP | Une seule instance simplifie le démarrage local, tandis que les bases/logical schemas séparés évitent la base partagée de fait. Une séparation physique est possible en production. |
 | Événements | Contrats CloudEvents-like, publication via broker futur au MVP et outbox PostgreSQL | Le moteur reste découplé du transport. broker futur fournit une exécution locale réellement event-driven sans imposer Kafka dès le POC. |
 | Identité | Keycloak local, OIDC/OAuth2, JWT et RBAC | IdP remplaçable par celui de BOA sans réécrire les services. |
-| Calcul décisionnel | Règles versionnées + propension logistique CPU en mode `POC_ASSISTIVE` | Le score réordonne réellement les candidates éligibles et reste traçable. Il ne constitue ni une performance de production ni une décision de crédit. |
+| Calcul de priorité commerciale | Règles versionnées en `RULES_ONLY` + propension logistique CPU observée en `POC_SHADOW` | Le score reste traçable mais ne réordonne aucune opportunité et n’influence ni éligibilité ni recommandation. Il ne constitue ni une performance de production ni une décision de crédit. |
 | Observabilité | Logs structurés, correlation ID, OpenTelemetry, métriques Prometheus, traces et health checks | Les chaînes d’analyse sont asynchrones et nécessitent une traçabilité de bout en bout. |
 | Déploiement | Docker Compose pour le MVP, images immuables et variables d’environnement | Une commande `docker compose up` démarre l’environnement complet tout en gardant une trajectoire vers Kubernetes ou une plateforme privée BOA. |
 
@@ -141,9 +141,9 @@ Ce contexte combine des signaux, le profil client, les produits détenus, les é
 
 ### 2.7 Produits — Product Management / Product Directory
 
-Ce contexte possède le catalogue de produits utilisable par le moteur : financement d’investissement, facilité de fonds de roulement, découvert, trade finance, cash management, dépôt à terme et investissement de liquidité. Les règles d’éligibilité et le segment cible sont des données de configuration, non des constantes du moteur.
+Ce contexte possède le référentiel de produits utilisable par le moteur : financement d’investissement, financement du cycle d’exploitation, avances et découverts, opérations à l’international, gestion des flux, dépôts à terme et placements en OPCVM. Les lacunes sont agrégées par famille ; les recommandations référencent un produit précis. Les descriptions et URL proviennent de pages publiques, tandis que le ciblage, les critères et toute règle d’éligibilité restent des données gouvernées à valider avec BOA, jamais des constantes du moteur.
 
-**Termes principaux :** `Product`, `ProductCategory`, `EligibilityRule`, `TargetSegment`, `CustomerProduct`, `ProductGap`.
+**Termes principaux :** `Product`, `ProductFamily`, `ProductCategory`, `EligibilityRule`, `TargetSegment`, `CustomerProduct`, `ProductGap`.
 
 **Propriétaire des données :** Product Service.
 
@@ -506,6 +506,12 @@ Les points effectivement obtenus, le maximum, la version du barème et chaque va
 ### 5.6 Saisonnalité et faux positifs
 
 La comparaison principale est `période courante` contre `période précédente` et `baseline historique comparable`. Un événement unique, une hausse saisonnière connue ou un transfert international isolé ne suffit pas à produire une opportunité. Les tests métier doivent inclure activité saisonnière, transaction exceptionnelle et transfert unique comme scénarios sans opportunité.
+
+### 5.7 Catalogue produit gouverné
+
+Le Product Service expose un référentiel indicatif de **28 produits issus de pages publiques BANK OF AFRICA**, avec code stable, famille interne, description prudente et URL de provenance. Les sept familles servent au calcul de lacune : la détention d’un produit couvre sa famille, tandis que la recommandation finale conserve des codes produit précis. Cette taxonomie, les ciblages, l’éligibilité, les seuils et la disponibilité commerciale restent **HYPOTHÈSE À VALIDER AVEC BOA** ; le référentiel ne devient ni contractuel ni décisionnel par son intégration.
+
+Rule Studio valide les codes à l’écriture contre la source exécutable commune. Opportunity applique en outre un garde-fou fail-closed lors de la consommation d’une règle publiée : un code inconnu, absent ou inactif produit une erreur gouvernée plutôt qu’une recommandation silencieusement vide. Product Service réapplique l’isolation objet pour ses routes client, refuse les imports divergents et reste non ready tant que le seed n’a pas matérialisé exactement le catalogue gouverné. La migration `0018_product_catalog` transforme uniquement les configurations synthétiques connues créées par `demo-data-generator` et préserve les règles utilisateur ou BOA. Le fonctionnement reste sans décision de crédit, sans LLM et sans GPU ; la priorité demeure `RULES_ONLY`, le ML étant observé en `POC_SHADOW`. Toute tentative d’utiliser un autre mode ou des poids différents de `1/0` est refusée.
 
 ---
 
@@ -975,13 +981,8 @@ Cette architecture permet de démontrer le produit attendu : à partir de flux b
 [12]: https://playwright.dev/docs/intro "Playwright documentation"
 
 [13]: https://bian.org/ "BIAN — Banking Industry Architecture Network"
-
 [14]: https://prometheus.io/docs/introduction/overview/ "Prometheus overview"
-
 [15]: https://martinfowler.com/articles/microservices.html "Microservices architecture article"
-
-[16]: /home/ubuntu/upload/Pasted_content_100.txt "Requirements — BOA SME Opportunity Intelligence"
-
 ---
 
 *Document produit à partir des exigences du MVP. Il fixe les frontières et les décisions nécessaires à l’implémentation ; il ne constitue pas une preuve que les services ont déjà été codés ou déployés.*

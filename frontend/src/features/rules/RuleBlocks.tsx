@@ -1,6 +1,6 @@
 import { Braces, Plus, Trash2 } from 'lucide-react'
 import { Fragment } from 'react'
-import { label } from '../../api/format'
+import { familyLabel, familyRank, label } from '../../api/format'
 import type { RuleConditionDefinition, RuleConditionGroup, RuleExpression, RuleLogic, RuleOperator, RuleRecommendation, RuleUnit } from '../../api/types'
 import { IconButton } from '../../ui'
 import { HORIZONS, LOGIC_LABELS, METRICS, OPERATORS, PERIODS, UNITS, conditionSentence, isGroup, newCondition, newGroup, parseValue, valueText } from './ruleModel'
@@ -79,14 +79,28 @@ function ConditionTokens({ condition, index, onChange, onRemove }: { condition: 
   </div>
 }
 
-export function RecommendationTokens({ value, onChange, products }: { value: RuleRecommendation; onChange: (value: RuleRecommendation) => void; products: Array<{ productId: string; name: string }> }) {
+type CatalogItem = { productId: string; name: string; family?: string; description?: string | null }
+
+export function groupByFamily(products: CatalogItem[]): Array<[string, CatalogItem[]]> {
+  const groups = new Map<string, CatalogItem[]>()
+  for (const product of [...products].sort((a, b) => familyRank(a.family) - familyRank(b.family) || a.name.localeCompare(b.name, 'fr'))) {
+    const key = product.family || product.productId
+    groups.set(key, [...(groups.get(key) || []), product])
+  }
+  return [...groups.entries()]
+}
+
+export function RecommendationTokens({ value, onChange, products }: { value: RuleRecommendation; onChange: (value: RuleRecommendation) => void; products: CatalogItem[] }) {
   const toggle = (id: string) => onChange({ ...value, products: value.products.includes(id) ? value.products.filter((item) => item !== id) : [...value.products, id] })
   return <div className="rule-block"><span className="rule-keyword then">ALORS</span><div className="stack" style={{ gap: 8 }}>
     <div className="rule-line">
       <span className="rule-token">Opportunité <select aria-label="Type d’opportunité" value={value.opportunityType} onChange={(event) => onChange({ ...value, opportunityType: event.target.value })}>{OPPORTUNITY_TYPES_OPTIONS}</select></span>
       <span className="rule-token">Horizon <select aria-label="Horizon" value={value.horizon} onChange={(event) => onChange({ ...value, horizon: event.target.value })}>{HORIZONS.map(([id, text]) => <option key={id} value={id}>{text}</option>)}</select></span>
     </div>
-    <div className="row wrap" style={{ gap: 6 }}>{products.length ? products.map((product) => <label key={product.productId} className={`chip product clickable ${value.products.includes(product.productId) ? 'on' : ''}`}><input type="checkbox" className="sr-only" checked={value.products.includes(product.productId)} onChange={() => toggle(product.productId)} />{value.products.includes(product.productId) ? '✓ ' : ''}{product.name}</label>) : <span className="faint">Catalogue produit indisponible.</span>}</div>
+    {products.length ? groupByFamily(products).map(([family, items]) => <div key={family} className="product-family">
+      <span className="eyebrow">{familyLabel(family)}</span>
+      <div className="row wrap" style={{ gap: 6 }}>{items.map((product) => <label key={product.productId} className={`chip product clickable ${value.products.includes(product.productId) ? 'on' : ''}`} title={product.description || undefined}><input type="checkbox" className="sr-only" checked={value.products.includes(product.productId)} onChange={() => toggle(product.productId)} />{value.products.includes(product.productId) ? '✓ ' : ''}{product.name}</label>)}</div>
+    </div>) : <span className="faint">Catalogue produit indisponible.</span>}
   </div></div>
 }
 

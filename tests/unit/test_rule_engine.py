@@ -6,10 +6,12 @@ import pytest
 from boa_oi.models.entities import OpportunityRule
 from boa_oi.opportunity_api import (
     configured_rules,
+    hydrate_recommended_products,
     rerank_with_propensity,
     rule_engine_candidates,
     rule_engine_metrics,
 )
+from boa_oi.platform import Problem
 from boa_oi.rules import RuleEvaluator, canonical_operator
 from boa_oi.rules.simulation import metric_payload
 from boa_oi.technical.ids import deterministic_uuid
@@ -25,7 +27,7 @@ def definition(conditions, logic="AND"):
         "logic": logic,
         "recommendation": {
             "opportunityType": "TEST_OPPORTUNITY",
-            "products": ["PRODUCT_CODE"],
+            "products": ["BOA_CREDIT_MLTD_DIRECT"],
             "horizon": "1_3_MONTHS",
         },
         "confidence": {"baseScore": 50, "weights": {"growth": 25}},
@@ -166,7 +168,7 @@ def test_analytics_growth_aliases_and_published_rule_trace_are_preserved():
             "ruleVersion": 3,
             "engineVersion": "rule-engine-0.1.0",
             "opportunityType": "INVESTMENT_FINANCING",
-            "productCodes": ["CASH_MANAGEMENT"],
+            "productCodes": ["BOA_CREDIT_MLTD_DIRECT"],
             "horizon": "1-3_MONTHS",
             "lifecycle": {
                 "validityDays": 45,
@@ -200,6 +202,26 @@ def test_analytics_growth_aliases_and_published_rule_trace_are_preserved():
     }
 
 
+def test_published_rule_with_unknown_catalog_product_fails_closed():
+    with pytest.raises(Problem) as exc_info:
+        rule_engine_candidates(
+            "SME-00001",
+            date(2026, 9, 18),
+            {
+                "matched": True,
+                "ruleId": "RULE-LEGACY",
+                "ruleVersion": 1,
+                "opportunityType": "INVESTMENT_FINANCING",
+                "productCodes": ["INVESTMENT_FINANCING"],
+                "confidence": 0.9,
+                "evidence": [],
+            },
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.code == "UNKNOWN_RULE_PRODUCT_CODES"
+
+
 def test_shadow_sales_propensity_never_changes_rules_priority():
     candidate = rule_engine_candidates(
         "SME-00001",
@@ -225,9 +247,26 @@ def test_shadow_sales_propensity_never_changes_rules_priority():
             "traceId": f"trace-{value}",
         }
 
-    low = rerank_with_propensity(candidate, score(0.1), rules_weight=0.65, ml_weight=0.35)
-    high = rerank_with_propensity(candidate, score(0.9), rules_weight=0.65, ml_weight=0.35)
+    low = rerank_with_propensity(candidate, score(0.1), rules_weight=1.0, ml_weight=0.0)
+    high = rerank_with_propensity(candidate, score(0.9), rules_weight=1.0, ml_weight=0.0)
     assert high.priority_score == low.priority_score
     assert high.priority_level == low.priority_level
     assert high.engine_version.endswith("+rules-only")
     assert low.engine_version.endswith("+rules-only")
+
+    non_shadow = score(0.9)
+    non_shadow["deploymentMode"] = "POC_ASSISTIVE"
+    with pytest.raises(Problem) as exc_info:
+        rerank_with_propensity(candidate, non_shadow, rules_weight=0.65, ml_weight=0.35)
+    assert exc_info.value.code == "ML_SHADOW_POLICY_REQUIRED"
+
+
+def test_known_but_inactive_rule_product_fails_closed_before_persistence():
+    with pytest.raises(Problem) as exc_info:
+        hydrate_recommended_products(
+            ("BOA_CREDIT_MLTD_DIRECT",),
+            {},
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.code == "UNAVAILABLE_RULE_PRODUCT_CODES"

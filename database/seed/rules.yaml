@@ -27,7 +27,7 @@ opportunity_rules:
     horizon: 1-3_MONTHS
     what: Besoin potentiel de financement d’investissement à qualifier avec le dirigeant.
     when: Contacter dans les 1 à 3 mois.
-    recommended_product_codes: [INVESTMENT_FINANCING, WORKING_CAPITAL_FACILITY]
+    recommended_product_codes: [BOA_CREDIT_MLTD_DIRECT, BOA_BAIL_ENTREPRISE, BOA_ISTITMAR_MAROC_PME]
     minimum_data_coverage: 0.83
     lifecycle: {validity_days: 90, dismissed_cooldown_days: 30, converted_cooldown_days: 180, deferred_cooldown_days: 30, expired_cooldown_days: 7}
     all_conditions:
@@ -42,7 +42,7 @@ opportunity_rules:
     horizon: 0-3_MONTHS
     what: Besoin potentiel de trade finance à qualifier avec le client.
     when: Contacter dans les 3 mois.
-    recommended_product_codes: [TRADE_FINANCE]
+    recommended_product_codes: [BOA_CREDIT_DOCUMENTAIRE, BOA_FINANCEMENT_IMPORTATIONS, BOA_PREFINANCEMENT_EXPORT]
     minimum_data_coverage: 0.83
     lifecycle: {validity_days: 90, dismissed_cooldown_days: 30, converted_cooldown_days: 180, deferred_cooldown_days: 30, expired_cooldown_days: 7}
     all_conditions:
@@ -57,7 +57,7 @@ opportunity_rules:
     horizon: 0-1_MONTH
     what: "Excédent de trésorerie récurrent : proposer un placement ou une solution de cash management."
     when: Contacter dans le mois.
-    recommended_product_codes: [CASH_MANAGEMENT, TERM_DEPOSIT, LIQUIDITY_INVESTMENT]
+    recommended_product_codes: [BOA_DEPOT_A_TERME, BOA_BON_DE_CAISSE, BOA_OPCVM]
     minimum_data_coverage: 0.83
     lifecycle: {validity_days: 60, dismissed_cooldown_days: 30, converted_cooldown_days: 180, deferred_cooldown_days: 30, expired_cooldown_days: 7}
     all_conditions:
@@ -72,7 +72,7 @@ opportunity_rules:
     horizon: 0-1_MONTH
     what: Signal relationnel de tension financière à examiner avec le client, sous analyse humaine uniquement.
     when: Prise de contact relationnelle dans le mois.
-    recommended_product_codes: [CASH_MANAGEMENT, WORKING_CAPITAL_FACILITY]
+    recommended_product_codes: [BOA_PACK_BUSINESS_PME, BOA_DAMANE_ATASSYIR]
     minimum_data_coverage: 0.83
     lifecycle: {validity_days: 30, dismissed_cooldown_days: 30, converted_cooldown_days: 180, deferred_cooldown_days: 30, expired_cooldown_days: 7}
     all_conditions:
