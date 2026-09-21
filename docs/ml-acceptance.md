@@ -7,6 +7,12 @@
 
 > Ce document reste la checklist normative jusqu’à une éventuelle activation séparée. L’implémentation actuelle impose `POC_SHADOW` et une priorité opérationnelle `RULES_ONLY`. Les résultats locaux/synthétiques sont descriptifs ; aucun résultat ne vaut validation de performance, calibration, training-readiness ou gouvernance de production. Les blockers restent persistés tant que les historiques BOA observés, matures et approuvés ne sont pas disponibles.
 
+## État de l’aperçu Studio ML au 21 septembre 2026
+
+La branche `feat/ml-studio-parallel` implémente l’entraînement CPU gouverné, la progression persistée, l’annulation, l’idempotence, la comparaison, la séparation auteur/approbateur/admin et une interface en six onglets. Les portes locales passent avec 266 tests backend, 31 tests frontend et une migration PostgreSQL combinée jusqu’à `0019_ml_studio_catalog_merge`.[6]
+
+Ce résultat ne franchit pas G2 ou G3. L’E2E Karim et la capture 1440 px ne sont pas exécutés, les historiques BOA sont absents et la simulation d’impact avant/après retourne explicitement `501 NOT_IMPLEMENTED` faute de dataset point-in-time serveur réunissant scores règles et ML. Aucune promotion, activation ou influence commerciale n’est autorisée.
+
 ## 1. Statuts et preuve attendue
 
 Chaque contrôle reçoit un statut parmi `NOT_RUN`, `PASS`, `FAIL`, `BLOCKED` et `NOT_APPLICABLE`. `NOT_APPLICABLE` exige une justification approuvée et n’est pas autorisé pour un contrôle marqué **bloquant**.
@@ -195,3 +201,4 @@ Le MVP exécute un modèle logistique déterministe en batch CPU et persiste une
 [3]: ./test-plan.md "Plan de tests — BOA SME Opportunity Intelligence"
 [4]: ./business-rules.md "Moteur déterministe d’intelligence d’opportunités"
 [5]: ../architecture/architecture.md "Architecture exécutable"
+[6]: ./lots/LOT-14-STUDIO-ML-APERÇU.md "Lot 14 — aperçu gouverné du Studio ML"

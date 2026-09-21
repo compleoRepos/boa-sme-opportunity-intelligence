@@ -1,0 +1,83 @@
+{
+  "runId": "ml-studio-preview-20260921T031054Z",
+  "generatedAt": "2026-09-21T03:10:54Z",
+  "status": "BLOCKED",
+  "deliveryStatus": "IMPLEMENTED_LOCAL_PREVIEW_NOT_E2E_PROVEN",
+  "scope": "LOCAL_SYNTHETIC_CPU_ONLY_PREVIEW",
+  "sourceRevision": {
+    "baseCommit": "d99bdb0536a57048349d58cb9b8895ecd5ee5090",
+    "branch": "feat/ml-studio-parallel"
+  },
+  "validations": {
+    "ruff": {
+      "status": "PASS",
+      "formattedFiles": 151
+    },
+    "mypy": {
+      "status": "PASS",
+      "sourceFiles": 86
+    },
+    "backendUnitTests": {
+      "status": "PASS",
+      "passed": 266,
+      "warnings": 10
+    },
+    "typescript": {
+      "status": "PASS"
+    },
+    "vitest": {
+      "status": "PASS",
+      "files": 8,
+      "passed": 31
+    },
+    "viteBuild": {
+      "status": "PASS",
+      "modules": 2290
+    },
+    "shellcheck": {
+      "status": "PASS"
+    },
+    "postgresMigrations": {
+      "status": "PASS",
+      "head": "0019_ml_studio_catalog_merge",
+      "freshUpgrade": true,
+      "existingUpgrade": true,
+      "downgradeTo0017": true,
+      "reupgrade": true,
+      "catalogColumns": true,
+      "studioTables": true
+    }
+  },
+  "implemented": {
+    "cpuTrainingJob": true,
+    "persistedProgressAndCancellation": true,
+    "manifestIdContract": true,
+    "modelComparison": true,
+    "governanceGates": true,
+    "separationOfDuties": true,
+    "maximumMlWeight": 0.5,
+    "sixTabFrontend": true,
+    "pollingIntervalMs": 2000,
+    "terminalPollingStop": true,
+    "persona": "ml.steward.demo",
+    "productCatalogMerged": true
+  },
+  "blocked": {
+    "endToEndKarim": "NOT_RUN",
+    "screenshots1440": "NOT_PRODUCED",
+    "policyImpactSimulation": "HTTP_501_NOT_IMPLEMENTED",
+    "policySimulationReason": "Aucun dataset point-in-time persistant réunissant scores règles et ML pour un calcul avant/après honnête.",
+    "boaHistoricalLabels": "UNAVAILABLE",
+    "modelPromotion": "BLOCKED",
+    "commercialInfluence": "BLOCKED_RULES_ONLY",
+    "productionRelease": "BLOCKED_IMAGE_CVES",
+    "aws": "OUT_OF_SCOPE_NO_ACTION"
+  },
+  "limitations": [
+    "Les données et labels de démonstration sont synthétiques et les artefacts correspondants restent DEMO_ONLY.",
+    "Aucune performance de production n est revendiquée.",
+    "La simulation d impact est explicitement non implémentée plutôt que calculée côté client ou inventée.",
+    "Aucun LLM, aucun GPU et aucune décision de crédit.",
+    "Le catalogue et la clôture ont été fusionnés, mais leurs preuves historiques restent attachées à leur commit source indiqué."
+  ]
+}

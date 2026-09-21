@@ -557,8 +557,13 @@ Le Customer 360 peut être composé par le Gateway ou un endpoint d’agrégatio
 | `GET` | `/api/v1/ml/models/{modelVersion}` | lecture | Une version. |
 | `POST` | `/api/v1/admin/ml/outcomes/materialize` | `DATA_ANALYST`, `ADMIN`, `SERVICE` | Matérialise des labels candidats avec définition, cible, horizon, population, snapshot feature et fenêtre de disponibilité. |
 | `GET` | `/api/v1/admin/ml/outcomes/snapshots` | `DATA_ANALYST`, `ADMIN`, `SERVICE` | Liste les labels candidats ; `trainingReady=false` tant que les historiques BOA gouvernés manquent. |
-| `POST` | `/api/v1/admin/ml/datasets/manifests` | `DATA_ANALYST`, `ADMIN`, `SERVICE` | Persiste un manifest point-in-time hashé et ses blockers. |
-| `GET` | `/api/v1/admin/ml/datasets/manifests` | `DATA_ANALYST`, `ADMIN`, `SERVICE` | Liste les manifests et statuts `BLOCKED`/`CANDIDATE`. |
+| `POST` | `/api/v1/admin/ml/datasets/manifests` | `DATA_ANALYST`, `ML_STEWARD`, `ADMIN`, `SERVICE` selon route | Persiste un manifest point-in-time hashé et ses blockers ; retourne l’UUID technique `id`. |
+| `GET` | `/api/v1/admin/ml/datasets/manifests` | `DATA_ANALYST`, `ML_STEWARD`, `ADMIN`, `SERVICE` selon route | Liste les manifests avec leur UUID `id`, nécessaire au lancement d’un entraînement. |
+| `GET/POST` | `/api/v1/admin/ml/governance/trainings[/{id}]` | écriture `ML_STEWARD`, `ADMIN`; lecture aussi `RULE_APPROVER`, `SERVICE` | Crée, liste et lit des jobs CPU persistés ; progression, étapes, erreurs, annulation et idempotence. |
+| `POST` | `/api/v1/admin/ml/governance/trainings/{id}/cancel` | `ML_STEWARD`, `ADMIN` | Demande l’annulation persistée d’un job non terminal. |
+| `GET` | `/api/v1/admin/ml/governance/model-comparisons` | `ML_STEWARD`, `RULE_APPROVER`, `ADMIN`, `SERVICE` | Compare deux versions uniquement si un jeu de test commun est résolu. |
+| `GET` | `/api/v1/admin/ml/governance/studio-summary` | `ML_STEWARD`, `RULE_APPROVER`, `ADMIN`, `SERVICE` | Expose mode, poids, champion, labels, portes G0–G4, seuils et blockers sans chiffre frontend codé en dur. |
+| `POST` | `/api/v1/admin/scoring-policies/{id}/versions/{version}/simulate` | auteur de politique | Retourne `501 NOT_IMPLEMENTED`, conserve `DRAFT` et liste les sorties attendues tant qu’aucun dataset point-in-time règles/ML n’existe. |
 | `POST` | `/api/v1/admin/ml/governance/evaluation/metrics` | `DATA_ANALYST`, `ADMIN` ; `SERVICE` sur route interne seulement | Persiste une évaluation descriptive avec Brier/ECE. Les tableaux fournis étant déclaratifs et non résolus depuis les snapshots, le blocker `DECLARATIVE_EVALUATION_INPUT_NOT_LINKED_TO_SNAPSHOTS` est systématique ; aucun claim de production. |
 | `POST` | `/api/v1/admin/ml/governance/evaluation/labels` | `DATA_ANALYST`, `ADMIN` ; `SERVICE` sur route interne seulement | Évalue la maturité sans rendre les labels training-ready, persiste un audit corrélé et refuse les rôles commerciaux. |
 

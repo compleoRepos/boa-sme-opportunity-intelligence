@@ -39,7 +39,7 @@ Une autorisation n’est jamais déduite de la seule UI. Les protections fronten
 
 ### 4.1 Rôles Keycloak présents
 
-Le realm `boa-sme-mvp` déclare les rôles `RELATIONSHIP_MANAGER`, `BRANCH_MANAGER`, `ADMIN`, `DATA_ANALYST`, `SERVICE`, `NOTIFICATION_DIGEST_READER`, `BUSINESS_ANALYST` et `RULE_APPROVER` ([`realm.json`](../infrastructure/keycloak/realm.json)). Les comptes de démonstration humains sont `rm.demo`, `branch.demo`, `admin.demo`, `analyst.demo`, `business.analyst.demo` et `rule.approver.demo`. Le fichier de realm contient des secrets de développement : ils ne doivent pas être réutilisés dans un environnement BOA.
+Le realm `boa-sme-mvp` déclare les rôles `RELATIONSHIP_MANAGER`, `BRANCH_MANAGER`, `ADMIN`, `DATA_ANALYST`, `ML_STEWARD`, `SERVICE`, `NOTIFICATION_DIGEST_READER`, `BUSINESS_ANALYST` et `RULE_APPROVER` ([`realm.json`](../infrastructure/keycloak/realm.json)). Les comptes de démonstration humains sont `rm.demo`, `branch.demo`, `admin.demo`, `analyst.demo`, `ml.steward.demo`, `business.analyst.demo` et `rule.approver.demo`. Le fichier de realm contient des secrets de développement : ils ne doivent pas être réutilisés dans un environnement BOA.
 
 | Persona / rôle | Périmètre déduit du code | Capacités Gateway principales | Statut |
 |---|---|---|---|
@@ -47,6 +47,7 @@ Le realm `boa-sme-mvp` déclare les rôles `RELATIONSHIP_MANAGER`, `BRANCH_MANAG
 | Responsable d’agence — `BRANCH_MANAGER` | Ses `branchIds`. Le service portfolio limite le dashboard d’agence et le drill-down aux branches autorisées. | Dashboard agence, drill-down CC, lecture commerciale, actions via `COMMERCIAL_ROLES`, export portfolio. Pas de mutation de règle ni d’administration. | **IMPLÉMENTÉ** ; capacité d’écriture d’action à confirmer avec BOA |
 | Administrateur — `ADMIN` | Les routes Gateway lui accordent plusieurs accès globaux. Cela ne doit pas être interprété comme un accès automatique aux données client si le service aval exige un scope. | Administration labels, notifications, synchronisation de portefeuille, pipeline/recompute, règles legacy d’administration, gouvernance ML et opérations ; lecture et écriture Rule Studio ; actions commerciales ; plusieurs lectures globales. | **IMPLÉMENTÉ** ; principe « admin sans accès client détaillé par défaut » **À VALIDER** route par route |
 | Analyste données — `DATA_ANALYST` | Périmètre analytique global au niveau Gateway ; le claim BOA et les services aval doivent encore être alignés sur le dataset autorisé. | Lecture analytique, signaux, comptes, transactions, produits, modèles et règles ; gouvernance ML ; readiness/monitoring ; matérialisation des outcomes. | **IMPLÉMENTÉ** ; périmètre de données BOA **À VALIDER** |
+| ML Steward — `ML_STEWARD` | Gouvernance des datasets, entraînements et modèles ; le mapping IAM et le périmètre de données restent **À VALIDER AVEC BOA**. | Matérialisation et manifestes, lancement/annulation d’entraînements CPU, enregistrement et soumission de candidats, proposition de politiques ; aucune approbation propre ni activation. | **IMPLÉMENTÉ** ; séparation serveur testée unitairement |
 | Auteur de règle — `BUSINESS_ANALYST` | Pas de périmètre CC/agence dans les routes Rule Studio ; périmètre de gouvernance des règles. | Lecture, création, remplacement, duplication, validation, simulation, test et soumission de règles ; lecture scoring policy. | **IMPLÉMENTÉ** |
 | Approbateur de règle — `RULE_APPROVER` | Pas de périmètre CC/agence dans les routes Rule Studio ; revue indépendante d’une règle soumise. | Lecture Rule Studio ; approbation, publication, désactivation et rollback ; accès de lecture/gouvernance scoring et ML selon route. | **IMPLÉMENTÉ** |
 | `SERVICE` | Identité technique issue des comptes de service. Il est accepté seulement par les familles qui incluent explicitement `SERVICE`; il ne doit pas hériter automatiquement d’un rôle humain. | Appels techniques pour analytics, signaux, ML outcomes et routes de lecture/globales selon listes de rôles ; pas d’accès automatique aux routes commerciales limitées au RM/Branch Manager. | **IMPLÉMENTÉ** ; moindre privilège et allowlist interservice **À VALIDER** |
@@ -55,13 +56,14 @@ Le realm `boa-sme-mvp` déclare les rôles `RELATIONSHIP_MANAGER`, `BRANCH_MANAG
 
 ### 4.2 Personas frontend de développement
 
-Les personas `cc`, `agence`, `approbateur` et `backoffice` sont uniquement activées avec `VITE_AUTH_DISABLED=true`. Elles servent à rejouer les scopes locaux, pas à représenter des comptes BOA réels. `backoffice` cumule `ADMIN`, `BUSINESS_ANALYST`, `RULE_APPROVER` et `DATA_ANALYST`; cette combinaison est utile à la démo mais ne doit pas être adoptée comme séparation de tâches BOA sans validation ([`personas.ts`](../frontend/src/auth/personas.ts)).
+Les personas `cc`, `agence`, `approbateur`, `ml-steward` et `backoffice` sont uniquement activées avec `VITE_AUTH_DISABLED=true`. Elles servent à rejouer les scopes locaux, pas à représenter des comptes BOA réels. `backoffice` cumule `ADMIN`, `BUSINESS_ANALYST`, `RULE_APPROVER` et `DATA_ANALYST`; cette combinaison est utile à la démo mais ne doit pas être adoptée comme séparation de tâches BOA sans validation ([`personas.ts`](../frontend/src/auth/personas.ts)).
 
 | Persona locale | Rôles | Scope local |
 |---|---|---|
 | `cc` | `RELATIONSHIP_MANAGER` | `relationshipManagerIds=["rm-01"]`, `branchIds=["BR-01"]` |
 | `agence` | `BRANCH_MANAGER` | `branchIds=["BR-01"]` |
 | `approbateur` | `RULE_APPROVER`, `DATA_ANALYST` | `branchIds=["ALL"]` |
+| `ml-steward` | `ML_STEWARD`, `DATA_ANALYST` | `branchIds=["ALL"]` ; persona Karim Bennani, démonstration locale |
 | `backoffice` | `ADMIN`, `BUSINESS_ANALYST`, `RULE_APPROVER`, `DATA_ANALYST` | `branchIds=["ALL"]` |
 
 ## 5. Matrice des écrans frontend
@@ -81,6 +83,7 @@ Cette table décrit les gardes d’écran, puis les routes API auxquelles l’é
 | `/back-office` et `/back-office/regles*` | `RuleStudioRoute` | `BUSINESS_ANALYST`, `RULE_APPROVER`, `ADMIN` | Rule Studio, versions, audit, simulation, cycle de vie | Séparation auteur/approbateur **IMPLÉMENTÉE** au Gateway et dans un E2E ciblé |
 | `/back-office/seuils` | `RoleRoute(['ADMIN'])` | `ADMIN` | `/api/v1/admin/engine` | Écran **IMPLÉMENTÉ** ; test de refus UI/API exhaustif **NON IDENTIFIÉ** |
 | `/back-office/modeles` | `RuleStudioRoute` | Auteur, approbateur, admin | modèles ML et gouvernance | **IMPLÉMENTÉ** ; labels/performance BOA **À VALIDER** |
+| `/back-office/studio-ml` | `MlStudioRoute` | `ML_STEWARD`, `RULE_APPROVER`, `ADMIN` | six onglets Studio ML ; entraînement, comparaison, politiques et audit selon rôle | **IMPLÉMENTÉ** ; tests unitaires frontend **PASS**, E2E Karim **NON EXÉCUTÉ** |
 | `/back-office/audit` | `RuleStudioRoute` | Auteur, approbateur, admin | audit Rule Studio | **IMPLÉMENTÉ** ; couverture objet et non-divulgation **À VALIDER** |
 | `/back-office/libelles` | `RoleRoute(['ADMIN'])` | `ADMIN` | lecture/mise à jour labels | **IMPLÉMENTÉ** ; tests ciblés de catalogue présents |
 | `/back-office/notifications` | `RoleRoute(['ADMIN'])` | `ADMIN` | notifications et digest subscriptions | **IMPLÉMENTÉ** ; tests de rôle du digest interne, couverture Gateway complète **À VALIDER** |
@@ -154,7 +157,7 @@ Les groupes ci-dessous reprennent toutes les routes déclarées dans [`gateway_a
 | `POST /api/v1/admin/portfolio-assignments/sync` | `ADMIN` | Synchronisation des affectations | **IMPLÉMENTÉ** ; idempotence/scope **À VALIDER** |
 | `POST /api/v1/admin/pipeline`, `POST /api/v1/admin/recompute` | `ADMIN`, `SERVICE` | Recalcul analytics/signaux/opportunités | **IMPLÉMENTÉ** ; absence de décision de crédit maintenue |
 | `GET/POST /api/v1/admin/scoring-policies[/{subpath}]` | `RULE_READ_ROLES` | Gouvernance de scoring policy | **IMPLÉMENTÉ** ; le code Gateway est large et délègue le détail au service |
-| `GET/POST /api/v1/admin/ml/governance[/{subpath}]` | Gateway : `DATA_ANALYST`, `RULE_APPROVER`, `ADMIN`; service aval : auteur/évaluation/approbateur/release selon opération | Gouvernance ML | **IMPLÉMENTÉ** ; `evaluation/labels` et `evaluation/metrics` refusent les rôles commerciaux et exigent `DATA_ANALYST`/`ADMIN` (`SERVICE` interne seulement) |
+| `GET/POST /api/v1/admin/ml/governance[/{subpath}]` | Gateway et service aval : `ML_STEWARD`, `RULE_APPROVER`, `ADMIN` ou `SERVICE` selon l’opération ; évaluation historique réservée aux rôles analytiques autorisés | Gouvernance ML, entraînement CPU et cycle de vie | **IMPLÉMENTÉ** ; auteur, approbateur et activation séparés côté serveur |
 | `POST /api/v1/admin/ml/outcomes/materialize` | `DATA_ANALYST`, `ADMIN`, `SERVICE` | Matérialisation d’outcomes | **IMPLÉMENTÉ** |
 | `GET /api/v1/admin/ml/outcomes/snapshots`, `GET/POST /api/v1/admin/ml/datasets/manifests` | `DATA_ANALYST`, `ADMIN`, `SERVICE` | Labels candidats et manifests point-in-time | **IMPLÉMENTÉ** ; `RELATIONSHIP_MANAGER` refusé côté service |
 | `GET /api/v1/admin/readiness` | `DATA_ANALYST`, `ADMIN` | Readiness de plateforme/ML | **IMPLÉMENTÉ** ; seuils de passage BOA **À VALIDER** |

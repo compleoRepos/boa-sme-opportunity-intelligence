@@ -55,7 +55,9 @@ Les protocoles 50 000 PME et 500 PME prouvent des exécutions locales synthétiq
 
 ## Évolution Studio ML demandée en parallèle
 
-Le chantier Studio ML premium demandé après le lot catalogue a été développé dans une worktree isolée `feat/ml-studio-parallel`. Il reste **BLOCKED / NON INTÉGRÉ** : une tranche backend CPU-only existe et a obtenu des validations intermédiaires, mais les dernières retouches RBAC n’ont pas été rejouées, aucun commit livrable n’a été créé, et le frontend six onglets, les E2E, les captures et la documentation de preuve ne sont pas terminés. Aucun de ces changements n’est présent sur `feat/pilot-readiness` et aucune capacité Studio ML ne doit être revendiquée.
+Le chantier Studio ML premium reste absent de `feat/pilot-readiness`, dont la clôture `a8a843e` demeure inchangée. La branche séparée `feat/ml-studio-parallel` contient désormais l’entraînement CPU gouverné, les contrats API et le frontend en six onglets, fusionnés avec le catalogue et validés localement : 266 tests backend, 31 tests frontend et migration PostgreSQL `0019`.[14]
+
+Cette branche d’aperçu reste **BLOCKED** : l’E2E Karim et la capture 1440 px ne sont pas produits, la simulation d’impact retourne explicitement `501 NOT_IMPLEMENTED`, les labels historiques BOA sont absents et la release globale reste `BLOCKED_IMAGE_CVES`. Elle ne doit pas être présentée comme un Studio ML homologué, une activation ML ou une capacité de production.
 
 ## Décision d’usage
 
@@ -78,3 +80,4 @@ Le chantier Studio ML premium demandé après le lot catalogue a été développ
 [11]: evidence/catalog/RESULTATS-CATALOGUE-PRODUITS.json "Preuve catalogue finale"
 [12]: evidence/catalog/RESULTATS-PLAYWRIGHT-CATALOGUE.json "Résultats détaillés des vingt E2E"
 [13]: evidence/closure/RESULTATS-CLOTURE-PILOTE.json "Preuve consolidée de clôture pilote"
+[14]: lots/LOT-14-STUDIO-ML-APERÇU.md "Lot 14 — aperçu gouverné du Studio ML"

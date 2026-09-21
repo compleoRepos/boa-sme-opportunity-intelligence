@@ -42,6 +42,14 @@
 
 **Audit.** La migration `0012_portfolio_sync_governance` ajoute un trigger qui refuse `UPDATE` et `DELETE` sur `audit.audit_logs`. Cette protection append-only PostgreSQL n’est ni un stockage WORM, ni une intégration SIEM, ni une politique de rétention ; ces contrôles restent à définir avant production.
 
+## 21 septembre 2026 — Simulation Studio ML explicitement indisponible
+
+**Question.** Le brief Studio ML demande une comparaison avant/après de la distribution des priorités, des montées/descentes et du top 10. Le service ne possède pas encore un dataset point-in-time persistant réunissant, pour la même population, les scores règles et ML nécessaires à ce calcul.
+
+**Option retenue.** L’endpoint de simulation retourne HTTP `501 NOT_IMPLEMENTED`, laisse la politique en `DRAFT` et liste les sorties attendues. L’interface désactive l’action et explique la lacune. Aucun échantillon fourni par le client, calcul local ou nombre fictif n’est accepté comme résultat de simulation.
+
+**Condition de levée.** Implémenter et versionner le dataset serveur avant/après, ses contrôles de scope, sa lignée, son audit et des tests E2E. Les formules, seuils et populations restent **HYPOTHÈSE À VALIDER AVEC BOA**. Jusqu’alors, la priorité demeure `RULES_ONLY` et le ML `POC_SHADOW`.
+
 ## Références
 
 [1]: ./business-rules.md "Moteur déterministe d’intelligence d’opportunités"
