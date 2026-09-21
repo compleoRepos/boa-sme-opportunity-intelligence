@@ -311,7 +311,7 @@ Le déroulement recommandé est :
 2. exécuter une initialisation contrôlée avec rapprochement avant et après lot ;
 3. tester les rejets déterministes, les timeouts, les replays, les doublons et les événements hors ordre ;
 4. vérifier le périmètre d’un `RELATIONSHIP_MANAGER`, d’un `BRANCH_MANAGER`, d’un `DATA_ANALYST` et d’un `ADMIN` ;
-5. laisser le ML en shadow ou en aide de priorisation explicitement non décisionnelle ;
+5. laisser le ML strictement en `POC_SHADOW`, avec une priorité exclusivement `RULES_ONLY` ;
 6. recueillir les outcomes commerciaux selon une définition BOA approuvée, sans les présenter comme labels matures tant que la période de maturité n’est pas écoulée ;
 7. arrêter ou suspendre le pilote en cas de fuite de périmètre, de données non autorisées, de désynchronisation non réconciliée, de défaut d’audit ou de présentation de `FINANCIAL_STRESS_SIGNAL` comme risque ou décision de crédit.
 

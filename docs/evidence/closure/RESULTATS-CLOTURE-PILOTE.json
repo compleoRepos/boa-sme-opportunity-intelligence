@@ -1,0 +1,129 @@
+{
+  "runId": "pilot-closure-20260921T025731Z",
+  "generatedAt": "2026-09-21T02:57:31Z",
+  "status": "BLOCKED",
+  "releaseStatus": "BLOCKED_IMAGE_CVES",
+  "scope": "LOCAL_SYNTHETIC_PILOT_CLOSURE",
+  "sourceRevision": {
+    "baseCommit": "0b7b2b53450fe1eb8a8bd8e49e999e7e63533bfe",
+    "remoteBranchHead": "0b7b2b53450fe1eb8a8bd8e49e999e7e63533bfe"
+  },
+  "localValidation": {
+    "backendUnitTests": {
+      "status": "PASS",
+      "count": 259
+    },
+    "frontendUnitTests": {
+      "status": "PASS",
+      "count": 27
+    },
+    "markdownLinks": {
+      "status": "PASS",
+      "broken": 0
+    },
+    "committeeFaq": {
+      "status": "PASS",
+      "count": 30
+    },
+    "demoActs": {
+      "status": "PASS",
+      "count": 5
+    }
+  },
+  "catalog": {
+    "runId": "product-catalog-20260921T024540Z-3120162",
+    "status": "PASS",
+    "products": 28,
+    "families": 7,
+    "baseCommit": "0b7b2b53450fe1eb8a8bd8e49e999e7e63533bfe"
+  },
+  "migration": {
+    "runId": "product-catalog-migration-20260921T024859Z",
+    "status": "PASS",
+    "baseCommit": "0b7b2b53450fe1eb8a8bd8e49e999e7e63533bfe",
+    "checks": {
+      "freshUpgrade0001To0018": "PASS",
+      "existingUpgrade0017To0018": "PASS",
+      "downgrade0018To0017": "PASS",
+      "reupgrade0017To0018": "PASS",
+      "productMetadataColumns": "PASS",
+      "ruleVersionWidth80": "PASS",
+      "legacyFamilyBackfill": "PASS",
+      "knownSyntheticTechnicalRulesMigrated": "PASS",
+      "knownSyntheticRuleStudioMigratedWithChecksum": "PASS",
+      "userControlledRulesNotRewritten": "PASS"
+    }
+  },
+  "e2e": {
+    "runId": "playwright-catalog-20260921T025240Z",
+    "status": "PASS",
+    "count": 20,
+    "unexpected": 0,
+    "durationMs": 218362.56399999998,
+    "baseCommit": "0b7b2b53450fe1eb8a8bd8e49e999e7e63533bfe"
+  },
+  "security": {
+    "runId": "security-scans-20260920T051426Z-2651404",
+    "scanExecutionStatus": "PASS",
+    "releaseStatus": "BLOCKED_IMAGE_CVES",
+    "externalHigh": 25,
+    "externalCritical": 4
+  },
+  "remoteCi": {
+    "runId": 35547449760,
+    "status": "completed",
+    "conclusion": "cancelled",
+    "headSha": "0b7b2b53450fe1eb8a8bd8e49e999e7e63533bfe",
+    "jobs": [
+      {
+        "name": "security-scans",
+        "conclusion": "success"
+      },
+      {
+        "name": "lint-and-unit-tests",
+        "conclusion": "success"
+      },
+      {
+        "name": "validate-infrastructure",
+        "conclusion": "success"
+      },
+      {
+        "name": "frontend-build",
+        "conclusion": "success"
+      },
+      {
+        "name": "docker-build (backend)",
+        "conclusion": "success"
+      },
+      {
+        "name": "docker-build (frontend)",
+        "conclusion": "success"
+      },
+      {
+        "name": "compose-e2e-and-operations",
+        "conclusion": "cancelled"
+      },
+      {
+        "name": "quality-gate",
+        "conclusion": "failure"
+      },
+      {
+        "name": "release-image-gate",
+        "conclusion": "skipped"
+      }
+    ]
+  },
+  "studioMlParallel": {
+    "status": "BLOCKED_NOT_INTEGRATED",
+    "backendCommit": "c35103c19326468b2d85e49bdf65bb5c5d03a504",
+    "frontendCommitted": false
+  },
+  "aws": "OUT_OF_SCOPE_NO_ACTION",
+  "limitations": [
+    "Toutes les données et identités des preuves fonctionnelles sont synthétiques.",
+    "Les preuves locales ne constituent ni un SLO, ni une capacité de production, ni une performance ML BOA.",
+    "La CI distante catalogue est CANCELLED; les succès locaux ne la remplacent pas.",
+    "Le Studio ML parallèle n est pas intégré à la branche pilote.",
+    "Aucune décision de crédit et aucune influence ML sur la priorité commerciale."
+  ]
+}

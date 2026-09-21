@@ -1,15 +1,15 @@
 {
-  "runId": "product-catalog-migration-20260921T000034Z",
-  "generatedAt": "2026-09-21T00:00:34Z",
+  "runId": "product-catalog-migration-20260921T024859Z",
+  "generatedAt": "2026-09-21T02:48:59Z",
   "status": "PASS",
   "scope": "LOCAL_SYNTHETIC_POSTGRESQL_MIGRATION",
   "sourceRevision": {
-    "baseCommit": "01026c452e23bb81ebcf09b3e8c41a61beaefd61",
+    "baseCommit": "0b7b2b53450fe1eb8a8bd8e49e999e7e63533bfe",
     "sourceDigest": "090ac215bece7de8ed46660c5ca193def9902222c2da643973287d6fc1da8f93"
   },
   "environment": {
-    "migrationDatabase": "boa_catalog_migration_2999377",
-    "freshDatabase": "boa_catalog_fresh_2999377",
+    "migrationDatabase": "boa_catalog_migration_3130026",
+    "freshDatabase": "boa_catalog_fresh_3130026",
     "temporaryDatabasesRemovedOnExit": true
   },
   "checks": {

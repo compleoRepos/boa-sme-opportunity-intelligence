@@ -1,9 +1,9 @@
 {
-  "runId": "product-catalog-20260921T000906Z-3020325",
-  "generatedAt": "2026-09-21T00:11:37Z",
+  "runId": "product-catalog-20260921T024540Z-3120162",
+  "generatedAt": "2026-09-21T02:48:04Z",
   "status": "PASS",
   "sourceRevision": {
-    "baseCommit": "01026c452e23bb81ebcf09b3e8c41a61beaefd61",
+    "baseCommit": "0b7b2b53450fe1eb8a8bd8e49e999e7e63533bfe",
     "sourceDigest": "794334f7310c2a451e6feaa85056c4f8515b0a2a18d220f584f8bd78d4f76e86",
     "files": [
       "backend/src/boa_oi/catalog.py",
@@ -44,7 +44,7 @@
   },
   "pipeline": {
     "analytics": {
-      "jobId": "f5eaea1a-0442-56f1-8a77-e039f79a5c3f",
+      "jobId": "fa0b37fb-0ead-50d9-8162-af118a705d9a",
       "status": "COMPLETED",
       "customers": 1,
       "processed": 0,
@@ -53,10 +53,10 @@
       "asOf": "2026-09-30",
       "mode": "INCREMENTAL",
       "checkpointScope": "CUSTOMER",
-      "lastEvaluatedAt": "2026-09-21T00:11:26.567243Z"
+      "lastEvaluatedAt": "2026-09-21T02:47:51.490202Z"
     },
     "signals": {
-      "jobId": "43bf04aa-fdb2-57d9-a309-1be88fd1b445",
+      "jobId": "50005642-4ed3-555f-b288-b1f201ff1a28",
       "status": "COMPLETED",
       "signals": 4,
       "customers": 1,
@@ -65,9 +65,9 @@
   },
   "generation": {
     "status": "COMPLETED",
-    "opportunities": 3,
+    "opportunities": 4,
     "created": 0,
-    "refreshed": 3,
+    "refreshed": 4,
     "scoringPolicy": {
       "policyId": "commercial-rules-shadow-poc",
       "version": 1,

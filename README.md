@@ -28,15 +28,23 @@ Les règles Rule Studio de démonstration (`database/seed/rule-studio.json`) se 
 ```bash
 ./scripts/validate.sh
 ./scripts/validate-ml-integration.sh
+./scripts/validate-load-50k.sh
+./scripts/validate-ingestion-governance.sh
+./scripts/validate-ml-migration-rollback.sh
+./scripts/validate-backup-restore.sh
+./scripts/validate-operational-readiness.sh
+./scripts/validate-security-scans.sh
 ./scripts/validate-product-catalog-migration.sh
 ./scripts/validate-product-catalog.sh
 ```
 
-La validation ML vérifie les services Docker, la lignée Rule Studio/Signals/Feature Store/ML, l’absence d’influence du score shadow sur Opportunity/Portfolio, la Scoring Policy active `RULES_ONLY`, les labels candidats, le manifest point-in-time bloqué, l’évaluation descriptive sans claim de production, l’absence de dépendance LLM/GPU et le moindre privilège SQL. Les deux validations catalogue prouvent séparément les migrations PostgreSQL vierge/existante/rollback et la chaîne Analytics → Signals → Opportunity → produits précis. Elles produisent des preuves JSON sous `docs/evidence/ml/` et `docs/evidence/catalog/`.
+La validation ML vérifie les services Docker, la lignée Rule Studio/Signals/Feature Store/ML, l’absence d’influence du score shadow sur Opportunity/Portfolio, la Scoring Policy active `RULES_ONLY`, les labels candidats, le manifest point-in-time bloqué, l’évaluation descriptive sans claim de production, l’absence de dépendance LLM/GPU et le moindre privilège SQL. Les autres commandes produisent des preuves reproductibles de charge isolée, d’ingestion, de migration/rollback, de sauvegarde/restauration, de readiness dégradée et de scans de sécurité. Les deux validations catalogue prouvent séparément les migrations PostgreSQL vierge/existante/downgrade/ré-upgrade et la chaîne Analytics → Signals → Opportunity → produits précis. Les preuves sont versionnées sous `docs/evidence/`.
+
+La préparation pilote locale est **PASS** sur les périmètres documentés. La release reste **`BLOCKED_IMAGE_CVES`** à cause des images externes, et aucun déploiement AWS n’est prévu.
 
 ## Documentation
 
-Consultez `architecture/architecture.md`, `docs/api.md`, `docs/ux-architecture.md`, `docs/demo-scenario.md`, `docs/ml-engine.md`, `docs/finalization-status-2026-09-19.md`, `docs/industrialization-governance.md`, `docs/portfolio-scoping.md` et `docs/test-plan.md`.
+Consultez [`docs/final-status.md`](docs/final-status.md), [`docs/lots/LOT-12-CATALOGUE-PRODUITS-BOA.md`](docs/lots/LOT-12-CATALOGUE-PRODUITS-BOA.md), [`docs/lots/LOT-13-CLOTURE-PILOTE.md`](docs/lots/LOT-13-CLOTURE-PILOTE.md), [`architecture/architecture.md`](architecture/architecture.md), [`docs/api.md`](docs/api.md), [`docs/demo-scenario.md`](docs/demo-scenario.md), [`docs/ml-engine.md`](docs/ml-engine.md), [`docs/industrialization-governance.md`](docs/industrialization-governance.md), [`docs/portfolio-scoping.md`](docs/portfolio-scoping.md) et [`docs/test-plan.md`](docs/test-plan.md).
 
 Toutes les données et identités de démonstration sont synthétiques.
 

@@ -89,7 +89,7 @@ Le protocole [`validate-product-catalog.sh`](../../scripts/validate-product-cata
 
 Le résultat JSON final porte un digest SHA-256 des sources pertinentes. Il ne constitue ni une mesure de performance, ni une validation produit BOA, ni une preuve de production.[2]
 
-Le run final `product-catalog-20260921T000906Z-3020325`, terminé le 21 septembre 2026 à 00:11:37 UTC, prouve 28 produits actifs, 7 familles, 6 produits et 6 lacunes Trade Finance pour `SME-00035`, le rejet d’une détention vers un code inconnu, une génération `COMPLETED`, `rulesWeight=1` et `mlWeight=0`. Le run migration `product-catalog-migration-20260921T000034Z`, terminé le 21 septembre 2026 à 00:00:34 UTC, prouve les quatre cycles vierge/existant/downgrade/ré-upgrade. Les preuves JSON et la capture sont couvertes par le manifeste SHA-256 vérifié.[2][3][9][10]
+Le run final `product-catalog-20260921T024540Z-3120162`, terminé le 21 septembre 2026 à 02:48:04 UTC sur le commit publié `0b7b2b5`, prouve 28 produits actifs, 7 familles, 6 produits et 6 lacunes Trade Finance pour `SME-00035`, le rejet d’une détention vers un code inconnu, une génération `COMPLETED`, `rulesWeight=1` et `mlWeight=0`. Le run migration `product-catalog-migration-20260921T024859Z`, terminé à 02:48:59 UTC sur le même commit, prouve les quatre cycles vierge/existant/downgrade/ré-upgrade. Les preuves JSON et la capture sont couvertes par le manifeste SHA-256 vérifié.[2][3][9][10]
 
 La première relance finale a également révélé une course de visibilité entre les endpoints synchrones : Analytics pouvait annoncer `COMPLETED` alors que le commit de sa dépendance SQLAlchemy n’était pas encore observable par Signals/Opportunity. Pour un lot tardif, `SME-00451` a donc été refusé à juste titre comme historique insuffisant malgré des snapshots ensuite visibles. Analytics, Signals et Opportunity effectuent désormais leur commit avant de renvoyer `COMPLETED`. La relance suivante a confirmé cette correction puis mis en évidence l’expiration possible du jeton court entre Analytics, Signals et Opportunity lorsqu’une étape dure longtemps. `run-pipeline.sh` obtient désormais un jeton frais avant chaque appel interne, et non seulement avant chaque lot. Aucun délai arbitraire, retry masquant ou affaiblissement d’autorisation n’est ajouté.
 
@@ -112,8 +112,8 @@ Le correctif de pourcentage du panneau de simulation et le script optionnel [`re
 | validation Compose/Keycloak/ShellCheck | **PASS** |
 | migration isolée | **PASS**[3] |
 | pipeline Docker 500 PME | **PASS**, 20 lots de 25, tous `COMPLETED`, 500 clients `POC_SHADOW`, priorité rules-only |
-| Playwright | **PASS**, 20/20 en 3,7 minutes, dont catalogue et contournement CC par `customerId`; cas, statuts et durées versionnés[11] |
-| protocole catalogue post-E2E | **PASS**, run `product-catalog-20260921T000906Z-3020325`[2] |
+| Playwright | **PASS**, 20/20 en 3,6 minutes sur `0b7b2b5`, dont catalogue et contournement CC par `customerId`; cas, statuts et durées versionnés[11] |
+| protocole catalogue post-E2E | **PASS**, run `product-catalog-20260921T024540Z-3120162` sur `0b7b2b5`[2] |
 | FAQ comité | **PASS**, 30 questions |
 | scénario de démonstration | **PASS**, 5 actes |
 | manifestes SHA-256 catalogue | **PASS**, quatre fichiers vérifiés depuis la racine par `sha256sum -c docs/evidence/catalog/SHA256SUMS.txt`[10] |

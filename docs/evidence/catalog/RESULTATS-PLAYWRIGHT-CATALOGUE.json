@@ -1,15 +1,15 @@
 {
-  "runId": "playwright-catalog-20260921T001625Z",
-  "generatedAt": "2026-09-21T00:11:38.383Z",
+  "runId": "playwright-catalog-20260921T025240Z",
+  "generatedAt": "2026-09-21T02:49:01.719Z",
   "status": "PASS",
   "command": "cd tests/e2e && playwright test --config playwright.config.ts --reporter=json",
   "sourceRevision": {
-    "baseCommit": "01026c452e23bb81ebcf09b3e8c41a61beaefd61",
+    "baseCommit": "0b7b2b53450fe1eb8a8bd8e49e999e7e63533bfe",
     "sourceDigest": "99c2462dcddca28b4c7ffe32916f2bc36a2f839dedec1bb3d432e0d14d38c110"
   },
   "stats": {
-    "startTime": "2026-09-21T00:11:38.383Z",
-    "duration": 220293.027,
+    "startTime": "2026-09-21T02:49:01.719Z",
+    "duration": 218362.56399999998,
     "expected": 20,
     "skipped": 0,
     "unexpected": 0,
@@ -23,7 +23,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 18363,
+      "durationMs": 16429,
       "retry": 0
     },
     {
@@ -33,7 +33,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 9966,
+      "durationMs": 10008,
       "retry": 0
     },
     {
@@ -43,7 +43,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 7457,
+      "durationMs": 7582,
       "retry": 0
     },
     {
@@ -53,7 +53,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 7331,
+      "durationMs": 7229,
       "retry": 0
     },
     {
@@ -63,7 +63,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 7123,
+      "durationMs": 7787,
       "retry": 0
     },
     {
@@ -73,7 +73,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 14038,
+      "durationMs": 13266,
       "retry": 0
     },
     {
@@ -83,7 +83,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 20373,
+      "durationMs": 20626,
       "retry": 0
     },
     {
@@ -93,7 +93,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 13612,
+      "durationMs": 13093,
       "retry": 0
     },
     {
@@ -103,7 +103,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 7914,
+      "durationMs": 7861,
       "retry": 0
     },
     {
@@ -113,7 +113,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 14018,
+      "durationMs": 11989,
       "retry": 0
     },
     {
@@ -123,7 +123,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 8298,
+      "durationMs": 8635,
       "retry": 0
     },
     {
@@ -133,7 +133,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 6828,
+      "durationMs": 6832,
       "retry": 0
     },
     {
@@ -143,7 +143,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 7501,
+      "durationMs": 7201,
       "retry": 0
     },
     {
@@ -153,7 +153,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 7834,
+      "durationMs": 9443,
       "retry": 0
     },
     {
@@ -163,7 +163,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 7806,
+      "durationMs": 7575,
       "retry": 0
     },
     {
@@ -173,7 +173,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 13333,
+      "durationMs": 12651,
       "retry": 0
     },
     {
@@ -183,7 +183,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 12366,
+      "durationMs": 12541,
       "retry": 0
     },
     {
@@ -193,7 +193,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 7762,
+      "durationMs": 7555,
       "retry": 0
     },
     {
@@ -203,7 +203,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 19372,
+      "durationMs": 19819,
       "retry": 0
     },
     {
@@ -213,7 +213,7 @@
       "ok": true,
       "expectedStatus": "passed",
       "status": "passed",
-      "durationMs": 6792,
+      "durationMs": 6776,
       "retry": 0
     }
   ],
