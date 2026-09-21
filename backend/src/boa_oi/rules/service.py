@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from boa_oi.catalog import PRODUCTS_BY_CODE
 from boa_oi.models.entities import (
     Rule,
     RuleAction,
@@ -52,6 +53,21 @@ AUDIT_ACTIONS = {
     "disable": "DISABLED",
     "retire": "RETIRED",
 }
+
+
+def _catalog_product_errors(definition: dict[str, Any]) -> list[str]:
+    recommendation = definition.get("recommendation")
+    if not isinstance(recommendation, dict):
+        return []
+    products = recommendation.get("products")
+    if not isinstance(products, list) or any(not isinstance(item, str) for item in products):
+        return []
+    unknown_products = sorted(set(products) - PRODUCTS_BY_CODE.keys())
+    if not unknown_products:
+        return []
+    return [
+        "recommendation.products contains unknown catalogue codes: " + ", ".join(unknown_products)
+    ]
 
 
 def _checksum(definition: dict[str, Any]) -> str:
@@ -248,7 +264,7 @@ def persist_definition(
 def create_rule(session: Session, definition: dict[str, Any], actor: str) -> Rule:
     definition = dict(definition)
     reason = definition.pop("reason", None)
-    errors = validate_rule_definition(definition)
+    errors = [*validate_rule_definition(definition), *_catalog_product_errors(definition)]
     if errors:
         raise Problem(
             422,
@@ -287,7 +303,7 @@ def update_rule(session: Session, rule_id: str, definition: dict[str, Any], acto
     rule = find_rule(session, rule_id, lock=True)
     if rule.status in {"SUBMITTED", "APPROVED", "PUBLISHED"}:
         raise Problem(409, "RULE_LOCKED", "A rule in approval or publication cannot be modified.")
-    errors = validate_rule_definition(definition)
+    errors = [*validate_rule_definition(definition), *_catalog_product_errors(definition)]
     if errors:
         raise Problem(
             422,
@@ -347,7 +363,10 @@ def transition(
         )
     version = latest_version(session, rule)
     if event == "validate":
-        errors = validate_rule_definition(version.configuration_json)
+        errors = [
+            *validate_rule_definition(version.configuration_json),
+            *_catalog_product_errors(version.configuration_json),
+        ]
         if errors:
             raise Problem(
                 422,

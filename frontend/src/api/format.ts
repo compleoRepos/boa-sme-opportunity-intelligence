@@ -1,6 +1,16 @@
 const defaultLabels: Record<string, string> = {
   INVESTMENT_FINANCING: "Financement d’investissement",
+  WORKING_CAPITAL_FACILITY: "Financement du cycle d’exploitation",
+  OVERDRAFT: 'Avances et découverts',
   TRADE_FINANCE: 'Trade finance',
+  CASH_MANAGEMENT: 'Gestion des flux et de la trésorerie',
+  TERM_DEPOSIT: 'Placements à taux garanti',
+  LIQUIDITY_INVESTMENT: 'Placements en OPCVM',
+  LEASING: 'Crédit-bail',
+  GUARANTEE: 'Garantie',
+  ACCOUNT: 'Compte',
+  PACKAGE: 'Forfait',
+  DIGITAL: 'Banque à distance',
   CASH_INVESTMENT: 'Placement de trésorerie',
   FINANCIAL_STRESS_SIGNAL: 'Signal de tension financière',
   INFLOW_GROWTH: 'Croissance des encaissements',
@@ -98,6 +108,9 @@ const defaultLabels: Record<string, string> = {
   TECHNOLOGIE: 'Technologie',
   SMALL: 'Petite entreprise',
   SME: 'PME',
+  ENTERPRISE: 'Entreprise',
+  LARGE: 'Grande entreprise',
+  PROFESSIONAL: 'Professionnel',
   MICRO_BUSINESS: 'TPE',
   MID_MARKET: 'ETI',
   P1: 'Priorité P1',
@@ -153,6 +166,24 @@ export const setRuntimeLabels = (values?: Record<string, string>) => {
 export const label = (value?: string | null) => {
   if (!value) return '—'
   return runtimeLabels[value] ?? defaultLabels[value] ?? value.replaceAll('_', ' ').toLocaleLowerCase('fr-FR').replace(/^./, (char) => char.toUpperCase())
+}
+
+export const PRODUCT_FAMILIES: Array<[string, string]> = [
+  ['INVESTMENT_FINANCING', "Financement de l’investissement"],
+  ['WORKING_CAPITAL_FACILITY', "Financement du cycle d’exploitation"],
+  ['OVERDRAFT', 'Avances et découverts'],
+  ['TRADE_FINANCE', "Opérations à l’international"],
+  ['CASH_MANAGEMENT', 'Gestion des flux et de la trésorerie'],
+  ['TERM_DEPOSIT', 'Placements à taux garanti'],
+  ['LIQUIDITY_INVESTMENT', 'Placements en OPCVM'],
+]
+
+export const familyLabel = (family?: string | null) =>
+  PRODUCT_FAMILIES.find(([code]) => code === family)?.[1] ?? label(family)
+
+export const familyRank = (family?: string | null) => {
+  const index = PRODUCT_FAMILIES.findIndex(([code]) => code === family)
+  return index === -1 ? PRODUCT_FAMILIES.length : index
 }
 
 export const formatPercent = (value?: number | null, digits = 0) =>

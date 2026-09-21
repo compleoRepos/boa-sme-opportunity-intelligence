@@ -1,0 +1,32 @@
+{
+  "runId": "product-catalog-migration-20260921T024859Z",
+  "generatedAt": "2026-09-21T02:48:59Z",
+  "status": "PASS",
+  "scope": "LOCAL_SYNTHETIC_POSTGRESQL_MIGRATION",
+  "sourceRevision": {
+    "baseCommit": "0b7b2b53450fe1eb8a8bd8e49e999e7e63533bfe",
+    "sourceDigest": "090ac215bece7de8ed46660c5ca193def9902222c2da643973287d6fc1da8f93"
+  },
+  "environment": {
+    "migrationDatabase": "boa_catalog_migration_3130026",
+    "freshDatabase": "boa_catalog_fresh_3130026",
+    "temporaryDatabasesRemovedOnExit": true
+  },
+  "checks": {
+    "freshUpgrade0001To0018": "PASS",
+    "existingUpgrade0017To0018": "PASS",
+    "downgrade0018To0017": "PASS",
+    "reupgrade0017To0018": "PASS",
+    "productMetadataColumns": "PASS",
+    "ruleVersionWidth80": "PASS",
+    "legacyFamilyBackfill": "PASS",
+    "knownSyntheticTechnicalRulesMigrated": "PASS",
+    "knownSyntheticRuleStudioMigratedWithChecksum": "PASS",
+    "userControlledRulesNotRewritten": "PASS"
+  },
+  "limitations": [
+    "Bases PostgreSQL Docker temporaires et fixtures synthétiques uniquement.",
+    "La migration transforme exclusivement les règles connues créées par demo-data-generator; elle ne réécrit aucune règle utilisateur ou BOA.",
+    "Les règles existantes avec un code produit inconnu restent intactes; les nouvelles écritures et la consommation Opportunity échouent désormais explicitement au lieu de masquer le code."
+  ]
+}

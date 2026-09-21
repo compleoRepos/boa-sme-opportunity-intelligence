@@ -30,15 +30,6 @@ SCENARIOS = (
     "FALSE_POSITIVE_SEASONAL",
     "FALSE_POSITIVE_ONE_OFF",
 )
-PRODUCTS = (
-    ("INVESTMENT_FINANCING", "Investment Financing", "FINANCING"),
-    ("WORKING_CAPITAL_FACILITY", "Working Capital Facility", "FINANCING"),
-    ("OVERDRAFT", "Overdraft", "FINANCING"),
-    ("TRADE_FINANCE", "Trade Finance", "TRADE"),
-    ("CASH_MANAGEMENT", "Cash Management", "CASH"),
-    ("TERM_DEPOSIT", "Term Deposit", "INVESTMENT"),
-    ("LIQUIDITY_INVESTMENT", "Liquidity Investment", "INVESTMENT"),
-)
 
 
 def rng_for(*parts: object) -> random.Random:

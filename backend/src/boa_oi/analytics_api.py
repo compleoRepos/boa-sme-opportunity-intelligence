@@ -718,6 +718,9 @@ async def recompute(
         processed, skipped, calculated, evaluated_at = await incremental_by_customer(
             payload, request, session
         )
+    # Le pipeline enchaîne immédiatement Signals puis Opportunity. `COMPLETED`
+    # garantit donc que les snapshots sont visibles par le service suivant.
+    session.commit()
     return {
         "jobId": str(deterministic_uuid("analytics-job", idempotency_key)),
         "status": "COMPLETED",

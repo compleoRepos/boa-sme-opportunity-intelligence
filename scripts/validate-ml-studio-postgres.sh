@@ -51,11 +51,11 @@ current_revision() {
 
 # Base vierge -> head.
 DATABASE_URL="$URL" "$ALEMBIC" -c alembic.ini upgrade head
-[[ "$(current_revision)" == "0018_ml_studio" ]]
+[[ "$(current_revision)" == "0019_ml_studio_catalog_merge" ]]
 
 # Base existante au head -> upgrade idempotent sans changement.
 DATABASE_URL="$URL" "$ALEMBIC" -c alembic.ini upgrade head
-[[ "$(current_revision)" == "0018_ml_studio" ]]
+[[ "$(current_revision)" == "0019_ml_studio_catalog_merge" ]]
 
 # Downgrade de la tranche, contrôle de disparition, puis ré-upgrade.
 DATABASE_URL="$URL" "$ALEMBIC" -c alembic.ini downgrade 0017_ml_shadow_governance
@@ -69,7 +69,7 @@ else
   exit 1
 fi
 DATABASE_URL="$URL" "$ALEMBIC" -c alembic.ini upgrade head
-[[ "$(current_revision)" == "0018_ml_studio" ]]
+[[ "$(current_revision)" == "0019_ml_studio_catalog_merge" ]]
 
 # Vérifications structurelles PostgreSQL finales.
 "${DOCKER[@]}" exec "$NAME" psql -U postgres -d boa_ml_studio -Atqc \
@@ -78,5 +78,8 @@ DATABASE_URL="$URL" "$ALEMBIC" -c alembic.ini upgrade head
 "${DOCKER[@]}" exec "$NAME" psql -U postgres -d boa_ml_studio -Atqc \
   "SELECT count(*) FROM information_schema.tables WHERE table_schema='ml' AND table_name IN ('training_jobs','training_examples')" \
   | grep -qx 2
+"${DOCKER[@]}" exec "$NAME" psql -U postgres -d boa_ml_studio -Atqc \
+  "SELECT count(*) FROM information_schema.columns WHERE table_schema='product' AND table_name='products' AND column_name IN ('family','description','source_url')" \
+  | grep -qx 3
 
 echo "POSTGRES_MIGRATIONS_PASS fresh=head existing=head downgrade=0017 reupgrade=head"

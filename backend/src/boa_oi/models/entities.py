@@ -240,6 +240,9 @@ class Product(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     product_code: Mapped[str] = mapped_column(String(60), unique=True)
     name: Mapped[str] = mapped_column(String(160))
     category: Mapped[str] = mapped_column(String(60))
+    family: Mapped[str] = mapped_column(String(80), nullable=False, default="UNCLASSIFIED")
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    source_url: Mapped[str | None] = mapped_column(String(500))
     eligibility_rules_json: Mapped[dict] = mapped_column(JSON, default=dict)
     target_segments_json: Mapped[list] = mapped_column(JSON, default=list)
     currencies_json: Mapped[list] = mapped_column(JSON, default=list)
@@ -491,7 +494,7 @@ class Opportunity(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     explanation_json: Mapped[dict] = mapped_column(JSON, default=dict)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     engine_version: Mapped[str] = mapped_column(String(100), default="0.1.0")
-    rule_version: Mapped[str] = mapped_column(String(30), default="1")
+    rule_version: Mapped[str] = mapped_column(String(80), default="1")
     scoring_policy_id: Mapped[str] = mapped_column(
         String(80), default="commercial-rules-shadow-poc"
     )
@@ -626,7 +629,7 @@ class DecisionAudit(Base, UUIDPrimaryKeyMixin):
     opportunity_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
     customer_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
     engine_version: Mapped[str] = mapped_column(String(100))
-    rule_version: Mapped[str] = mapped_column(String(30))
+    rule_version: Mapped[str] = mapped_column(String(80))
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     input_reference: Mapped[str] = mapped_column(String(120))
     signals_json: Mapped[list] = mapped_column(JSON)

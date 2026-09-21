@@ -281,6 +281,8 @@ async def evaluate(
                     )
                 )
                 created += 1
+    # Opportunity consomme les signaux dès la réponse ; `COMPLETED` implique un commit visible.
+    session.commit()
     return {
         "jobId": str(deterministic_uuid("signal-job", idempotency_key)),
         "status": "COMPLETED",

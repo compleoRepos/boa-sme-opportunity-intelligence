@@ -86,11 +86,11 @@ manifeste commun : leur généralisation reste **NON IMPLÉMENTÉE**.
 
 | Table | Colonnes essentielles | Clés et contraintes |
 |---|---|---|
-| `product.products` | `id`, `product_code`, `name`, `category`, `active` | PK; unique `product_code`; les règles ne référencent jamais un nom en dur |
+| `product.products` | `id`, `product_code`, `name`, `category`, `family`, `description`, `source_url`, `eligibility_rules_json`, `target_segments_json`, `currencies_json`, `active` | PK; unique `product_code`; `family`, `description` et `source_url` ajoutés par `0018`; les règles ne référencent jamais un nom en dur |
 | `product.product_versions` | `id`, `product_id`, `version`, `eligibility_rules_json`, `target_segments_json`, `currencies_json`, `valid_from`, `valid_to` | PK; unique `(product_id, version)`; une seule version active à une date; JSON validé par schéma applicatif |
 | `product.customer_products` | `id`, `customer_id`, `product_id`, `status`, `opened_on`, `utilization_ratio` | PK; FK produit; la provenance gouvernée par ligne et les contraintes métier supplémentaires restent **NON IMPLÉMENTÉES** pour Product |
 
-Le seed catalogue comprend notamment `INVESTMENT_FINANCING`, `WORKING_CAPITAL_FACILITY`, `OVERDRAFT`, `TRADE_FINANCE`, `CASH_MANAGEMENT`, `TERM_DEPOSIT` et `LIQUIDITY_INVESTMENT`. Les produits existants sont générés avant l’exécution du moteur ; ils servent à détecter un gap ou une sous-utilisation.
+Le seed synthétique comprend 28 produits publics regroupés dans les familles `INVESTMENT_FINANCING`, `WORKING_CAPITAL_FACILITY`, `OVERDRAFT`, `TRADE_FINANCE`, `CASH_MANAGEMENT`, `TERM_DEPOSIT` et `LIQUIDITY_INVESTMENT`. La lacune est calculée par famille et la recommandation porte sur des codes produit précis. Les nouvelles versions Rule Studio sont refusées lorsqu’elles référencent un code absent de cette source exécutable ; une ancienne règle publiée obsolète ou un produit connu devenu absent/inactif fait échouer explicitement la génération Opportunity au lieu de produire une recommandation vide. La migration `0018` ne réécrit que les configurations synthétiques connues, jamais une règle utilisateur ou BOA. Elle n’insère pas le catalogue : la matérialisation par seed est obligatoire et `/ready` bloque si les 28 entrées actives ne correspondent pas au référentiel exécuté. Les routes client Product Service réappliquent le scope objet côté service. Les pages publiques attestent l’existence et la nature générale des produits, mais les ciblages et critères demeurent **HYPOTHÈSE À VALIDER AVEC BOA**.
 
 ### 3.5 Analytique, signaux et règles
 
@@ -194,8 +194,8 @@ La référence déterministe est `seed = boa-sme-oi-2026-v1`. La période compor
 | Jours de soldes | 456 000 à 638 000, selon comptes ouverts |
 | Transactions | 750 000 à 1 500 000, moyenne cible d’environ 2 000 par PME sur 12 mois |
 | Contreparties | 40 000 à 80 000 dédupliquées, dont fournisseurs récurrents |
-| Produits catalogue | 7 à 12 codes, avec versions de règles |
-| Détentions produits | 1 500 à 3 000 |
+| Produits catalogue | **28 codes actifs prouvés**, répartis en 7 familles internes |
+| Détentions produits | distribution déterministe synthétique par famille ; aucun volume BOA revendiqué |
 | Snapshots analytiques | 500 × 5 fenêtres × 12 dates = 30 000 par métrique de base ; stockage agrégé selon besoin |
 | Signaux | non fixé dans le seed ; environ 1 à 5 par client et par date d’évaluation selon les scénarios |
 | Opportunités | **0 avant exécution du moteur** ; volume produit après calcul et contrôlé par les tests |

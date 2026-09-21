@@ -48,7 +48,10 @@ def test_draft_rule_is_never_evaluated(monkeypatch):
         "ruleId": "DRAFT_ONLY",
         "name": "Draft rule",
         "conditions": [{"metric": "growth", "operator": ">", "value": 1}],
-        "recommendation": {"opportunityType": "TEST", "products": ["PRODUCT"]},
+        "recommendation": {
+            "opportunityType": "TEST",
+            "products": ["BOA_CREDIT_MLTD_DIRECT"],
+        },
     }
     created = TestClient(management).post("/internal/v1/rules", json=rule)
     assert created.status_code == 201
@@ -81,7 +84,10 @@ def test_rule_studio_rejects_invalid_lifecycle_policy(monkeypatch):
     rule = {
         "name": "Invalid lifecycle",
         "conditions": [{"metric": "growth", "operator": ">", "value": 1}],
-        "recommendation": {"opportunityType": "TEST", "products": ["PRODUCT"]},
+        "recommendation": {
+            "opportunityType": "TEST",
+            "products": ["BOA_CREDIT_MLTD_DIRECT"],
+        },
         "lifecycle": {
             "validityDays": 0,
             "dismissedCooldownDays": 30,
@@ -95,3 +101,32 @@ def test_rule_studio_rejects_invalid_lifecycle_policy(monkeypatch):
 
     assert response.status_code == 422
     assert response.json()["code"] == "VALIDATION_ERROR"
+
+
+def test_rule_studio_rejects_unknown_catalog_product(monkeypatch):
+    monkeypatch.setenv("BOA_AUTH_DISABLED", "true")
+    factory = memory_factory()
+    management = application_for("rule-management-service")
+    management.state.session_factory = factory
+    rule = {
+        "name": "Unknown product",
+        "conditions": [{"metric": "growth", "operator": ">", "value": 1}],
+        "recommendation": {
+            "opportunityType": "TEST",
+            "products": ["INVESTMENT_FINANCING"],
+        },
+    }
+
+    response = TestClient(management).post("/internal/v1/rules", json=rule)
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "RULE_VALIDATION_FAILED"
+    assert response.json()["details"] == [
+        {
+            "field": "rule",
+            "code": "INVALID_RULE",
+            "message": (
+                "recommendation.products contains unknown catalogue codes: INVESTMENT_FINANCING"
+            ),
+        }
+    ]

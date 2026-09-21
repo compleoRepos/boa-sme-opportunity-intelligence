@@ -117,8 +117,10 @@ export interface ProductReference {
 export interface Product {
   productId: string
   name: string
-  description?: string
+  description?: string | null
   category: string
+  family?: string
+  sourceUrl?: string | null
   eligibilityRules?: string[] | Record<string, unknown>
   targetSegment?: string | string[]
   currency?: string | string[]

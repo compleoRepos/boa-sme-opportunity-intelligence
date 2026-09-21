@@ -30,6 +30,9 @@ post_internal() {
   local service="$1" path="$2" payload="${3-}"
   local key=${4:-${path//\//-}}
   [[ -n "$payload" ]] || payload='{}'
+  # Chaque étape peut dépasser la courte durée de vie du jeton de démonstration.
+  # Un jeton frais par appel évite qu'Opportunity hérite de celui utilisé avant Analytics/Signals.
+  refresh_token
   echo "POST ${service}${path}"
   compose exec -T "$service" curl --fail-with-body --silent --show-error \
     --request POST \
@@ -53,7 +56,6 @@ fi
 
 batch_size=${PIPELINE_BATCH_SIZE:-25}
 for ((start=0; start<customer_count; start+=batch_size)); do
-  refresh_token
   ids=$(jq -c --argjson start "$start" --argjson size "$batch_size" '.[$start:$start+$size]' <<<"$customer_ids")
   analytics_payload=$(jq -nc --argjson ids "$ids" --arg asOf "$as_of" '{customerIds:$ids,asOf:$asOf,periods:["7D","30D","90D","180D","365D"]}')
   signal_payload=$(jq -nc --argjson ids "$ids" --arg asOf "$as_of" '{customerIds:$ids,asOf:$asOf,periods:["90D"]}')
