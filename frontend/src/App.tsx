@@ -24,7 +24,7 @@ import { OpportunitiesPage, OpportunityRedirectPage } from './pages/Opportunitie
 import { ProductsPage } from './pages/ProductsPage'
 import { SignalsPage } from './pages/SignalsPage'
 import { ForbiddenPage, NotFoundPage } from './pages/StatusPages'
-import { ToastProvider } from './ui'
+import { AppErrorBoundary, ToastProvider } from './ui'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -101,5 +101,5 @@ function ApplicationRoutes() {
 }
 
 export default function App() {
-  return <QueryClientProvider client={queryClient}><BrowserRouter><AuthProvider><ToastProvider><ApplicationRoutes /></ToastProvider></AuthProvider></BrowserRouter></QueryClientProvider>
+  return <AppErrorBoundary><QueryClientProvider client={queryClient}><BrowserRouter><AuthProvider><ToastProvider><ApplicationRoutes /></ToastProvider></AuthProvider></BrowserRouter></QueryClientProvider></AppErrorBoundary>
 }

@@ -8,7 +8,7 @@ import type { RuleLifecycleInput, RuleSimulationResult, RuleStatus, RuleTestResu
 import { useAuth } from '../../auth/AuthProvider'
 import { Badge, Button, EmptyState, ErrorState, Modal, Panel, SkeletonStack, Stepper, Tabs, tabId, useToast } from '../../ui'
 import { ReadableRule } from './RuleBlocks'
-import { LIFECYCLE, LIFECYCLE_LABELS, countConditions } from './ruleModel'
+import { LIFECYCLE, LIFECYCLE_LABELS, countConditions, scopeValuesLabel } from './ruleModel'
 import { SimulationForm, SimulationProgress, SimulationResults } from './SimulationPanel'
 
 type Lifecycle = 'submit' | 'approve' | 'publish' | 'disable' | 'rollback'
@@ -79,8 +79,8 @@ export function RuleDetailPage() {
           <dt>Score de base</dt><dd>{item.confidence.baseScore} points</dd>
           <dt>Confiance élevée</dt><dd>à partir de {item.confidence.highThreshold ?? 80} %</dd>
           <dt>Confiance moyenne</dt><dd>à partir de {item.confidence.mediumThreshold ?? 60} %</dd>
-          <dt>Segments</dt><dd>{item.scope.segment.map(label).join(', ')}</dd>
-          <dt>Secteurs</dt><dd>{item.scope.sectors.map(label).join(', ')}</dd>
+          <dt>Segments</dt><dd>{scopeValuesLabel(item.scope?.segment)}</dd>
+          <dt>Secteurs</dt><dd>{scopeValuesLabel(item.scope?.sectors)}</dd>
           <dt>Validité</dt><dd>{item.lifecycle.validityDays} jours</dd>
           <dt>Cooldown rejet</dt><dd>{item.lifecycle.dismissedCooldownDays} jours</dd>
           <dt>Cooldown conversion</dt><dd>{item.lifecycle.convertedCooldownDays} jours</dd>
