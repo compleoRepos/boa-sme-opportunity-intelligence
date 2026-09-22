@@ -5,6 +5,7 @@ import type {
   ActivitySeries,
   ApiPage,
   BranchDashboard,
+  BankingRelationship,
   CreateActionInput,
   Customer,
   CustomerPropensity,
@@ -83,6 +84,20 @@ export const useCustomer = (id?: string) => useQuery({
   queryFn: () => apiRequest<Customer>(`/api/v1/customers/${id}`),
   enabled: Boolean(id),
 })
+export function useDeclareBankingRelationship(customerId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { bankingRelationship: BankingRelationship; reason: string; declaredTurnover?: number; declaredTurnoverAsOf?: string }) => apiRequest<Customer>(
+      `/api/v1/customers/${customerId}/banking-relationship`,
+      { method: 'PUT', body: JSON.stringify(input) },
+    ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['customer', customerId] })
+      void queryClient.invalidateQueries({ queryKey: ['customers'] })
+      void queryClient.invalidateQueries({ queryKey: ['dashboards'] })
+    },
+  })
+}
 export const useCustomerPropensity = (id?: string) => useQuery({
   queryKey: ['customer', id, 'propensity'],
   queryFn: () => apiRequest<CustomerPropensity>(`/api/v1/customers/${id}/propensity`),

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { login } from './auth'
 
-const mailpit = 'http://127.0.0.1:8025/api/v1'
+const mailpit = `${process.env.E2E_MAILPIT_ORIGIN || 'http://127.0.0.1:8025'}/api/v1`
 
 test('notification : une action planifiée par le CC produit un email SMTP audité', async ({ page }) => {
   await page.request.delete(`${mailpit}/messages`)

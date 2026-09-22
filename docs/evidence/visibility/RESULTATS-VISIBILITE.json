@@ -1,0 +1,154 @@
+{
+  "schemaVersion": "1.2",
+  "runId": "visibility-20260922T004151Z",
+  "generatedAt": "2026-09-22T00:41:51Z",
+  "status": "PASS",
+  "source": {
+    "branch": "feat/multibank-visibility",
+    "baseCommit": "78429027c960dfe91a1d41adac3bcdf3df7807c9",
+    "codeTree": "CLEAN",
+    "codeDigest": "30a10d94be7361f7c78db56e6f058f85a5617b56b8fac975bd177775e998b9fe",
+    "documentationTree": "DIRTY_VALIDATED"
+  },
+  "execution": {
+    "resumedAfterInterruptedRunner": true,
+    "interruptionCause": "sandbox execution window; not a test failure",
+    "freshStackCreatedByOriginalRunner": true,
+    "resumeBoundary": {
+      "analytics": "SME-00125",
+      "signal": "SME-00100",
+      "opportunity": "SME-00100"
+    },
+    "completedThrough": "SME-00500",
+    "fullRecomputeAfterBookedOnlyFix": true,
+    "fullRecomputeBatches": 20,
+    "finalE2eOnExactCommit": true
+  },
+  "environment": {
+    "composeProject": "boa_visibility_release",
+    "freshNamedVolume": true,
+    "isolatedPorts": true,
+    "customerCount": 500,
+    "dataKind": "SYNTHETIC",
+    "externalDataUsed": false,
+    "llmOrGpuUsed": false
+  },
+  "distribution": {
+    "levels": [
+      {
+        "level": "LOW",
+        "count": 50
+      },
+      {
+        "level": "PARTIAL",
+        "count": 50
+      },
+      {
+        "level": "UNKNOWN",
+        "count": 400
+      }
+    ],
+    "methods": [
+      {
+        "method": "DECLARED",
+        "count": 33
+      },
+      {
+        "method": "NONE",
+        "count": 400
+      },
+      {
+        "method": "TRANSACTION_FINGERPRINTS",
+        "count": 33
+      },
+      {
+        "method": "TURNOVER_RATIO",
+        "count": 34
+      }
+    ],
+    "scenarios": [
+      {
+        "scenario": "MULTIBANK_PRIMARY",
+        "count": 50
+      },
+      {
+        "scenario": "MULTIBANK_SECONDARY",
+        "count": 50
+      }
+    ]
+  },
+  "analytics": {
+    "visibilitySnapshots": 500,
+    "bookedTransactionsOnly": true,
+    "threeMethodsExercised": true
+  },
+  "signals": {
+    "present": true
+  },
+  "opportunities": {
+    "flowDomiciliation": 100,
+    "recommendationNatureWinBack": 194,
+    "flowDomiciliationWinBack": 100,
+    "cashInvestmentRemovedForLow": true,
+    "absentOrElsewhereForAhmed": 28
+  },
+  "ruleStudio": {
+    "ruleId": "FLOW_DOMICILIATION_001",
+    "seedStatus": "DRAFT",
+    "path": [
+      "DRAFT",
+      "VALIDATED",
+      "SIMULATED",
+      "SUBMITTED",
+      "APPROVED",
+      "PUBLISHED",
+      "ACTIVE"
+    ],
+    "populationAnalyzed": 500,
+    "matchedCustomers": 100,
+    "analyst": "business.analyst.demo",
+    "approver": "rule.approver.demo",
+    "selfApprovalRejected": true,
+    "auditComplete": true
+  },
+  "e2e": {
+    "expected": 24,
+    "unexpected": 0,
+    "skipped": 0,
+    "flaky": 0,
+    "durationMs": 107724.19,
+    "viewport": "1440x900",
+    "screenshots": 3,
+    "authenticationMode": "DEV_PERSONA",
+    "keycloakBrowserLoginExercised": false
+  },
+  "oracles": {
+    "primarySecondaryScenarios": "PASS",
+    "lowPlacementWithdrawal": "PASS",
+    "productGapAbsentOrElsewhere": "PASS",
+    "winBack": "PASS",
+    "outOfPortfolioScoping": "PASS",
+    "ahmedCustomer": "SME-00040",
+    "salmaBranchVisibility": "PASS",
+    "personaSmtpReminder": "PASS",
+    "longModalInternalScroll": "PASS"
+  },
+  "invariants": {
+    "operatingMode": "POC_SHADOW",
+    "fallbackMode": "RULES_ONLY",
+    "rulesWeight": 1,
+    "mlWeight": 0,
+    "creditDecisioning": false,
+    "externalData": false,
+    "syntheticDataOnly": true,
+    "llmUsed": false,
+    "gpuUsed": false,
+    "thresholdsStatus": "HYPOTHÈSE À VALIDER AVEC BOA"
+  },
+  "limitations": [
+    "Validation locale sur données synthétiques et stack Compose éphémère isolée; aucune donnée BOA réelle.",
+    "Le run Playwright utilise le mode DEV_PERSONA; le login navigateur Keycloak n est pas exercé par cette preuve.",
+    "Les seuils 0,7/0,3, pénalités -10/-25/-5, deux empreintes sur 90 jours et refroidissement 180 jours sont HYPOTHÈSE À VALIDER AVEC BOA.",
+    "Le POC produit une aide commerciale; il ne prend aucune décision de crédit."
+  ]
+}

@@ -29,7 +29,9 @@ def upgrade():
 
     bind = op.get_bind()
     # Seules les tables des schémas de cette révision : les schémas rule, feature_store,
-    # ml et portfolio sont créés par 0003 et 0004, sinon la chaîne échoue sur base vide.
+    # ml et portfolio sont créés par les révisions suivantes. Les modèles ORM reflètent
+    # toujours la tête courante; exclure aussi les tables ajoutées après 0001 dans un
+    # schéma historique, sinon leur migration propriétaire rencontre un objet existant.
     future_governance_tables = {
         "portfolio_assignments",
         "portfolio_sync_events",
@@ -43,6 +45,10 @@ def upgrade():
         "import_rejections",
         "training_examples",
         "training_jobs",
+        "banking_relationship_declarations",
+        "flow_visibility_snapshots",
+        "flow_visibility_policies",
+        "feature_set_registry",
     }
     owned = [
         table
@@ -51,8 +57,39 @@ def upgrade():
     ]
     Base.metadata.create_all(bind=bind, tables=owned, checkfirst=True)
     # Les modèles ORM reflètent toujours la tête courante. Retirer ici les colonnes
-    # et largeurs introduites seulement en 0018 afin qu'une base vierge traverse
+    # et largeurs introduites après 0001 afin qu'une base vierge traverse
     # réellement le même historique qu'une base existante.
+    for column in (
+        "banking_relationship",
+        "banking_relationship_declared_at",
+        "banking_relationship_declared_by",
+        "banking_relationship_reason",
+        "banking_relationship_source",
+        "declared_turnover",
+        "declared_turnover_as_of",
+        "declared_turnover_entered_by",
+        "declared_turnover_source",
+    ):
+        op.execute(sa.text(f'ALTER TABLE "customer"."customers" DROP COLUMN IF EXISTS "{column}"'))
+    for column in (
+        "counterparty_name",
+        "remittance_information",
+        "externally_domiciled",
+    ):
+        op.execute(
+            sa.text(f'ALTER TABLE "transaction"."transactions" DROP COLUMN IF EXISTS "{column}"')
+        )
+    op.execute(
+        sa.text(
+            'ALTER TABLE "opportunity"."opportunities" '
+            'DROP COLUMN IF EXISTS "recommendation_nature"'
+        )
+    )
+    op.execute(
+        sa.text(
+            'ALTER TABLE "action"."opportunity_actions" DROP COLUMN IF EXISTS "opportunity_type"'
+        )
+    )
     op.execute(sa.text('ALTER TABLE "product"."products" DROP COLUMN IF EXISTS "source_url"'))
     op.execute(sa.text('ALTER TABLE "product"."products" DROP COLUMN IF EXISTS "description"'))
     op.execute(sa.text('ALTER TABLE "product"."products" DROP COLUMN IF EXISTS "family"'))

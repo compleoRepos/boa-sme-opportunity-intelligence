@@ -222,6 +222,12 @@ GET_ROUTES = [
         READ_ROLES,
     ),
     (
+        "/api/v1/customers/{customer_id}/product-gaps",
+        "product",
+        "customers/{customer_id}/product-gaps",
+        READ_ROLES,
+    ),
+    (
         "/api/v1/customers/{customer_id}/transactions",
         "transaction",
         "customers/{customer_id}/transactions",
@@ -321,6 +327,20 @@ def register_get(
 
 for public_path, service, internal_path, roles in GET_ROUTES:
     register_get(public_path, service, internal_path, roles)
+
+
+@app.put("/api/v1/customers/{customer_id}/banking-relationship", tags=["Customer"])
+async def declare_customer_banking_relationship(
+    customer_id: str,
+    request: Request,
+    _principal: Principal = Depends(require_roles("RELATIONSHIP_MANAGER", "BRANCH_MANAGER")),
+) -> JSONResponse:
+    return await proxy(
+        request,
+        "customer",
+        f"customers/{customer_id}/banking-relationship",
+        body=await json_body(request),
+    )
 
 
 RULE_READ_ROLES = (

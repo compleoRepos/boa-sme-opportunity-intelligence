@@ -18,6 +18,7 @@ class OpportunityContext(BaseModel):
     false_positive_flags: tuple[str, ...] = ()
     confidence_factors: dict[str, float | None] = {}
     priority_factors: dict[str, float | None] = {}
+    flow_visibility_level: Literal["HIGH", "PARTIAL", "LOW", "UNKNOWN"] = "UNKNOWN"
 
 
 class ConditionEvidence(BaseModel):
@@ -49,6 +50,7 @@ class OpportunityCandidate(BaseModel):
     what: str
     when: str
     recommended_products: tuple[str, ...]
+    recommendation_nature: Literal["NEED_DISCOVERY", "WIN_BACK"] = "NEED_DISCOVERY"
     evidence: tuple[ConditionEvidence, ...]
     as_of_date: date
     generated_at: str

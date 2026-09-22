@@ -339,3 +339,24 @@ Le pilote crée les tables de synchronisation et les tables ML/Feature Store dé
 [2]: ./ml-engine.md "ML Engine CPU-ready — architecture cible et contrats"
 [3]: ./ml-acceptance.md "Acceptation de l’incrément ML"
 [4]: ./portfolio-scoping.md "Périmètres agence, chargé de clientèle et portefeuille"
+
+
+## 12. Extension multibancarisation et visibilité des flux
+
+### 12.1 Déclaration de relation bancaire
+
+`customer.customers` conserve la vue courante de `banking_relationship` (`EXCLUSIVE`, `PRIMARY`, `SECONDARY`, `UNKNOWN`) et du chiffre d’affaires déclaré. `customer.banking_relationship_declarations` enregistre chaque événement avec date, auteur, source, motif et, lorsqu’il est fourni, chiffre d’affaires daté. Customer Service reste propriétaire de ces attributs et applique le scope CC/agence avant toute écriture. Pour une coupe historique, la relation bancaire effective et le dernier chiffre d’affaires dont la date métier est antérieure ou égale à la coupe sont sélectionnés indépendamment : une valeur future ne masque donc pas un fait antérieur valide et ne fuit pas dans le passé.
+
+### 12.2 Snapshot analytique
+
+`analytics.flow_visibility_snapshots` matérialise un résultat par client et date de référence : niveau `HIGH/PARTIAL/LOW/UNKNOWN`, part estimée facultative, méthode `DECLARED/TURNOVER_RATIO/TRANSACTION_FINGERPRINTS/NONE`, faits structurés, compteurs d’empreintes 90 jours et couverture de catégorisation. La clé logique empêche les doublons pour une même version de calcul. Les transactions postérieures à `as_of_date` et les déclarations datées après cette date sont exclues.
+
+`analytics.flow_visibility_policies` conserve les versions de seuils, pénalités, nombre minimal d’empreintes et cooldown. Une modification depuis l’écran des seuils crée une version **inactive** ; seule la publication gouvernée de la règle Rule Studio `FLOW_DOMICILIATION` bascule atomiquement cette version à l’état actif. Analytics et Opportunity lisent uniquement la version active.
+
+La migration `0020_multibank_visibility` crée les contraintes, index et privilèges dédiés. Le rôle SQL partagé `rule_management_service` reçoit `SELECT` sur les snapshots Analytics et les actions commerciales afin que Rule Simulation puisse calculer le cooldown, ainsi que `SELECT/UPDATE` sur les politiques afin que Rule Management effectue l’activation gouvernée ; il ne reçoit ni insertion de politique, ni écriture Action. Le downgrade révoque ces droits et refuse de supprimer les objets 0020 tant que des déclarations, politiques non migratoires, actions typées, snapshots ou valeurs métier portées par les colonnes ajoutées sont présentes. Product et Portfolio consomment des projections ou des contrats API, sans prendre la propriété du snapshot Analytics.
+
+### 12.3 Sémantique gouvernée
+
+`ABSENT_OR_ELSEWHERE` signifie qu’un produit n’est pas observé comme détenu chez BOA et que la visibilité des flux ne permet pas d’affirmer son absence ailleurs. Il ne constitue jamais une preuve de détention chez une banque tierce. `FLOW_DOMICILIATION` reste une opportunité commerciale rules-only ; la priorité persistée conserve `rules_weight=1`, `ml_weight=0` et `fallback_mode=RULES_ONLY`.
+
+Les seuils, pénalités, nombre minimal d’empreintes et cooldown sont **HYPOTHÈSE À VALIDER AVEC BOA**. Le dataset 500 PME est synthétique et ne décrit aucune distribution réelle de la clientèle.

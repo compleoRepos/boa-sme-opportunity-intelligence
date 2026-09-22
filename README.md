@@ -37,19 +37,26 @@ Les règles Rule Studio de démonstration (`database/seed/rule-studio.json`) se 
 ./scripts/validate-product-catalog-migration.sh
 ./scripts/validate-product-catalog.sh
 ./scripts/validate-ml-studio-postgres.sh
+./scripts/validate-ml-studio.sh
+./scripts/validate-visibility-migration.sh
+./scripts/validate-visibility.sh
 ```
 
 La validation ML vérifie les services Docker, la lignée Rule Studio/Signals/Feature Store/ML, l’absence d’influence du score shadow sur Opportunity/Portfolio, la Scoring Policy active `RULES_ONLY`, les labels candidats, le manifest point-in-time bloqué, l’évaluation descriptive sans claim de production, l’absence de dépendance LLM/GPU et le moindre privilège SQL. Les autres commandes produisent des preuves reproductibles de charge isolée, d’ingestion, de migration/rollback, de sauvegarde/restauration, de readiness dégradée et de scans de sécurité. Les deux validations catalogue prouvent séparément les migrations PostgreSQL vierge/existante/downgrade/ré-upgrade et la chaîne Analytics → Signals → Opportunity → produits précis. Les preuves sont versionnées sous `docs/evidence/`.
 
 La préparation pilote locale est **PASS** sur les périmètres documentés. La release reste **`BLOCKED_IMAGE_CVES`** à cause des images externes, et aucun déploiement AWS n’est prévu.
 
-### Aperçu Studio ML
+### Studio ML gouverné
 
-La branche `feat/ml-studio-parallel` ajoute un backend d’entraînement CPU gouverné et une interface Studio ML en six onglets. Ses portes statiques, unitaires, frontend et PostgreSQL fusionnées sont **PASS local**, mais le lot reste **BLOCKED** : l’E2E Karim et la capture 1440 px ne sont pas produits, la simulation d’impact portefeuille retourne volontairement `501 NOT_IMPLEMENTED`, aucun label historique BOA n’est disponible et aucune influence ML n’est activée. Voir le [`lot 14`](docs/lots/LOT-14-STUDIO-ML-APERÇU.md) et sa [preuve JSON](docs/evidence/ml-studio/RESULTATS-STUDIO-ML-PREVIEW.json).
+La branche `feat/ml-studio-parallel` ajoute un backend d’entraînement CPU gouverné et une interface Studio ML en six onglets. L’entraînement `DEMO_ONLY` utilise scikit-learn 1.5.2 sur CPU, la simulation d’impact est calculée côté serveur sur les opportunités et scores shadow persistés, et le parcours multi-rôles Karim/Nadia/Youssef est couvert par Playwright. Aucune influence ML n’est activée : la production reste bloquée faute de labels historiques BOA, de calibration et de validation indépendante. Voir le [`lot 14`](docs/lots/LOT-14-STUDIO-ML-APERÇU.md) et les preuves sous [`docs/evidence/ml/`](docs/evidence/ml/).
+
+### Visibilité des flux multibancarisés
+
+La branche `feat/multibank-visibility` ajoute une estimation explicable `HIGH/PARTIAL/LOW/UNKNOWN`, la déclaration autorisée de relation bancaire, la règle gouvernée `FLOW_DOMICILIATION`, la requalification produit `ABSENT_OR_ELSEWHERE` et les vues CC/agence associées. Le protocole `validate-visibility.sh` reconstruit une stack isolée, traite 500 PME synthétiques, exécute le cycle Rule Studio complet et la suite Playwright. Tous les seuils et la volumétrie restent **HYPOTHÈSE À VALIDER AVEC BOA** ; aucune donnée externe, aucun LLM, aucun GPU et aucune décision de crédit ne sont utilisés. Voir le [`lot 15`](docs/lots/LOT-15-MULTIBANCARISATION-VISIBILITE.md).
 
 ## Documentation
 
-Consultez [`docs/final-status.md`](docs/final-status.md), [`docs/lots/LOT-12-CATALOGUE-PRODUITS-BOA.md`](docs/lots/LOT-12-CATALOGUE-PRODUITS-BOA.md), [`docs/lots/LOT-13-CLOTURE-PILOTE.md`](docs/lots/LOT-13-CLOTURE-PILOTE.md), [`docs/lots/LOT-14-STUDIO-ML-APERÇU.md`](docs/lots/LOT-14-STUDIO-ML-APERÇU.md), [`architecture/architecture.md`](architecture/architecture.md), [`docs/api.md`](docs/api.md), [`docs/demo-scenario.md`](docs/demo-scenario.md), [`docs/ml-engine.md`](docs/ml-engine.md), [`docs/industrialization-governance.md`](docs/industrialization-governance.md), [`docs/portfolio-scoping.md`](docs/portfolio-scoping.md) et [`docs/test-plan.md`](docs/test-plan.md).
+Consultez [`docs/final-status.md`](docs/final-status.md), [`docs/lots/LOT-12-CATALOGUE-PRODUITS-BOA.md`](docs/lots/LOT-12-CATALOGUE-PRODUITS-BOA.md), [`docs/lots/LOT-13-CLOTURE-PILOTE.md`](docs/lots/LOT-13-CLOTURE-PILOTE.md), [`docs/lots/LOT-14-STUDIO-ML-APERÇU.md`](docs/lots/LOT-14-STUDIO-ML-APERÇU.md), [`docs/lots/LOT-15-MULTIBANCARISATION-VISIBILITE.md`](docs/lots/LOT-15-MULTIBANCARISATION-VISIBILITE.md), [`architecture/architecture.md`](architecture/architecture.md), [`docs/api.md`](docs/api.md), [`docs/demo-scenario.md`](docs/demo-scenario.md), [`docs/ml-engine.md`](docs/ml-engine.md), [`docs/industrialization-governance.md`](docs/industrialization-governance.md), [`docs/portfolio-scoping.md`](docs/portfolio-scoping.md) et [`docs/test-plan.md`](docs/test-plan.md).
 
 Toutes les données et identités de démonstration sont synthétiques.
 

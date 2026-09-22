@@ -40,7 +40,7 @@ export function OpportunityDrawer({ opportunityId, customerId, customerName, ini
     {opportunity.isPending ? <SkeletonStack rows={4} kind="block" /> : opportunity.isError || !item ? <ErrorState error={opportunity.error} onRetry={() => void opportunity.refetch()} /> : <>
       <section className="opp-hero">
         <div className="opp-hero-copy">
-          <Badge tone={opportunityTone(item.opportunityType)}>{label(item.opportunityType)}</Badge>
+          <div className="row wrap" style={{ gap: 6 }}><Badge tone={opportunityTone(item.opportunityType)}>{label(item.opportunityType)}</Badge><Badge tone={item.recommendationNature === 'WIN_BACK' ? 'teal' : 'outline'}>{item.recommendationNature === 'WIN_BACK' ? 'Reconquête' : 'Besoin détecté'}</Badge></div>
           <h3>{item.what}</h3>
           <p className="muted"><CalendarClock size={13} /> {item.when} · horizon {label(item.horizon)} · détectée le {formatDate(item.generatedAt)}</p>
           <div className="row wrap" style={{ gap: 6, marginTop: 8 }}>{item.recommendedProducts?.map((product) => <span className="chip product" key={product.productId}><PackageSearch size={12} /> {product.name}</span>)}</div>
@@ -75,7 +75,7 @@ export function OpportunityDrawer({ opportunityId, customerId, customerName, ini
           <dt>Seuils appliqués</dt><dd>{explanation.data?.thresholds ? Object.entries(explanation.data.thresholds).map(([key, value]) => `${label(key)} ${typeof value === 'number' ? formatPercent(value, 0) : String(value)}`).join(' · ') : '—'}</dd>
         </dl>
         <div><p className="eyebrow" style={{ marginBottom: 8 }}>Composantes de confiance</p>
-          {explanation.data?.confidenceComponents?.length ? <ul className="component-list">{explanation.data.confidenceComponents.map((component) => <li key={component.name}><span className={`score-check ${component.satisfied ? 'ok' : ''}`}>{component.satisfied ? <Check size={12} /> : '–'}</span><span className="component-label">{label(component.name)}</span><span className="bar thin"><i style={{ width: `${component.maxPoints ? Math.min(100, (component.points / component.maxPoints) * 100) : 0}%` }} /></span><span className="num muted" style={{ fontSize: 12 }}>{formatNumber(component.points, 1)}/{formatNumber(component.maxPoints, 0)}</span></li>)}</ul> : <p className="faint">Aucune composante retournée.</p>}
+          {explanation.data?.confidenceComponents?.length ? <ul className="component-list">{explanation.data.confidenceComponents.map((component) => <li key={component.name} className={component.name === 'visibility' ? 'visibility-component' : undefined}><span className={`score-check ${component.satisfied ? 'ok' : ''}`}>{component.satisfied ? <Check size={12} /> : '–'}</span><span className="component-label">{label(component.name)}{component.name === 'visibility' && <small>Visibilité des flux partielle : signal de niveau pondéré</small>}</span><span className="bar thin"><i style={{ width: `${component.maxPoints ? Math.min(100, (component.points / component.maxPoints) * 100) : 0}%` }} /></span><span className="num muted" style={{ fontSize: 12 }}>{formatNumber(component.points, 1)}/{formatNumber(component.maxPoints, 0)}</span></li>)}</ul> : <p className="faint">Aucune composante retournée.</p>}
         </div>
         <div className="notice info"><Target size={16} /><div><strong>Évidence, pas boîte noire</strong>Signaux, règle métier, features et propension ML sont tous versionnés et consultables. Le LLM n’intervient pas dans la décision.</div></div>
       </section>}

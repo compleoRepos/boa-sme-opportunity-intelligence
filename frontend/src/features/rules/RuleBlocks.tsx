@@ -3,7 +3,7 @@ import { Fragment } from 'react'
 import { familyLabel, familyRank, label } from '../../api/format'
 import type { RuleConditionDefinition, RuleConditionGroup, RuleExpression, RuleLogic, RuleOperator, RuleRecommendation, RuleUnit } from '../../api/types'
 import { IconButton } from '../../ui'
-import { HORIZONS, LOGIC_LABELS, METRICS, OPERATORS, PERIODS, UNITS, conditionSentence, isGroup, newCondition, newGroup, parseValue, valueText } from './ruleModel'
+import { HORIZONS, LOGIC_LABELS, METRICS, OPERATORS, OPPORTUNITY_TYPES, PERIODS, UNITS, conditionSentence, isGroup, newCondition, newGroup, parseValue, valueText } from './ruleModel'
 
 /* ------------------------------------------------------------------
    Lecture : SI … ET … ALORS … (règle publiée, lecture métier)
@@ -104,4 +104,4 @@ export function RecommendationTokens({ value, onChange, products }: { value: Rul
   </div></div>
 }
 
-const OPPORTUNITY_TYPES_OPTIONS = [['INVESTMENT_FINANCING', 'Financement d’investissement'], ['WORKING_CAPITAL', 'Financement BFR'], ['TRADE_FINANCE', 'Trade finance'], ['CASH_INVESTMENT', 'Placement de trésorerie'], ['FINANCIAL_STRESS_SIGNAL', 'Signal de tension financière']].map(([id, text]) => <option key={id} value={id}>{text}</option>)
+const OPPORTUNITY_TYPES_OPTIONS = OPPORTUNITY_TYPES.map(([id, text]) => <option key={id} value={id}>{text}</option>)

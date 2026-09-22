@@ -42,13 +42,27 @@
 
 **Audit.** La migration `0012_portfolio_sync_governance` ajoute un trigger qui refuse `UPDATE` et `DELETE` sur `audit.audit_logs`. Cette protection append-only PostgreSQL n’est ni un stockage WORM, ni une intégration SIEM, ni une politique de rétention ; ces contrôles restent à définir avant production.
 
-## 21 septembre 2026 — Simulation Studio ML explicitement indisponible
+## 21 septembre 2026 — Simulation Studio ML serveur et non opérationnelle
 
-**Question.** Le brief Studio ML demande une comparaison avant/après de la distribution des priorités, des montées/descentes et du top 10. Le service ne possède pas encore un dataset point-in-time persistant réunissant, pour la même population, les scores règles et ML nécessaires à ce calcul.
+**Question.** Le brief Studio ML demande une comparaison avant/après de la distribution des priorités, des montées/descentes et du top 10, sans permettre au navigateur d’inventer un échantillon.
 
-**Option retenue.** L’endpoint de simulation retourne HTTP `501 NOT_IMPLEMENTED`, laisse la politique en `DRAFT` et liste les sorties attendues. L’interface désactive l’action et explique la lacune. Aucun échantillon fourni par le client, calcul local ou nombre fictif n’est accepté comme résultat de simulation.
+**Option retenue.** La simulation est calculée côté serveur à partir des opportunités et scores shadow persistés, puis son résultat détaillé est inscrit dans l’audit append-only. Elle peut faire évoluer une version vers `SIMULATED`, mais ne modifie jamais les priorités opérationnelles persistées. Aucun échantillon client ou nombre fictif n’est accepté.
 
-**Condition de levée.** Implémenter et versionner le dataset serveur avant/après, ses contrôles de scope, sa lignée, son audit et des tests E2E. Les formules, seuils et populations restent **HYPOTHÈSE À VALIDER AVEC BOA**. Jusqu’alors, la priorité demeure `RULES_ONLY` et le ML `POC_SHADOW`.
+**Limite.** Les formules, seuils et populations restent **HYPOTHÈSE À VALIDER AVEC BOA**. La priorité demeure `RULES_ONLY` et le ML `POC_SHADOW`; l’activation G3 reste bloquée en l’absence de labels historiques BOA et de validation indépendante.
+
+## 21 septembre 2026 — Visibilité des flux et multibancarisation
+
+**Question.** La plateforme ne voyait initialement que les flux domiciliés chez BOA. Comment détecter une relation principale ou secondaire sans accès aux comptes d’une autre banque, sans inventer de données externes et sans confondre absence chez BOA et absence totale ?
+
+**Option retenue.** Introduire un niveau de visibilité explicite `HIGH/PARTIAL/LOW/UNKNOWN` calculé avec une hiérarchie de méthodes : déclaration autorisée, ratio encaissements BOA sur chiffre d’affaires déclaré, empreintes transactionnelles agrégées, puis `UNKNOWN`. La donnée brute conservée reste interne ou déclarative ; aucune institution tierce n’est nommée. La méthode, la date et les faits sont persistés avec lignée.
+
+**Prudence commerciale.** Product Service requalifie l’absence en `ABSENT_OR_ELSEWHERE` lorsque la visibilité est partielle ou faible. Opportunity retire `CASH_INVESTMENT` pour `LOW`, applique une pénalité à `PARTIAL`, désactive les règles sensibles et transforme `FLOW_DOMICILIATION` en recommandation `WIN_BACK`. La priorité opérationnelle reste `RULES_ONLY`.
+
+**Gouvernance.** La règle `FLOW_DOMICILIATION_001` est seedée en `DRAFT`, simulée sur une population serveur, soumise par `business.analyst.demo`, approuvée par `rule.approver.demo`, publiée puis activée avec audit complet. L’auto-approbation et la modification par un CC hors portefeuille sont refusées. Les seuils 0,70/0,30, les pénalités, les empreintes minimales et le cooldown sont **HYPOTHÈSE À VALIDER AVEC BOA**.
+
+**Activation des paramètres.** Une édition de seuil crée une version inactive de `analytics.flow_visibility_policies` et ne change donc pas le calcul courant. La publication de la version Rule Studio `FLOW_DOMICILIATION` par un approbateur distinct désactive l’ancienne politique et active la dernière version en attente dans la même transaction. Analytics et Opportunity ne lisent que la version active. Le cooldown est calculé à partir de cette version et rapproche exclusivement le champ structuré `action.opportunity_actions.opportunity_type`; aucun texte libre n’est utilisé comme preuve de domiciliation.
+
+**Temporalité et rollback.** Les événements de relation bancaire sont append-only. La relation effective et le chiffre d’affaires effectif sont sélectionnés indépendamment à la date de coupe, et les transactions non `BOOKED` sont exclues des estimations. Le downgrade `0020 → 0019` est refusé tant que des données métier seraient détruites, y compris celles présentes directement dans les colonnes ajoutées aux tables historiques ; export ou suppression gouvernée est une précondition explicite.
 
 ## Références
 

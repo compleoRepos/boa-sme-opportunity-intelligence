@@ -34,11 +34,14 @@ async function openTab(page: import('@playwright/test').Page, name: string, expe
 }
 
 test('Karim entraîne un modèle DEMO_ONLY et consulte les six onglets gouvernés', async ({ page }) => {
-  let authorization = ''
+  let authHeaders: Record<string, string> = {}
   page.on('request', (request) => {
-    if (request.url().includes('/api/v1/admin/') && request.headers().authorization) {
-      authorization = request.headers().authorization
-    }
+    if (!request.url().includes('/api/v1/admin/')) return
+    const requestHeaders = request.headers()
+    if (requestHeaders.authorization?.startsWith('Bearer '))
+      authHeaders = { Authorization: requestHeaders.authorization }
+    else if (requestHeaders['x-dev-principal'])
+      authHeaders = { 'X-Dev-Principal': requestHeaders['x-dev-principal'] }
   })
   await login(page, 'karim')
   await page.goto('/back-office/studio-ml')
@@ -130,12 +133,12 @@ test('Karim entraîne un modèle DEMO_ONLY et consulte les six onglets gouverné
     .last()
     .textContent()
   const submittedVersion = submittedTitle?.match(/v(\d+)/)?.[1]
-  expect(authorization).toMatch(/^Bearer /)
+  expect(Object.keys(authHeaders).length).toBeGreaterThan(0)
   expect(submittedVersion).toBeTruthy()
   const selfApproval = await page.request.post(
-    `http://localhost:8080/api/v1/admin/scoring-policies/commercial-rules-shadow-poc/versions/${submittedVersion}/approve`,
+    `/api/v1/admin/scoring-policies/commercial-rules-shadow-poc/versions/${submittedVersion}/approve`,
     {
-      headers: { Authorization: authorization, 'Content-Type': 'application/json' },
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
       data: { reason: 'Cette auto-approbation doit être refusée par le serveur' },
     },
   )
@@ -145,7 +148,7 @@ test('Karim entraîne un modèle DEMO_ONLY et consulte les six onglets gouverné
   await expect(
     page.getByText(/DEMO_ONLY : soumission, approbation et promotion désactivées/).first(),
   ).toBeVisible()
-  await expect(page.getByText(/l’auteur ne peut pas approuver sa propre politique/i)).toBeVisible()
+  await expect(page.getByText(/l’auteur ne peut pas approuver sa propre politique/i).first()).toBeVisible()
   await dismissToasts(page)
   await captureViewport(page, 'STUDIO-ML-06-APPROBATION')
 
@@ -153,10 +156,13 @@ test('Karim entraîne un modèle DEMO_ONLY et consulte les six onglets gouverné
   await login(page, 'approbateur')
   await page.goto('/back-office/studio-ml')
   await openTab(page, 'Approbation et journal', /Journal append-only/)
-  await page.getByRole('button', { name: 'Approuver' }).click()
+  const submittedPolicy = page
+    .getByText(`commercial-rules-shadow-poc · v${submittedVersion}`, { exact: true })
+    .locator('xpath=ancestor::article')
+  await submittedPolicy.getByRole('button', { name: 'Approuver' }).click()
   await page.getByRole('button', { name: 'Confirmer' }).click()
   await expect(page.getByText(/Transition de politique enregistrée/)).toBeVisible()
-  await page.getByRole('button', { name: 'Publier' }).click()
+  await submittedPolicy.getByRole('button', { name: 'Publier' }).click()
   await page.getByRole('button', { name: 'Confirmer' }).click()
   await expect(page.getByText(/Transition de politique enregistrée/).last()).toBeVisible()
 
@@ -165,9 +171,9 @@ test('Karim entraîne un modèle DEMO_ONLY et consulte les six onglets gouverné
   await page.goto('/back-office/studio-ml')
   await openTab(page, 'Approbation et journal', /Journal append-only/)
   const demoPromotion = await page.request.post(
-    `http://localhost:8080/api/v1/admin/ml/governance/runs/sales-propensity/${firstModelVersion}/promote`,
+    `/api/v1/admin/ml/governance/runs/sales-propensity/${firstModelVersion}/promote`,
     {
-      headers: { Authorization: authorization, 'Content-Type': 'application/json' },
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
       data: { reason: 'La promotion du modèle DEMO_ONLY doit rester refusée' },
     },
   )

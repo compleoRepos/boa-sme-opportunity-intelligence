@@ -22,7 +22,7 @@ Le chemin actuel reste `RULES_ONLY`. Chaque phase produit un incrément utilisab
 
 | Phase | Objectif | Livrables cibles | Porte de passage |
 |---:|---|---|---|
-| 0 | Consolider l’existant | Python 3.12/FastAPI, SQLAlchemy/Alembic, PostgreSQL, Keycloak, HTTP/outbox, quatre règles, explication et audit | MVP déterministe conforme ; zéro ML requis |
+| 0 | Consolider l’existant | Python 3.12/FastAPI, SQLAlchemy/Alembic, PostgreSQL, Keycloak, HTTP/outbox, cinq règles, explication et audit | MVP déterministe conforme ; zéro ML requis |
 | 1 | Formaliser agence, CC et portefeuille | entités `Branch`, `Portfolio`, affectations temporelles, scopes Keycloak et contrats dashboards | tests d’accès horizontal/vertical, réaffectation et agrégats cohérents |
 | 2 | Construire le Feature Registry | définitions, versions, finalités, qualité, lineage et usages interdits | chaque feature approuvée, point-in-time et non crédit |
 | 3 | Matérialiser le Feature Store batch | snapshots PostgreSQL, parity offline/serving, fraîcheur, idempotence et exports gouvernés | zéro leakage, lineage complet et invalidation testée |

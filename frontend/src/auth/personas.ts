@@ -12,6 +12,7 @@ export const DEV_PERSONAS: DevPersona[] = [
     description: 'Chargé de clientèle PME · Agence Casablanca Anfa',
     subject: 'rm-01',
     username: 'ahmed.mansouri',
+    email: 'ahmed.mansouri@synthetic.invalid',
     displayName: 'Ahmed Mansouri',
     roles: ['RELATIONSHIP_MANAGER'],
     relationshipManagerIds: ['rm-01'],
@@ -65,6 +66,7 @@ export function personaHeader(persona: DevPersona) {
   return JSON.stringify({
     subject: persona.subject,
     username: persona.username,
+    ...(persona.email ? { email: persona.email } : {}),
     roles: persona.roles,
     branchIds: persona.branchIds ?? [],
     relationshipManagerIds: persona.relationshipManagerIds ?? [],

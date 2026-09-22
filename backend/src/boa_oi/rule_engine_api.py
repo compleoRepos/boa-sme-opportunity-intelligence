@@ -47,6 +47,8 @@ def evaluate(
                 "opportunityType": recommendation["opportunityType"],
                 "productCodes": recommendation.get("products", []),
                 "horizon": recommendation.get("horizon"),
+                "what": recommendation.get("what"),
+                "whenText": recommendation.get("whenText"),
                 "lifecycle": version.configuration_json.get("lifecycle", {}),
                 "confidence": evaluation.confidence,
                 "evidence": evaluation.evidence,

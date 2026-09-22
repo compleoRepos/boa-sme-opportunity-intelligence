@@ -411,7 +411,7 @@ Les identifiants sont des UUID ou des identifiants métier stables du type `SME-
 
 ## 5. Règles métier et explicabilité
 
-### 5.1 Génération des quatre opportunités
+### 5.1 Génération des cinq opportunités
 
 Les règles sont identifiées, activables et versionnées dans la configuration du moteur. Elles consomment des métriques et des signaux, jamais des valeurs saisies par le frontend.
 
@@ -421,8 +421,9 @@ Les règles sont identifiées, activables et versionnées dans la configuration 
 | `TRADE_FINANCE` | Croissance des flux internationaux supérieure au seuil, fréquence internationale en hausse et produit Trade Finance absent ou sous-utilisé. | `0-3_MONTHS` |
 | `CASH_INVESTMENT` | Solde moyen durablement élevé, excédent de trésorerie persistant et utilisation des lignes faible. | `0-1_MONTH` |
 | `FINANCIAL_STRESS_SIGNAL` | Baisse des encaissements ou du solde au-delà des seuils, avec hausse de l’utilisation des lignes. | `0-1_MONTH` |
+| `FLOW_DOMICILIATION` | Visibilité des flux `PARTIAL` ou `LOW`, corroboration par encaissements, chiffre d’affaires déclaré ou empreintes agrégées, hors cooldown. | `1-3_MONTHS` |
 
-La quatrième règle est explicitement décrite comme un **signal commercial de tension financière**. Elle ne déclenche aucun processus de décision de crédit.
+`FINANCIAL_STRESS_SIGNAL` est explicitement décrit comme un **signal commercial de tension financière**. `FLOW_DOMICILIATION` est une aide de conquête ou reconquête commerciale. Aucun ne déclenche un processus de décision de crédit.
 
 ### 5.2 Configuration des seuils
 
@@ -451,6 +452,13 @@ rules:
     inflowDeclineThreshold: -0.25
     balanceDeclineThreshold: -0.20
     creditUtilizationGrowthThreshold: 0.20
+  FLOW_DOMICILIATION:
+    enabled: true
+    highVisibilityThreshold: 0.70
+    lowVisibilityThreshold: 0.30
+    fingerprintWindowDays: 90
+    minimumFingerprints: 2
+    cooldownDays: 180
 ```
 
 Ces valeurs sont des paramètres de démonstration à confirmer par BOA. Elles ne doivent pas être copiées dans les composants React ni dispersées dans les règles Python.
@@ -512,6 +520,12 @@ La comparaison principale est `période courante` contre `période précédente`
 Le Product Service expose un référentiel indicatif de **28 produits issus de pages publiques BANK OF AFRICA**, avec code stable, famille interne, description prudente et URL de provenance. Les sept familles servent au calcul de lacune : la détention d’un produit couvre sa famille, tandis que la recommandation finale conserve des codes produit précis. Cette taxonomie, les ciblages, l’éligibilité, les seuils et la disponibilité commerciale restent **HYPOTHÈSE À VALIDER AVEC BOA** ; le référentiel ne devient ni contractuel ni décisionnel par son intégration.
 
 Rule Studio valide les codes à l’écriture contre la source exécutable commune. Opportunity applique en outre un garde-fou fail-closed lors de la consommation d’une règle publiée : un code inconnu, absent ou inactif produit une erreur gouvernée plutôt qu’une recommandation silencieusement vide. Product Service réapplique l’isolation objet pour ses routes client, refuse les imports divergents et reste non ready tant que le seed n’a pas matérialisé exactement le catalogue gouverné. La migration `0018_product_catalog` transforme uniquement les configurations synthétiques connues créées par `demo-data-generator` et préserve les règles utilisateur ou BOA. Le fonctionnement reste sans décision de crédit, sans LLM et sans GPU ; la priorité demeure `RULES_ONLY`, le ML étant observé en `POC_SHADOW`. Toute tentative d’utiliser un autre mode ou des poids différents de `1/0` est refusée.
+
+### 5.8 Visibilité des flux multibancarisés
+
+Customer Service possède la déclaration de relation bancaire et en contrôle l’écriture par portefeuille. Analytics matérialise un snapshot daté de visibilité avec méthode, part estimée et faits structurés. Opportunity consomme cette projection comme contexte : il retire `CASH_INVESTMENT` à visibilité `LOW`, pénalise les candidats à visibilité `PARTIAL` et produit `FLOW_DOMICILIATION` en `WIN_BACK`. Product Service requalifie les lacunes en `ABSENT_OR_ELSEWHERE` sans inférer une détention dans une autre banque. Portfolio ne lit que ces projections persistées pour afficher les dashboards CC et agence.
+
+La chaîne n’intègre aucune API d’une banque tierce. L’ordre `DECLARED` → `TURNOVER_RATIO` → `TRANSACTION_FINGERPRINTS` → `UNKNOWN`, les seuils, pénalités et cooldown sont versionnés et **HYPOTHÈSE À VALIDER AVEC BOA**. Le ML reste shadow et ne participe pas à la priorité opérationnelle.
 
 ---
 
@@ -849,7 +863,7 @@ La décision MVP est de privilégier des APIs synchrones pour les lectures du Cu
 
 ### 12.1 Tests unitaires
 
-Les tests unitaires couvrent les évaluateurs de signaux, les quatre règles d’opportunité, la confiance, la priorité, la saisonnalité, l’idempotence et les erreurs de configuration. Les seuils de test sont injectés dans les stratégies et ne sont jamais lus depuis un fichier frontend.
+Les tests unitaires couvrent les évaluateurs de signaux, les cinq règles d’opportunité, la confiance, la priorité, la saisonnalité, l’idempotence et les erreurs de configuration. Les seuils de test sont injectés dans les stratégies et ne sont jamais lus depuis un fichier frontend.
 
 Cas déterministes obligatoires : croissance 40/30/20 sans financement récent vers `INVESTMENT_FINANCING`, flux internationaux +50 % sans Trade Finance vers `TRADE_FINANCE`, excédent persistant et faible utilisation vers `CASH_INVESTMENT`, baisse des encaissements et du solde avec utilisation en hausse vers `FINANCIAL_STRESS_SIGNAL`.
 

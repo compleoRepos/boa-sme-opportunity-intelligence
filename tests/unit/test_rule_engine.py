@@ -170,6 +170,8 @@ def test_analytics_growth_aliases_and_published_rule_trace_are_preserved():
             "opportunityType": "INVESTMENT_FINANCING",
             "productCodes": ["BOA_CREDIT_MLTD_DIRECT"],
             "horizon": "1-3_MONTHS",
+            "what": "Recommandation métier gouvernée.",
+            "whenText": "Contacter dans les 1 à 3 mois.",
             "lifecycle": {
                 "validityDays": 45,
                 "dismissedCooldownDays": 60,
@@ -188,11 +190,15 @@ def test_analytics_growth_aliases_and_published_rule_trace_are_preserved():
                 }
             ],
         },
+        flow_visibility_level="LOW",
     )
     assert len(candidates) == 1
     assert candidates[0].rule_version == "RULE-PUBLISHED:v3"
     assert candidates[0].engine_version == "rule-engine-0.1.0"
     assert candidates[0].evidence[0].observed == 0.42
+    assert candidates[0].recommendation_nature == "WIN_BACK"
+    assert candidates[0].what == "Recommandation métier gouvernée."
+    assert candidates[0].when == "Contacter dans les 1 à 3 mois."
     assert candidates[0].lifecycle_policy == {
         "validity_days": 45,
         "dismissed_cooldown_days": 60,

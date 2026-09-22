@@ -1,23 +1,25 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.orm import Session
 
 from boa_oi.models.entities import (
     Customer,
+    FlowVisibilityPolicy,
+    FlowVisibilitySnapshot,
     MetricSnapshot,
+    OpportunityAction,
     RelationshipManager,
     Rule,
     RuleSimulation,
     RuleVersion,
 )
 from boa_oi.rules.domain import RuleEvaluator
-from boa_oi.rules.service import audit
 
 
 def _confidence_level(score: float) -> str:
@@ -60,6 +62,55 @@ def metric_payload(values: dict[str, Any]) -> dict[str, Any]:
             else:
                 result[alias] = result[code]
     return result
+
+
+def visibility_metric_payload(
+    visibility: FlowVisibilitySnapshot | None,
+    *,
+    has_recent_domiciliation_action: bool,
+) -> dict[str, Any]:
+    level = visibility.level if visibility is not None else "UNKNOWN"
+    fingerprint_growth = (
+        visibility.fingerprint_count_90d - visibility.fingerprint_previous_90d
+        if visibility is not None
+        else 0
+    )
+    return {
+        "FLOW_VISIBILITY_OPPORTUNITY": level in {"PARTIAL", "LOW"},
+        "FLOW_VISIBILITY_LEVEL": level,
+        "FLOW_VISIBILITY_SHARE": (
+            float(visibility.estimated_share)
+            if visibility is not None and visibility.estimated_share is not None
+            else None
+        ),
+        "FINGERPRINT_GROWTH_90D": fingerprint_growth,
+        "DECLARED_TURNOVER_GROWTH": 0.0,
+        "NO_RECENT_DOMICILIATION_ACTION": not has_recent_domiciliation_action,
+    }
+
+
+def has_action_table(session: Session) -> bool:
+    connection = session.connection()
+    return inspect(connection).has_table(
+        OpportunityAction.__tablename__, schema=OpportunityAction.__table__.schema
+    )
+
+
+def active_domiciliation_cooldown_days(session: Session) -> int:
+    connection = session.connection()
+    if not inspect(connection).has_table(
+        FlowVisibilityPolicy.__tablename__, schema=FlowVisibilityPolicy.__table__.schema
+    ):
+        return 180
+    policy = session.scalar(
+        select(FlowVisibilityPolicy)
+        .where(FlowVisibilityPolicy.active.is_(True))
+        .order_by(FlowVisibilityPolicy.version.desc())
+        .limit(1)
+    )
+    if policy is None:
+        return 180
+    return int(policy.configuration_json.get("domiciliationCooldownDays", 180))
 
 
 def simulate_persisted_history(
@@ -111,10 +162,49 @@ def simulate_persisted_history(
     rm_distribution: Counter[str] = Counter()
     confidence_distribution: Counter[str] = Counter()
     recommendation = version.configuration_json["recommendation"]
+    domiciliation_cooldown_days = active_domiciliation_cooldown_days(session)
     for customer, manager, snapshot in customers.values():
-        evaluation = evaluator.evaluate(
-            version.configuration_json, metric_payload(snapshot.values_json)
+        visibility = session.scalar(
+            select(FlowVisibilitySnapshot)
+            .where(
+                FlowVisibilitySnapshot.customer_id == customer.id,
+                FlowVisibilitySnapshot.as_of_date <= period_to,
+            )
+            .order_by(FlowVisibilitySnapshot.as_of_date.desc())
+            .limit(1)
         )
+        recent_action_cutoff = datetime.combine(
+            period_to - timedelta(days=domiciliation_cooldown_days - 1),
+            time.min,
+            tzinfo=timezone.utc,
+        )
+        has_recent_domiciliation_action = has_action_table(session) and (
+            session.scalar(
+                select(OpportunityAction.id)
+                .where(
+                    OpportunityAction.customer_id == customer.id,
+                    OpportunityAction.created_at >= recent_action_cutoff,
+                    OpportunityAction.created_at
+                    < datetime.combine(
+                        period_to + timedelta(days=1), time.min, tzinfo=timezone.utc
+                    ),
+                    OpportunityAction.opportunity_type == "FLOW_DOMICILIATION",
+                )
+                .limit(1)
+            )
+            is not None
+        )
+        metrics = metric_payload(snapshot.values_json)
+        metrics.update(
+            visibility_metric_payload(
+                visibility,
+                has_recent_domiciliation_action=has_recent_domiciliation_action,
+            )
+        )
+        for code, value in tuple(metrics.items()):
+            if ":" not in code:
+                metrics[f"{code}:{snapshot.window_days}D"] = value
+        evaluation = evaluator.evaluate(version.configuration_json, metrics)
         if not evaluation.matched:
             continue
         confidence_level = _confidence_level(evaluation.confidence)
@@ -219,16 +309,12 @@ def simulate_persisted_history(
         created_by=actor,
     )
     session.add(simulation)
-    audit(
-        session,
-        rule,
-        version.version,
-        "SIMULATED",
-        actor,
-        old={"status": rule.status},
-        new={"simulationId": str(simulation.id), **result},
-    )
     return simulation
 
 
-__all__ = ["metric_payload", "simulate_persisted_history"]
+__all__ = [
+    "has_action_table",
+    "metric_payload",
+    "simulate_persisted_history",
+    "visibility_metric_payload",
+]

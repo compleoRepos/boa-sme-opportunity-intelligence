@@ -167,11 +167,13 @@ def relationship_manager_index(customer_index: int, manager_count: int = 25) -> 
     """Affectation déterministe PME -> CC (1..manager_count), volontairement inégale.
 
     L'agence BR-01 (CC 1..5) concentre la moitié du portefeuille afin de disposer d'une
-    agence de démonstration dense ; le CC n°1 porte le portefeuille le plus large.
-    Les scénarios cyclent tous les 8 clients, la diversité par CC est donc préservée.
+    agence de démonstration dense ; le CC n°1 porte le portefeuille le plus large. La
+    rotation entre blocs évite de corréler un scénario synthétique à un seul CC.
     """
     if customer_index <= 250:
-        slot = (customer_index - 1) % 20
+        zero_based = customer_index - 1
+        block = zero_based // 20
+        slot = (zero_based % 20 + block) % 20
         if slot < 5:
             return 1
         if slot < 9:

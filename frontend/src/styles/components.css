@@ -850,11 +850,15 @@
 
 .modal {
   width: min(560px, 100%);
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
   background: var(--surface);
   border-radius: var(--r-xl);
   box-shadow: var(--shadow-3);
   animation: rise-in var(--dur-slow) var(--ease-out) both;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .modal.wide {
@@ -874,6 +878,8 @@
   padding: var(--sp-5);
   display: grid;
   gap: var(--sp-4);
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .modal-foot {

@@ -5,7 +5,7 @@ import json
 import os
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 from uuid import UUID, uuid4
 
 from fastapi import Depends, Header, Query, Request, Response, status
@@ -27,6 +27,7 @@ from boa_oi.models.entities import (
     AuditLog,
     Customer,
     DecisionAudit,
+    FlowVisibilityPolicy,
     Opportunity,
     OpportunityEvidence,
     OpportunityRule,
@@ -60,6 +61,7 @@ from boa_oi.technical.config import (
     active_rule_set,
 )
 from boa_oi.technical.ids import deterministic_uuid
+from boa_oi.visibility import VisibilityLevel
 
 app = create_service_app(
     "opportunity-service",
@@ -201,6 +203,7 @@ def serialize(item: Opportunity) -> dict[str, Any]:
         "what": item.what_text,
         "when": item.when_text,
         "recommendedProducts": item.recommended_products_json,
+        "recommendationNature": item.recommendation_nature,
         "evidenceCount": len(item.explanation_json.get("evidence", [])),
         "generatedAt": item.generated_at.isoformat(),
         "engineVersion": item.engine_version,
@@ -507,6 +510,52 @@ def expire_due_opportunities(
                 before=before,
                 after=serialize(item),
             )
+    return len(rows)
+
+
+def suppress_low_visibility_cash_opportunities(
+    session: Session,
+    *,
+    customer_ref: str,
+    visibility_level: VisibilityLevel,
+    as_of: datetime,
+    actor_subject_id: str,
+    audit_correlation: str,
+) -> int:
+    if visibility_level != "LOW":
+        return 0
+    rows = list(
+        session.scalars(
+            select(Opportunity)
+            .where(
+                Opportunity.customer_ref == customer_ref,
+                Opportunity.opportunity_type == "CASH_INVESTMENT",
+                Opportunity.status.in_(ACTIVE_OPPORTUNITY_STATUSES),
+            )
+            .with_for_update(skip_locked=True)
+        )
+    )
+    for item in rows:
+        before = serialize(item)
+        previous_last_action_at = item.last_action_at
+        policy = policy_for_opportunity(session, item)
+        transition_opportunity(
+            item,
+            "EXPIRED",
+            reason="Placement retiré : visibilité des flux faible",
+            occurred_at=as_of,
+            cooldown_days=cooldown_days_for("EXPIRED", policy),
+        )
+        item.last_action_at = previous_last_action_at
+        audit_opportunity_transition(
+            session,
+            item=item,
+            actor_subject_id=actor_subject_id,
+            event="OPPORTUNITY_EXPIRED_LOW_VISIBILITY",
+            correlation=audit_correlation,
+            before=before,
+            after=serialize(item),
+        )
     return len(rows)
 
 
@@ -1021,8 +1070,6 @@ def configured_rules(session: Session) -> RuleSetConfig:
         )
         if row.configuration_json.get("source") != "rule-studio"
     ]
-    if not rows:
-        return config
     updates = {
         row.opportunity_type: OpportunityRuleConfig.model_validate(row.configuration_json)
         for row in rows
@@ -1031,10 +1078,33 @@ def configured_rules(session: Session) -> RuleSetConfig:
     raw["opportunity_rules"].update(
         {key: value.model_dump(mode="python") for key, value in updates.items()}
     )
+    bind = session.get_bind()
+    policy = (
+        session.scalar(
+            select(FlowVisibilityPolicy)
+            .where(FlowVisibilityPolicy.active.is_(True))
+            .order_by(FlowVisibilityPolicy.version.desc())
+            .limit(1)
+        )
+        if bind.dialect.name != "sqlite"
+        or inspect(bind).has_table(FlowVisibilityPolicy.__tablename__, schema="analytics")
+        else None
+    )
+    if policy is not None and "FLOW_DOMICILIATION" in raw["opportunity_rules"]:
+        raw["opportunity_rules"]["FLOW_DOMICILIATION"]["visibility_policy"] = dict(
+            policy.configuration_json
+        )
     return RuleSetConfig.model_validate(raw)
 
 
-def rule_engine_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def rule_engine_metrics(
+    rows: list[dict[str, Any]],
+    *,
+    flow_visibility: dict[str, Any] | None = None,
+    banking_relationship: str | None = None,
+    declared_turnover_growth_rate: float = 0.0,
+    no_recent_domiciliation_action: bool = True,
+) -> dict[str, Any]:
     aliases = {
         "inflow_amount": "INFLOW_GROWTH",
         "supplier_payment_amount": "SUPPLIER_PAYMENT_GROWTH",
@@ -1064,6 +1134,26 @@ def rule_engine_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
             result.setdefault(metric_code, metric_value)
             if period:
                 result[f"{metric_code}:{period}"] = metric_value
+    visibility = flow_visibility or {}
+    level = str(visibility.get("level") or "UNKNOWN")
+    fingerprint_growth = int(visibility.get("fingerprintGrowth90d") or 0)
+    visibility_opportunity = level in {"PARTIAL", "LOW"} or banking_relationship in {
+        "PRIMARY",
+        "SECONDARY",
+    }
+    visibility_facts: dict[str, Any] = {
+        "FLOW_VISIBILITY_OPPORTUNITY": visibility_opportunity,
+        "FLOW_VISIBILITY_LEVEL": level,
+        "FLOW_VISIBILITY_SHARE": visibility.get("estimatedShare"),
+        "FINGERPRINT_GROWTH_90D": fingerprint_growth,
+        "DECLARED_TURNOVER_GROWTH": declared_turnover_growth_rate,
+        "NO_RECENT_DOMICILIATION_ACTION": no_recent_domiciliation_action,
+    }
+    result.update(visibility_facts)
+    for code, value in visibility_facts.items():
+        result[f"{code}:90D"] = value
+    result["NO_RECENT_DOMICILIATION_ACTION:180D"] = no_recent_domiciliation_action
+    result["DECLARED_TURNOVER_GROWTH:365D"] = declared_turnover_growth_rate
     return result
 
 
@@ -1092,6 +1182,8 @@ def rule_engine_candidates(
     customer_id: str,
     as_of: date,
     response: dict[str, Any],
+    *,
+    flow_visibility_level: Literal["HIGH", "PARTIAL", "LOW", "UNKNOWN"] = "UNKNOWN",
 ) -> list[OpportunityCandidate]:
     raw_matches = response.get("matches")
     matches = (
@@ -1165,15 +1257,24 @@ def rule_engine_candidates(
                     {"name": "rule_confidence", "weighted_value": confidence, "weight": 1},
                 ),
                 why=tuple(item.label for item in evidence if item.passed),
-                what=(
-                    f"Règle publiée « {match.get('ruleName') or rule_id} » (version "
-                    f"{rule_version}) : opportunité à qualifier avec le client."
+                what=str(
+                    match.get("what")
+                    or (
+                        f"Règle publiée « {match.get('ruleName') or rule_id} » (version "
+                        f"{rule_version}) : opportunité à qualifier avec le client."
+                    )
                 ),
-                when=HORIZON_LABELS.get(
-                    str(match.get("horizon") or "1-3_MONTHS"),
-                    str(match.get("horizon") or "1-3_MONTHS"),
+                when=str(
+                    match.get("whenText")
+                    or HORIZON_LABELS.get(
+                        str(match.get("horizon") or "1-3_MONTHS"),
+                        str(match.get("horizon") or "1-3_MONTHS"),
+                    )
                 ),
                 recommended_products=product_codes,
+                recommendation_nature=(
+                    "WIN_BACK" if flow_visibility_level in {"PARTIAL", "LOW"} else "NEED_DISCOVERY"
+                ),
                 evidence=evidence,
                 as_of_date=as_of,
                 generated_at=datetime.now(timezone.utc).isoformat(),
@@ -1247,7 +1348,11 @@ def hydrate_recommended_products(
 
 
 async def context_for(
-    customer_id: str, as_of: date, request: Request
+    customer_id: str,
+    as_of: date,
+    request: Request,
+    *,
+    domiciliation_cooldown_days: int,
 ) -> tuple[
     OpportunityContext,
     list[dict[str, Any]],
@@ -1261,6 +1366,7 @@ async def context_for(
         "GET",
         f"{url_for('customer')}/internal/v1/customers/{customer_id}",
         correlation_id=corr,
+        params={"asOf": as_of.isoformat()},
         incoming_authorization=auth,
     )
     metrics_page = await service_request(
@@ -1298,6 +1404,28 @@ async def context_for(
         return bool(metrics_90.get(code, {}).get("seasonalityAdjusted"))
 
     product_status = family_status(gaps["gaps"])
+    visibility = customer.get("flowVisibility") or {}
+    raw_visibility_level = str(visibility.get("level") or "UNKNOWN")
+    visibility_level = (
+        cast(VisibilityLevel, raw_visibility_level)
+        if raw_visibility_level in {"HIGH", "PARTIAL", "LOW", "UNKNOWN"}
+        else "UNKNOWN"
+    )
+    recent_domiciliation_actions = await service_request(
+        "GET",
+        f"{url_for('action')}/internal/v1/customers/{customer_id}/actions",
+        correlation_id=corr,
+        params={
+            "fromDate": (as_of - timedelta(days=domiciliation_cooldown_days - 1)).isoformat(),
+            "toDate": (as_of + timedelta(days=1)).isoformat(),
+            "pageSize": 1000,
+        },
+        incoming_authorization=auth,
+    )
+    has_recent_domiciliation = any(
+        item.get("opportunityType") == "FLOW_DOMICILIATION"
+        for item in recent_domiciliation_actions.get("data", [])
+    )
     facts: dict[str, float | int | bool | str] = {
         "inflow_growth_rate": value("inflow_amount", "growthRate"),
         "inflow_growth_rate_seasonality_adjusted": adjusted("inflow_amount"),
@@ -1306,7 +1434,7 @@ async def context_for(
         "transaction_volume_growth_rate": value("transaction_count", "growthRate"),
         "transaction_volume_growth_rate_seasonality_adjusted": adjusted("transaction_count"),
         "no_recent_investment_financing": product_status.get("INVESTMENT_FINANCING")
-        in {None, "ABSENT"},
+        in {None, "ABSENT", "ABSENT_OR_ELSEWHERE"},
         "international_flow_growth_rate": value("international_flow_amount", "growthRate"),
         "international_flow_growth_rate_seasonality_adjusted": adjusted(
             "international_flow_amount"
@@ -1334,7 +1462,7 @@ async def context_for(
         )
         >= 2,
         "trade_finance_gap": product_status.get("TRADE_FINANCE")
-        in {None, "ABSENT", "UNDERUTILIZED"},
+        in {None, "ABSENT", "ABSENT_OR_ELSEWHERE", "UNDERUTILIZED"},
         "average_balance": value("average_balance", "currentValue"),
         "average_balance_seasonality_adjusted": adjusted("average_balance"),
         "surplus_day_ratio": value("surplus_day_ratio", "currentValue"),
@@ -1358,6 +1486,11 @@ async def context_for(
             1.0,
             len([row for row in signals_page["data"] if row.get("status") == "CONFIRMED"]) / 3,
         ),
+        "flow_visibility_opportunity": visibility_level in {"PARTIAL", "LOW"}
+        or customer.get("bankingRelationship") in {"PRIMARY", "SECONDARY"},
+        "fingerprint_growth_90d": int(visibility.get("fingerprintGrowth90d") or 0),
+        "declared_turnover_growth_rate": float(customer.get("declaredTurnoverGrowthRate") or 0),
+        "no_recent_domiciliation_action": not has_recent_domiciliation,
     }
     history_complete = bool(metrics_90) and all(
         row.get("historyDays") is not None and row.get("observedFrom") is not None
@@ -1403,6 +1536,7 @@ async def context_for(
         seasonality_adjusted=seasonality,
         confidence_factors={},
         priority_factors={"relationship_context": 0.75},
+        flow_visibility_level=visibility_level,
     )
     catalog = {item["product"]["productId"]: item["product"] for item in gaps["gaps"]}
     return context, metrics_page["data"], signals_page["data"], catalog, customer
@@ -1423,6 +1557,10 @@ async def generate(
 ) -> dict[str, Any]:
     config = configured_rules(session)
     engine = OpportunityEngine(config)
+    flow_rule = config.opportunity_rules.get("FLOW_DOMICILIATION")
+    domiciliation_cooldown_days = int(
+        (flow_rule.visibility_policy if flow_rule else {}).get("domiciliationCooldownDays", 180)
+    )
     policy_version = active_policy(session)
     if policy_version is None:
         raise Problem(
@@ -1452,7 +1590,18 @@ async def generate(
     audit_builder = DecisionAuditBuilder()
     for customer_id in payload.customerIds:
         context, metrics, signals, catalog, customer = await context_for(
-            customer_id, payload.asOf, request
+            customer_id,
+            payload.asOf,
+            request,
+            domiciliation_cooldown_days=domiciliation_cooldown_days,
+        )
+        suppressed += suppress_low_visibility_cash_opportunities(
+            session,
+            customer_ref=customer_id,
+            visibility_level=context.flow_visibility_level,
+            as_of=generation_time,
+            actor_subject_id=principal.subject,
+            audit_correlation=correlation_id(request),
         )
         ml_result = await _ml_client.score(
             {
@@ -1474,10 +1623,29 @@ async def generate(
             "POST",
             f"{url_for('rule_engine')}/internal/v1/rules/evaluate",
             correlation_id=correlation_id(request),
-            json={"customerId": customer_id, "metrics": rule_engine_metrics(metrics)},
+            json={
+                "customerId": customer_id,
+                "metrics": rule_engine_metrics(
+                    metrics,
+                    flow_visibility=customer.get("flowVisibility"),
+                    banking_relationship=customer.get("bankingRelationship"),
+                    declared_turnover_growth_rate=float(
+                        customer.get("declaredTurnoverGrowthRate") or 0
+                    ),
+                    no_recent_domiciliation_action=context.facts.get(
+                        "no_recent_domiciliation_action", True
+                    )
+                    is True,
+                ),
+            },
             incoming_authorization=request.headers.get("Authorization"),
         )
-        published = rule_engine_candidates(customer_id, payload.asOf, published_response)
+        published = rule_engine_candidates(
+            customer_id,
+            payload.asOf,
+            published_response,
+            flow_visibility_level=context.flow_visibility_level,
+        )
         governed_types = {candidate.opportunity_type for candidate in published}
         base_candidates = [
             *(
@@ -1573,6 +1741,7 @@ async def generate(
                     "maxPoints": round(float(item.get("weight", 0)), 2),
                     "satisfied": float(item.get("normalized_value", 0)) > 0,
                     "value": item.get("raw_value"),
+                    "reason": item.get("reason"),
                 }
                 for item in candidate.confidence_components
             ]
@@ -1595,6 +1764,8 @@ async def generate(
                     "method": "previous_period_and_historical_baseline",
                 },
                 "confidenceComponents": confidence_components,
+                "flowVisibility": customer.get("flowVisibility"),
+                "recommendationNature": candidate.recommendation_nature,
                 "recommendedProducts": recommendations,
                 "horizon": candidate.horizon,
                 "engineVersion": candidate.engine_version,
@@ -1668,6 +1839,7 @@ async def generate(
                 "what_text": candidate.what,
                 "when_text": candidate.when,
                 "recommended_products_json": recommendations,
+                "recommendation_nature": candidate.recommendation_nature,
                 "explanation_json": explanation,
                 "generated_at": generation_time,
                 "engine_version": candidate.engine_version,
@@ -1892,6 +2064,14 @@ def rules(
             )
         )
     )
+
+    def editable_parameters(row: OpportunityRule) -> dict[str, Any]:
+        configuration = dict(row.configuration_json)
+        if row.opportunity_type == "FLOW_DOMICILIATION":
+            configuration.update(dict(configuration.get("visibility_policy") or {}))
+            configuration.pop("visibility_policy", None)
+        return configuration
+
     data = [
         {
             "ruleId": str(row.id),
@@ -1900,7 +2080,7 @@ def rules(
             "enabled": row.active,
             "version": row.version,
             "ruleVersion": row.version,
-            "parameters": row.configuration_json,
+            "parameters": editable_parameters(row),
             "lifecyclePolicy": serialize_lifecycle_policy(row.configuration_json),
         }
         for row in rows
@@ -1940,6 +2120,13 @@ def update_rule(
     row = session.get(OpportunityRule, parsed_rule_id)
     if row is None:
         raise not_found("Rule")
+    if row.opportunity_type == "FLOW_DOMICILIATION" and payload.enabled is True:
+        raise Problem(
+            409,
+            "RULE_STUDIO_PUBLICATION_REQUIRED",
+            "FLOW_DOMICILIATION can only become operational through the governed "
+            "Rule Studio publication flow.",
+        )
     now = datetime.now(timezone.utc)
     if payload.effectiveAt is not None and lifecycle_time(payload.effectiveAt) > now:
         raise Problem(
@@ -1949,8 +2136,62 @@ def update_rule(
         )
     version = f"{row.version}-v{int(datetime.now(timezone.utc).timestamp())}"
     configuration = dict(row.configuration_json)
+    visibility_policy_changed = False
     if payload.parameters is not None:
-        configuration.update(payload.parameters)
+        parameters = dict(payload.parameters)
+        visibility_keys = {
+            "highShare",
+            "partialShare",
+            "fingerprints90d",
+            "partialPenaltyPoints",
+            "lowPenaltyPoints",
+            "unknownPenaltyPoints",
+            "domiciliationCooldownDays",
+            "status",
+        }
+        visibility_updates = {
+            key: parameters.pop(key) for key in visibility_keys if key in parameters
+        }
+        if visibility_updates:
+            if row.opportunity_type != "FLOW_DOMICILIATION":
+                raise Problem(
+                    422,
+                    "INVALID_RULE_CONFIGURATION",
+                    "Visibility policy parameters are reserved for FLOW_DOMICILIATION.",
+                )
+            visibility_policy = dict(configuration.get("visibility_policy") or {})
+            visibility_policy.update(visibility_updates)
+            high_share = float(visibility_policy.get("highShare", 0.70))
+            partial_share = float(visibility_policy.get("partialShare", 0.30))
+            if not 0 <= partial_share <= high_share <= 1:
+                raise Problem(
+                    422,
+                    "INVALID_VISIBILITY_THRESHOLDS",
+                    "Visibility shares must satisfy 0 <= partialShare <= highShare <= 1.",
+                )
+            for key in ("partialPenaltyPoints", "lowPenaltyPoints", "unknownPenaltyPoints"):
+                value = int(visibility_policy.get(key, 0))
+                if not -100 <= value <= 0:
+                    raise Problem(
+                        422,
+                        "INVALID_VISIBILITY_PENALTY",
+                        f"{key} must be between -100 and 0.",
+                    )
+            if int(visibility_policy.get("fingerprints90d", 2)) < 1:
+                raise Problem(
+                    422,
+                    "INVALID_VISIBILITY_FINGERPRINT_THRESHOLD",
+                    "fingerprints90d must be at least 1.",
+                )
+            if not 1 <= int(visibility_policy.get("domiciliationCooldownDays", 180)) <= 730:
+                raise Problem(
+                    422,
+                    "INVALID_VISIBILITY_COOLDOWN",
+                    "domiciliationCooldownDays must be between 1 and 730.",
+                )
+            configuration["visibility_policy"] = visibility_policy
+            visibility_policy_changed = True
+        configuration.update(parameters)
     try:
         validated = OpportunityRuleConfig.model_validate(configuration)
     except ValidationError as exc:
@@ -1981,6 +2222,20 @@ def update_rule(
         created_by=principal.subject,
     )
     row.active = False
+    if row.opportunity_type == "FLOW_DOMICILIATION" and visibility_policy_changed:
+        latest_policy_version = session.scalar(select(func.max(FlowVisibilityPolicy.version)))
+        policy_version = int(latest_policy_version or 0) + 1
+        session.add(
+            FlowVisibilityPolicy(
+                id=deterministic_uuid("flow-visibility-policy", policy_version),
+                policy_id="multibank-flow-visibility",
+                version=policy_version,
+                active=False,
+                configuration_json=dict(configuration.get("visibility_policy") or {}),
+                justification=payload.justification,
+                created_by=principal.subject,
+            )
+        )
     session.add(clone)
     session.add(
         AuditLog(
