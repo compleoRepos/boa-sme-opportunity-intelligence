@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, TypeGuard
 
 from boa_oi.financial_intelligence.contracts import (
     CashPosition,
@@ -26,6 +26,10 @@ OWNER_ENV = {
     "portfolio": "PORTFOLIO_SERVICE_URL",
 }
 FI_TIMEOUT_SECONDS = float(os.getenv("FI_DEPENDENCY_TIMEOUT_SECONDS", "5.0"))
+
+
+def _is_json_number(value: Any) -> TypeGuard[int | float]:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 class OwnerClients:
@@ -369,18 +373,65 @@ class FinancialIntelligenceComposer:
                 )
             )
         customer = payloads.get("customer-service") or {}
-        portfolio = payloads.get("portfolio-service") or {}
-        model = portfolio.get("model") or {}
-        combination = portfolio.get("combination") or {}
-        if combination and (
-            combination.get("method") != "RULES_ONLY"
-            or combination.get("mlObservationMode") != "POC_SHADOW"
-            or float(combination.get("rulesWeight", -1)) != 1.0
-            or float(combination.get("mlWeight", -1)) != 0.0
-        ):
+        portfolio_payload = payloads.get("portfolio-service")
+        if portfolio_payload is None:
+            portfolio: dict[str, Any] = {}
+        elif isinstance(portfolio_payload, dict):
+            portfolio = portfolio_payload
+        else:
             raise Problem(
-                502, "DEPENDENCY_INVALID_RESPONSE", "Portfolio governance invariants failed."
+                502, "DEPENDENCY_INVALID_RESPONSE", "Portfolio response must be an object."
             )
+
+        raw_model = portfolio.get("model")
+        if raw_model is None:
+            model: dict[str, Any] = {}
+        elif isinstance(raw_model, dict):
+            model = raw_model
+        else:
+            raise Problem(
+                502, "DEPENDENCY_INVALID_RESPONSE", "Portfolio model metadata must be an object."
+            )
+        for field in ("featureSetVersion", "modelVersion", "trainingDatasetVersion"):
+            value = model.get(field)
+            if value is not None and not isinstance(value, str):
+                raise Problem(
+                    502,
+                    "DEPENDENCY_INVALID_RESPONSE",
+                    "Portfolio model metadata contains an invalid field type.",
+                )
+
+        raw_combination = portfolio.get("combination")
+        if raw_combination is None:
+            combination: dict[str, Any] = {}
+        elif isinstance(raw_combination, dict) and raw_combination:
+            combination = raw_combination
+        else:
+            raise Problem(
+                502,
+                "DEPENDENCY_INVALID_RESPONSE",
+                "Portfolio governance metadata must be a non-empty object.",
+            )
+        if combination:
+            rules_weight = combination.get("rulesWeight")
+            ml_weight = combination.get("mlWeight")
+            if not _is_json_number(rules_weight) or not _is_json_number(ml_weight):
+                raise Problem(
+                    502,
+                    "DEPENDENCY_INVALID_RESPONSE",
+                    "Portfolio governance weights must be JSON numbers.",
+                )
+            if (
+                combination.get("method") != "RULES_ONLY"
+                or combination.get("mlObservationMode") != "POC_SHADOW"
+                or float(rules_weight) != 1.0
+                or float(ml_weight) != 0.0
+            ):
+                raise Problem(
+                    502,
+                    "DEPENDENCY_INVALID_RESPONSE",
+                    "Portfolio governance invariants failed.",
+                )
         if not combination:
             statuses.append(
                 SourceStatus(

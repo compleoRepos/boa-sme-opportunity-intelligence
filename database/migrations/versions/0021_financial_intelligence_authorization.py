@@ -242,10 +242,6 @@ def upgrade() -> None:
             LANGUAGE plpgsql
             AS $$
             BEGIN
-              IF TG_OP = 'TRUNCATE'
-                 AND current_setting('boa.allow_fi_audit_truncate', true) = 'true' THEN
-                RETURN NULL;
-              END IF;
               RAISE EXCEPTION 'financial intelligence access audit is append-only';
             END;
             $$

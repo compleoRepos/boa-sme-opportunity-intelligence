@@ -115,6 +115,9 @@ test('benchmark portfolio FI 10/50/100/500 PME avec P50/P95 documentés', async 
         branch: process.env.FI_SOURCE_BRANCH || 'UNKNOWN',
         revision: process.env.FI_SOURCE_REVISION || 'UNKNOWN',
         codeDigest: process.env.FI_CODE_DIGEST || 'UNKNOWN',
+        digestScope: process.env.FI_DIGEST_SCOPE || 'runtime',
+        digestManifest: process.env.FI_DIGEST_MANIFEST || 'SOURCE-MANIFEST-FI.json',
+        digestAlgorithm: 'SHA-256 of path-sorted sha256sum lines',
       },
       environment: {
         stack: 'Docker Compose isolated',

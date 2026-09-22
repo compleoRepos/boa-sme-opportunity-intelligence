@@ -1030,6 +1030,55 @@ def test_composer_rejects_ml_influence_or_non_shadow_mode(
     assert exc_info.value.code == "DEPENDENCY_INVALID_RESPONSE"
 
 
+@pytest.mark.parametrize(
+    "portfolio_payload",
+    [
+        [],
+        {"model": []},
+        {"combination": []},
+        {"combination": "RULES_ONLY"},
+        {"combination": {}},
+        {
+            "combination": {
+                "method": "RULES_ONLY",
+                "mlObservationMode": "POC_SHADOW",
+                "rulesWeight": "1",
+                "mlWeight": 0,
+            }
+        },
+        {
+            "combination": {
+                "method": "RULES_ONLY",
+                "mlObservationMode": "POC_SHADOW",
+                "rulesWeight": 1,
+            }
+        },
+    ],
+)
+def test_composer_rejects_malformed_portfolio_governance(
+    portfolio_payload: Any,
+) -> None:
+    class MalformedPortfolio(FakeOwners):
+        async def get(self, owner: str, path: str, **kwargs: Any) -> Any:
+            if owner == "portfolio":
+                return portfolio_payload
+            return await super().get(owner, path, **kwargs)
+
+    async def execute() -> None:
+        await FinancialIntelligenceComposer(MalformedPortfolio()).company_summary(
+            "SME-00001",
+            portfolio_id="PORTFOLIO-FUND-001",
+            fund_id="FUND-001",
+            as_of=AS_OF,
+            trace_id="trace-malformed-portfolio",
+        )
+
+    with pytest.raises(Problem) as exc_info:
+        asyncio.run(execute())
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.code == "DEPENDENCY_INVALID_RESPONSE"
+
+
 def test_composer_propagates_as_of_to_propensity_owner() -> None:
     class CapturingOwners(FakeOwners):
         portfolio_params: dict[str, Any] | None = None

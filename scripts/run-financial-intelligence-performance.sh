@@ -70,6 +70,8 @@ code_digest=$(
   FI_SOURCE_BRANCH="$branch" \
   FI_SOURCE_REVISION="$revision" \
   FI_CODE_DIGEST="$code_digest" \
+  FI_DIGEST_SCOPE="runtime" \
+  FI_DIGEST_MANIFEST="SOURCE-MANIFEST-FI.json" \
   FI_PORTFOLIO_CONCURRENCY=${FI_PORTFOLIO_CONCURRENCY:-20} \
   ./node_modules/.bin/playwright test financial-intelligence-performance.spec.ts \
     --config playwright.config.ts --reporter=json >"$playwright_json"
@@ -89,7 +91,7 @@ jq -s \
     schemaVersion:"1.0",
     status:(if length > 0 then "PASS" else "FAIL" end),
     generatedAt:$generatedAt,
-    source:{branch:$branch,revision:$revision,codeDigest:$codeDigest},
+    source:{branch:$branch,revision:$revision,codeDigest:$codeDigest,digestScope:"runtime",digestManifest:"SOURCE-MANIFEST-FI.json",digestAlgorithm:"SHA-256 of path-sorted sha256sum lines"},
     sampleIntervalSeconds:$interval,
     sampleCount:length,
     services:(group_by(.Name) | map({

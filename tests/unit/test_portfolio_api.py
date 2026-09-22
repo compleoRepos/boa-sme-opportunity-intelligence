@@ -15,6 +15,7 @@ from boa_oi.models.entities import (
     RelationshipManager,
 )
 from boa_oi.platform import Principal, current_principal
+from boa_oi.portfolio_api import _latest_visibility
 from boa_oi.technical.ids import deterministic_uuid
 from fastapi.testclient import TestClient
 from sqlalchemy import Table, create_engine, select
@@ -308,6 +309,60 @@ def test_propensity_as_of_excludes_future_score(monkeypatch):
     assert payload["asOf"] == "2026-09-30"
     assert payload["model"]["modelVersion"] == "sales-propensity-logit-poc-v1"
     assert payload["model"]["trainingDatasetVersion"] == "synthetic-demo-20260918-v1"
+
+
+def test_propensity_as_of_excludes_expired_score(monkeypatch):
+    monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
+    factory, _customers = factory_and_ids()
+    with factory.begin() as session:
+        score = session.scalar(
+            select(PropensityScoreRecord).where(PropensityScoreRecord.customer_ref == "SME-00001")
+        )
+        assert score is not None
+        score.valid_until = date(2026, 9, 29)
+
+    identity = principal("BRANCH_MANAGER", branches=("BR-01",))
+    response = client_for("portfolio-service", factory, identity).get(
+        "/internal/v1/customers/SME-00001/propensity",
+        params={"asOf": "2026-09-30"},
+    )
+    assert response.status_code == 404
+    assert response.json()["code"] == "PROPENSITY_NOT_SCORED"
+
+
+def test_latest_visibility_as_of_excludes_future_snapshot(monkeypatch):
+    monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
+    factory, customers = factory_and_ids()
+    customer_id = customers["SME-00001"][0]
+    with factory.begin() as session:
+        session.add(
+            FlowVisibilitySnapshot(
+                id=deterministic_uuid("flow-visibility", "SME-00001", "future"),
+                customer_id=customer_id,
+                customer_ref="SME-00001",
+                as_of_date=date(2026, 10, 31),
+                level="LOW",
+                estimated_share=Decimal("0.01"),
+                method="FUTURE_MUST_NOT_LEAK",
+                evidence_json=[],
+                fingerprint_count_90d=0,
+                fingerprint_previous_90d=0,
+                categorization_coverage=Decimal("1.0"),
+                calculation_version="future-visibility",
+                input_watermark="future-must-not-leak",
+                created_by="unit-test",
+            )
+        )
+
+    with factory() as session:
+        selected = _latest_visibility(
+            session,
+            [customer_id],
+            as_of=date(2026, 9, 30),
+        )[customer_id]
+    assert selected.as_of_date == date(2026, 9, 30)
+    assert selected.level == "HIGH"
+    assert selected.method == "TURNOVER_RATIO"
 
 
 def test_propensity_as_of_excludes_future_opportunity(monkeypatch):

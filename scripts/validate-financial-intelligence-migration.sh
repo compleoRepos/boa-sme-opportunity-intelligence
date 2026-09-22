@@ -233,7 +233,8 @@ fi
 for mutation in \
   "UPDATE financial_intelligence.access_audit SET result='DENY'" \
   "DELETE FROM financial_intelligence.access_audit" \
-  "TRUNCATE financial_intelligence.access_audit"
+  "TRUNCATE financial_intelligence.access_audit" \
+  "SET boa.allow_fi_audit_truncate='true'; TRUNCATE financial_intelligence.access_audit"
 do
   if psql_admin "$EXISTING_DB" -c "$mutation" >/dev/null 2>&1; then
     echo "FAIL administrative audit mutation unexpectedly allowed: $mutation" >&2
@@ -253,16 +254,6 @@ fi
 
 audit_before=$(sql_value "$EXISTING_DB" "SELECT count(*) FROM financial_intelligence.access_audit")
 assert_equal immutable_audit_rows 1 "$audit_before"
-psql_admin "$EXISTING_DB" <<'SQL' >/dev/null
-BEGIN;
-SET LOCAL boa.allow_fi_audit_truncate = 'true';
-TRUNCATE financial_intelligence.access_audit;
-COMMIT;
-DELETE FROM financial_intelligence.data_access_grants;
-DELETE FROM financial_intelligence.external_portfolio_companies;
-DELETE FROM financial_intelligence.external_portfolios;
-DELETE FROM financial_intelligence.external_consumers;
-SQL
 alembic_destructive "$EXISTING_DB" downgrade 0020_multibank_visibility >/dev/null
 assert_equal existing_downgrade_0020 0020_multibank_visibility \
   "$(sql_value "$EXISTING_DB" "SELECT version_num FROM alembic_version")"
@@ -294,7 +285,7 @@ jq -n \
     status:"PASS",
     runId:$runId,
     createdAt:$createdAt,
-    source:{revision:$revision,branch:$branch,codeTree:$codeTree,codeDigest:$codeDigest},
+    source:{revision:$revision,branch:$branch,codeTree:$codeTree,codeDigest:$codeDigest,digestScope:"migration",digestManifest:"SOURCE-MANIFEST-FI.json",digestAlgorithm:"SHA-256 of path-sorted sha256sum lines"},
     database:"PostgreSQL 16 isolated container",
     matrix:{
       adminOnlyFullCycle:"PASS",

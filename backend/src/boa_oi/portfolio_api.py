@@ -161,7 +161,13 @@ def _latest_scores(
         .label("position"),
     ).where(PropensityScoreRecord.customer_id.in_(customer_ids))
     if as_of is not None:
-        ranked_query = ranked_query.where(PropensityScoreRecord.as_of_date <= as_of)
+        ranked_query = ranked_query.where(
+            PropensityScoreRecord.as_of_date <= as_of,
+            or_(
+                PropensityScoreRecord.valid_until.is_(None),
+                PropensityScoreRecord.valid_until >= as_of,
+            ),
+        )
     ranked = ranked_query.subquery()
     records = session.scalars(
         select(PropensityScoreRecord)
@@ -172,7 +178,10 @@ def _latest_scores(
 
 
 def _latest_visibility(
-    session: Session, customer_ids: list[Any]
+    session: Session,
+    customer_ids: list[Any],
+    *,
+    as_of: date | None = None,
 ) -> dict[Any, FlowVisibilitySnapshot]:
     if not customer_ids:
         return {}
@@ -181,22 +190,21 @@ def _latest_visibility(
         FlowVisibilitySnapshot.__tablename__, schema="analytics"
     ):
         return {}
-    ranked = (
-        select(
-            FlowVisibilitySnapshot.id.label("id"),
-            func.row_number()
-            .over(
-                partition_by=FlowVisibilitySnapshot.customer_id,
-                order_by=(
-                    FlowVisibilitySnapshot.as_of_date.desc(),
-                    FlowVisibilitySnapshot.created_at.desc(),
-                ),
-            )
-            .label("position"),
+    ranked_query = select(
+        FlowVisibilitySnapshot.id.label("id"),
+        func.row_number()
+        .over(
+            partition_by=FlowVisibilitySnapshot.customer_id,
+            order_by=(
+                FlowVisibilitySnapshot.as_of_date.desc(),
+                FlowVisibilitySnapshot.created_at.desc(),
+            ),
         )
-        .where(FlowVisibilitySnapshot.customer_id.in_(customer_ids))
-        .subquery()
-    )
+        .label("position"),
+    ).where(FlowVisibilitySnapshot.customer_id.in_(customer_ids))
+    if as_of is not None:
+        ranked_query = ranked_query.where(FlowVisibilitySnapshot.as_of_date <= as_of)
+    ranked = ranked_query.subquery()
     records = session.scalars(
         select(FlowVisibilitySnapshot)
         .join(ranked, FlowVisibilitySnapshot.id == ranked.c.id)
