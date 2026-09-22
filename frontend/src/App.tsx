@@ -5,13 +5,15 @@ import { configureApiAuth } from './api/client'
 import { setRuntimeLabels } from './api/format'
 import { useLabelCatalog } from './api/hooks'
 import { AuthProvider, useAuth } from './auth/AuthProvider'
-import { MlStudioRoute, ProtectedRoute, RoleRoute, RuleStudioRoute } from './auth/ProtectedRoute'
+import { ExternalConsumerRoute, MlStudioRoute, ProtectedRoute, RoleRoute, RuleStudioRoute } from './auth/ProtectedRoute'
 import { AuditPage, BackOfficeHomePage, EngineThresholdsPage, LabelsPage, ModelsPage, NotificationsPage, SimulationsPage } from './features/backoffice/BackOfficePages'
 import { BranchDashboardPage } from './features/branch/BranchDashboardPage'
 import { RmPortfolioPage } from './features/branch/RmPortfolioPage'
 import { CustomerSheetPage } from './features/customer/CustomerSheetPage'
 import { CcDashboardPage } from './features/dashboard/CcDashboardPage'
 import { DemoProvider } from './features/demo/DemoGuide'
+import { CompanyIntelligencePage } from './features/financial-intelligence/CompanyIntelligencePage'
+import { PortfolioIntelligencePage } from './features/financial-intelligence/PortfolioIntelligencePage'
 import { MlStudioPage } from './features/ml-studio/MlStudioPage'
 import { RuleBuilderPage } from './features/rules/RuleBuilderPage'
 import { RuleDetailPage } from './features/rules/RuleDetailPage'
@@ -42,13 +44,17 @@ function ApiAuthBridge() {
   const auth = useAuth()
   const navigate = useNavigate()
   configureApiAuth(() => auth.token, () => navigate('/login', { replace: true }), () => auth.devPersonaHeader)
-  const catalog = useLabelCatalog(false, auth.authenticated)
+  const catalog = useLabelCatalog(
+    false,
+    auth.authenticated && auth.roles.some((role) => role !== 'EXTERNAL_CONSUMER'),
+  )
   useEffect(() => setRuntimeLabels(auth.authenticated ? catalog.data?.labels : undefined), [auth.authenticated, catalog.data])
   return null
 }
 
 function HomeRoute() {
   const { hasRole } = useAuth()
+  if (hasRole('EXTERNAL_CONSUMER')) return <Navigate to="/financial-intelligence/portfolios" replace />
   if (hasRole('BRANCH_MANAGER')) return <BranchDashboardPage />
   if (hasRole('RELATIONSHIP_MANAGER')) return <CcDashboardPage />
   if (hasRole('ML_STEWARD')) return <Navigate to="/back-office/studio-ml" replace />
@@ -70,6 +76,9 @@ function ApplicationRoutes() {
       <Route path="/interdit" element={<ForbiddenPage />} />
       <Route path="/" element={<ProtectedRoute><DemoRoot /></ProtectedRoute>}>
         <Route index element={<HomeRoute />} />
+        <Route path="financial-intelligence/portfolios" element={<ExternalConsumerRoute><PortfolioIntelligencePage /></ExternalConsumerRoute>} />
+        <Route path="financial-intelligence/portfolios/:portfolioId" element={<ExternalConsumerRoute><PortfolioIntelligencePage /></ExternalConsumerRoute>} />
+        <Route path="financial-intelligence/companies/:companyId" element={<ExternalConsumerRoute><CompanyIntelligencePage /></ExternalConsumerRoute>} />
         <Route path="clients" element={<CustomersPage />} />
         <Route path="clients/:customerId" element={<CustomerSheetPage />} />
         <Route path="agence/cc/:relationshipManagerId" element={<RoleRoute roles={['BRANCH_MANAGER']}><RmPortfolioPage /></RoleRoute>} />

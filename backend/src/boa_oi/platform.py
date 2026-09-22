@@ -164,7 +164,12 @@ def _principal_from_claims(claims: dict[str, Any]) -> Principal:
     audience_access = resource_access.get(audience, {}) if audience else {}
     if isinstance(audience_access, dict):
         client_roles.extend(audience_access.get("roles", []))
-    scopes = str(claims.get("scope", "")).split()
+    scopes = set(str(claims.get("scope", "")).split())
+    fi_scopes = claims.get("fi_scopes", [])
+    if isinstance(fi_scopes, str):
+        scopes.update(fi_scopes.split())
+    elif isinstance(fi_scopes, list):
+        scopes.update(str(item) for item in fi_scopes)
     boa_scope = claims.get("boa", {}) if isinstance(claims.get("boa"), dict) else {}
     return Principal(
         subject=str(claims.get("sub")),
@@ -172,7 +177,7 @@ def _principal_from_claims(claims: dict[str, Any]) -> Principal:
         email=claims.get("email") if claims.get("email_verified") is True else None,
         email_verified=claims.get("email_verified") is True,
         roles={str(role).upper() for role in [*realm_roles, *client_roles]},
-        scopes=set(scopes),
+        scopes=scopes,
         client_id=claims.get("azp") or claims.get("client_id"),
         branch_ids=values("branchIds"),
         customer_scopes=values("customerScopes"),
@@ -211,8 +216,8 @@ def _dev_principal(raw: str | None) -> Principal | None:
         email=str(payload["email"]) if payload.get("email") else None,
         email_verified=bool(payload.get("email")),
         roles={str(role).upper() for role in payload.get("roles", [])},
-        scopes={"*"},
-        client_id="local-dev-persona",
+        scopes=set(values("scopes")),
+        client_id=str(payload.get("clientId") or "local-dev-persona"),
         branch_ids=values("branchIds"),
         customer_scopes=values("customerScopes"),
         relationship_manager_ids=values("relationshipManagerIds"),
@@ -237,6 +242,7 @@ async def current_principal(
                 "BRANCH_MANAGER",
                 "RELATIONSHIP_MANAGER",
                 "SERVICE",
+                "EXTERNAL_CONSUMER",
             },
             scopes={"*"},
             client_id="local-tests",

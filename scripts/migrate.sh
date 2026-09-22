@@ -26,6 +26,7 @@ FEATURE_STORE_DB_PASSWORD=${FEATURE_STORE_DB_PASSWORD:-DevOnly-FeatureStoreDb-Ch
 ML_ENGINE_DB_PASSWORD=${ML_ENGINE_DB_PASSWORD:-DevOnly-MlEngineDb-ChangeMe!}
 PORTFOLIO_DB_PASSWORD=${PORTFOLIO_DB_PASSWORD:-DevOnly-PortfolioDb-ChangeMe!}
 NOTIFICATION_DB_PASSWORD=${NOTIFICATION_DB_PASSWORD:-DevOnly-NotificationDb-ChangeMe!}
+FINANCIAL_INTELLIGENCE_DB_PASSWORD=${FINANCIAL_INTELLIGENCE_DB_PASSWORD:-DevOnly-FinancialIntelligenceDb-ChangeMe!}
 KEYCLOAK_DB_PASSWORD=${KEYCLOAK_DB_PASSWORD:-DevOnly-KeycloakDb-ChangeMe!}
 
 # Les identités runtime relèvent du provisioning, jamais des migrations Alembic.
@@ -45,6 +46,7 @@ for role_spec in \
   "ml_engine_service:$ML_ENGINE_DB_PASSWORD:ml" \
   "portfolio_service:$PORTFOLIO_DB_PASSWORD:portfolio" \
   "notification_service:$NOTIFICATION_DB_PASSWORD:notification" \
+  "financial_intelligence_service:$FINANCIAL_INTELLIGENCE_DB_PASSWORD:financial_intelligence" \
   "keycloak_service:$KEYCLOAK_DB_PASSWORD:keycloak"; do
   IFS=: read -r role password schema <<<"$role_spec"
   compose exec -T postgres psql --set=ON_ERROR_STOP=1 --username "$POSTGRES_ADMIN_USER" --dbname "$POSTGRES_DB" \
@@ -71,6 +73,7 @@ declare -A schema_roles=(
   [opportunity]=opportunity_service [product]=product_service [action]=action_service
   [rule]=rule_management_service [feature_store]=feature_store_service [ml]=ml_engine_service
   [portfolio]=portfolio_service [notification]=notification_service
+  [financial_intelligence]=financial_intelligence_service
 )
 for schema in "${!schema_roles[@]}"; do
   role=${schema_roles[$schema]}

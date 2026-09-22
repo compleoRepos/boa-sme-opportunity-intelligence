@@ -25,10 +25,15 @@ export function useBreadcrumbs(): Crumb[] {
   const location = useLocation()
   const auth = useAuth()
   return useMemo(() => {
-    const root: Crumb = { label: auth.hasRole('BRANCH_MANAGER') ? 'Pilotage agence' : auth.hasRole('RELATIONSHIP_MANAGER') ? 'Mon portefeuille PME' : 'Intelligence commerciale', to: '/' }
+    const root: Crumb = { label: auth.hasRole('EXTERNAL_CONSUMER') ? 'Financial Intelligence' : auth.hasRole('BRANCH_MANAGER') ? 'Pilotage agence' : auth.hasRole('RELATIONSHIP_MANAGER') ? 'Mon portefeuille PME' : 'Intelligence commerciale', to: '/' }
     const path = location.pathname
     const crumbs: Crumb[] = [root]
     if (path === '/') return crumbs
+    const fiPortfolio = matchPath('/financial-intelligence/portfolios/:portfolioId', path)
+    if (fiPortfolio) return [...crumbs, { label: 'Portfolio', to: '/financial-intelligence/portfolios' }, { label: fiPortfolio.params.portfolioId || '' }]
+    const fiCompany = matchPath('/financial-intelligence/companies/:companyId', path)
+    if (fiCompany) return [...crumbs, { label: 'Portfolio', to: '/financial-intelligence/portfolios' }, { label: fiCompany.params.companyId || '' }]
+    if (path === '/financial-intelligence/portfolios') return [...crumbs, { label: 'Portfolio' }]
     const customer = matchPath('/clients/:customerId', path)
     if (customer) return [...crumbs, { label: 'PME', to: '/clients' }, { label: customer.params.customerId || '' }]
     const rm = matchPath('/agence/cc/:relationshipManagerId', path)

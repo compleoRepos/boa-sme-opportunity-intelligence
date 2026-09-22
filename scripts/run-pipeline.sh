@@ -12,7 +12,8 @@ load_local_env
 KEYCLOAK_PORT=${KEYCLOAK_PORT:-8081}
 PIPELINE_CLIENT_SECRET=${PIPELINE_CLIENT_SECRET:-DevOnly-PipelineClient-ChangeMe!}
 CORRELATION_ID=${CORRELATION_ID:-pipeline-$(date -u +%Y%m%dT%H%M%SZ)-$$}
-TOKEN_URL="http://localhost:${KEYCLOAK_PORT}/realms/boa-sme-mvp/protocol/openid-connect/token"
+OIDC_PUBLIC_ISSUER_URL=${OIDC_PUBLIC_ISSUER_URL:-http://localhost:${KEYCLOAK_PORT}/realms/boa-sme-mvp}
+TOKEN_URL="${OIDC_PUBLIC_ISSUER_URL%/}/protocol/openid-connect/token"
 
 token=""
 refresh_token() {

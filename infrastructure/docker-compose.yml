@@ -71,6 +71,7 @@ services:
       ML_ENGINE_DB_PASSWORD: ${ML_ENGINE_DB_PASSWORD:-DevOnly-MlEngineDb-ChangeMe!}
       PORTFOLIO_DB_PASSWORD: ${PORTFOLIO_DB_PASSWORD:-DevOnly-PortfolioDb-ChangeMe!}
       NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-DevOnly-NotificationDb-ChangeMe!}
+      FINANCIAL_INTELLIGENCE_DB_PASSWORD: ${FINANCIAL_INTELLIGENCE_DB_PASSWORD:-DevOnly-FinancialIntelligenceDb-ChangeMe!}
       KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-DevOnly-KeycloakDb-ChangeMe!}
     volumes:
       - boa_postgres_data:/var/lib/postgresql/data
@@ -111,6 +112,7 @@ services:
       KC_METRICS_ENABLED: "true"
       KC_HOSTNAME_STRICT: "false"
       KC_HTTP_ENABLED: "true"
+      FRONTEND_PUBLIC_ORIGIN: ${FRONTEND_PUBLIC_ORIGIN:-http://localhost:3000}
       RM_DEMO_PASSWORD: ${RM_DEMO_PASSWORD:-DevOnly-Rm1-ChangeMe!}
       BRANCH_MANAGER_DEMO_PASSWORD: ${BRANCH_MANAGER_DEMO_PASSWORD:-DevOnly-Branch1-ChangeMe!}
       ADMIN_DEMO_PASSWORD: ${ADMIN_DEMO_PASSWORD:-DevOnly-Admin1-ChangeMe!}
@@ -118,6 +120,7 @@ services:
       ML_STEWARD_DEMO_PASSWORD: ${ML_STEWARD_DEMO_PASSWORD:-DevOnly-MlSteward1-ChangeMe!}
       BUSINESS_ANALYST_DEMO_PASSWORD: ${BUSINESS_ANALYST_DEMO_PASSWORD:-DevOnly-BusinessAnalyst1-ChangeMe!}
       RULE_APPROVER_DEMO_PASSWORD: ${RULE_APPROVER_DEMO_PASSWORD:-DevOnly-RuleApprover1-ChangeMe!}
+      FUND_DEMO_PASSWORD: ${FUND_DEMO_PASSWORD:-DevOnly-Fund1-ChangeMe!}
       API_GATEWAY_CLIENT_SECRET: ${API_GATEWAY_CLIENT_SECRET:-DevOnly-GatewayClient-ChangeMe!}
       PIPELINE_CLIENT_SECRET: ${PIPELINE_CLIENT_SECRET:-DevOnly-PipelineClient-ChangeMe!}
       CUSTOMER_CLIENT_SECRET: ${CUSTOMER_CLIENT_SECRET:-DevOnly-CustomerClient-ChangeMe!}
@@ -136,6 +139,7 @@ services:
       ML_ENGINE_CLIENT_SECRET: ${ML_ENGINE_CLIENT_SECRET:-DevOnly-MlEngineClient-ChangeMe!}
       PORTFOLIO_CLIENT_SECRET: ${PORTFOLIO_CLIENT_SECRET:-DevOnly-PortfolioClient-ChangeMe!}
       NOTIFICATION_CLIENT_SECRET: ${NOTIFICATION_CLIENT_SECRET:-DevOnly-NotificationClient-ChangeMe!}
+      FINANCIAL_INTELLIGENCE_CLIENT_SECRET: ${FINANCIAL_INTELLIGENCE_CLIENT_SECRET:-DevOnly-FinancialIntelligenceClient-ChangeMe!}
     volumes:
       - ./keycloak/realm.json:/opt/boa/realm.template.json:ro
       - ./keycloak/keycloak-entrypoint.sh:/opt/boa/keycloak-entrypoint.sh:ro
@@ -416,6 +420,34 @@ services:
       opportunity: { condition: service_healthy }
       customer: { condition: service_healthy }
 
+  financial-intelligence:
+    <<: *backend
+    environment:
+      <<: *backend-environment
+      SERVICE_NAME: financial-intelligence-service
+      APP_MODULE: boa_oi.api:app
+      DATABASE_URL: postgresql+psycopg://financial_intelligence_service:${FINANCIAL_INTELLIGENCE_DB_PASSWORD:-DevOnly-FinancialIntelligenceDb-ChangeMe!}@postgres:5432/${POSTGRES_DB:-boa_sme}?options=-csearch_path%3Dfinancial_intelligence
+      OAUTH_CLIENT_ID: financial-intelligence-service
+      OAUTH_CLIENT_SECRET: ${FINANCIAL_INTELLIGENCE_CLIENT_SECRET:-DevOnly-FinancialIntelligenceClient-ChangeMe!}
+      CUSTOMER_SERVICE_URL: http://customer:8080
+      ANALYTICS_SERVICE_URL: http://analytics:8080
+      SIGNAL_SERVICE_URL: http://signal:8080
+      OPPORTUNITY_SERVICE_URL: http://opportunity:8080
+      PORTFOLIO_SERVICE_URL: http://portfolio:8080
+      FI_PORTFOLIO_CONCURRENCY: ${FI_PORTFOLIO_CONCURRENCY:-10}
+      FI_DEPENDENCY_TIMEOUT_SECONDS: ${FI_DEPENDENCY_TIMEOUT_SECONDS:-5.0}
+      FI_MAX_PORTFOLIO_COMPANIES: ${FI_MAX_PORTFOLIO_COMPANIES:-500}
+      CUDA_VISIBLE_DEVICES: ""
+      NVIDIA_VISIBLE_DEVICES: "none"
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+      customer: { condition: service_healthy }
+      analytics: { condition: service_healthy }
+      signal: { condition: service_healthy }
+      opportunity: { condition: service_healthy }
+      portfolio: { condition: service_healthy }
+
   mailpit:
     image: docker.io/axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d
     restart: unless-stopped
@@ -554,6 +586,8 @@ services:
       ML_ENGINE_SERVICE_URL: http://ml-engine:8080
       PORTFOLIO_SERVICE_URL: http://portfolio:8080
       NOTIFICATION_SERVICE_URL: http://notification:8080
+      FINANCIAL_INTELLIGENCE_SERVICE_URL: http://financial-intelligence:8080
+      FI_GATEWAY_TIMEOUT_SECONDS: ${FI_GATEWAY_TIMEOUT_SECONDS:-600}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
     ports:
@@ -578,6 +612,7 @@ services:
       ml-engine: { condition: service_healthy }
       portfolio: { condition: service_healthy }
       notification: { condition: service_healthy }
+      financial-intelligence: { condition: service_healthy }
     deploy:
       resources:
         limits: { cpus: "0.65", memory: 448M }

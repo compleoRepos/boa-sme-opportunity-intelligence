@@ -43,6 +43,7 @@ from sqlalchemy import create_engine, delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from database.seed.financial_intelligence import seed_financial_intelligence
 from database.seed.naming import (
     customer_name,
     relationship_manager_index,
@@ -970,6 +971,7 @@ def seed(database_url: str, batch_size: int = 1000) -> dict:
                     ]
                 )
             )
+        seed_financial_intelligence(session)
         demo_examples = [
             demo_training_example(index) for index in range(1, DEMO_ML_EXAMPLE_COUNT + 1)
         ]

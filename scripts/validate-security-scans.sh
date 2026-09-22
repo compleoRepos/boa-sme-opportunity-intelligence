@@ -15,6 +15,7 @@ require_command python3
 RUN_SUFFIX="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 WORK_DIR=$(mktemp -d "/tmp/boa-security-scans-${RUN_SUFFIX}.XXXXXX")
 VENV_DIR="$WORK_DIR/venv"
+HISTORY_REPOSITORY="$WORK_DIR/history-repository"
 OUTPUT_FILE=${SECURITY_EVIDENCE_FILE:-$PROJECT_ROOT/docs/evidence/security/RESULTATS-SCANS-SECURITE.json}
 GITLEAKS_IMAGE="zricethezav/gitleaks:v8.21.2"
 TRIVY_IMAGE="aquasec/trivy:0.58.1"
@@ -36,10 +37,12 @@ docker_cli run --rm --user "$user_flag" \
   "$GITLEAKS_IMAGE" detect --source /repo --no-git \
   --config /repo/.gitleaks.toml --redact \
   --report-format json --report-path /work/gitleaks-worktree.json
+git clone --quiet --no-local "$PROJECT_ROOT" "$HISTORY_REPOSITORY"
+[[ $(git -C "$HISTORY_REPOSITORY" rev-parse HEAD) == "$(git -C "$PROJECT_ROOT" rev-parse HEAD)" ]]
 docker_cli run --rm --user "$user_flag" \
-  -v "$PROJECT_ROOT:/repo:ro" -v "$WORK_DIR:/work" \
-  "$GITLEAKS_IMAGE" detect --source /repo \
-  --config /repo/.gitleaks.toml --redact \
+  -v "$HISTORY_REPOSITORY:/history:ro" -v "$PROJECT_ROOT:/config:ro" -v "$WORK_DIR:/work" \
+  "$GITLEAKS_IMAGE" detect --source /history \
+  --config /config/.gitleaks.toml --redact \
   --report-format json --report-path /work/gitleaks-history.json
 
 worktree_findings=$(jq 'length' "$WORK_DIR/gitleaks-worktree.json")

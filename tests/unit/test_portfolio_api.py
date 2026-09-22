@@ -271,6 +271,45 @@ def test_shadow_propensity_does_not_change_rules_only_priority(monkeypatch):
     assert rm2["portfolio"][0]["priorityLevel"] == "P4"
 
 
+def test_propensity_as_of_excludes_future_score(monkeypatch):
+    monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
+    factory, customers = factory_and_ids()
+    with factory.begin() as session:
+        session.add(
+            PropensityScoreRecord(
+                id=deterministic_uuid("score", "SME-00001", "future"),
+                customer_id=customers["SME-00001"][0],
+                customer_ref="SME-00001",
+                as_of_date=date(2026, 10, 31),
+                score_type="SALES_PROPENSITY",
+                score=Decimal("0.99"),
+                threshold=Decimal("0.58"),
+                above_threshold=True,
+                score_band="HIGH",
+                segment="MEDIUM",
+                model_version="future-model-must-not-leak",
+                feature_set_version="future-features-must-not-leak",
+                feature_checksum="f" * 64,
+                contributions_json=[],
+                top_factors_json=[],
+                training_dataset_version="future-dataset-must-not-leak",
+                deployment_mode="POC_SHADOW",
+                created_by="unit-test",
+            )
+        )
+
+    identity = principal("BRANCH_MANAGER", branches=("BR-01",))
+    response = client_for("portfolio-service", factory, identity).get(
+        "/internal/v1/customers/SME-00001/propensity",
+        params={"asOf": "2026-09-30"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["asOf"] == "2026-09-30"
+    assert payload["model"]["modelVersion"] == "sales-propensity-logit-poc-v1"
+    assert payload["model"]["trainingDatasetVersion"] == "synthetic-demo-20260918-v1"
+
+
 def test_shadow_propensity_does_not_break_rules_only_priority_ties(monkeypatch):
     monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
     factory, customers = factory_and_ids()

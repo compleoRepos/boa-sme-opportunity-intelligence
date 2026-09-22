@@ -39,5 +39,8 @@ replace_literal 'DevOnly-FeatureStoreClient-ChangeMe!' "${FEATURE_STORE_CLIENT_S
 replace_literal 'DevOnly-MlEngineClient-ChangeMe!' "${ML_ENGINE_CLIENT_SECRET:-DevOnly-MlEngineClient-ChangeMe!}"
 replace_literal 'DevOnly-PortfolioClient-ChangeMe!' "${PORTFOLIO_CLIENT_SECRET:-DevOnly-PortfolioClient-ChangeMe!}"
 replace_literal 'DevOnly-NotificationClient-ChangeMe!' "${NOTIFICATION_CLIENT_SECRET:-DevOnly-NotificationClient-ChangeMe!}"
+replace_literal 'DevOnly-FinancialIntelligenceClient-ChangeMe!' "${FINANCIAL_INTELLIGENCE_CLIENT_SECRET:-DevOnly-FinancialIntelligenceClient-ChangeMe!}"
+replace_literal 'DevOnly-Fund1-ChangeMe!' "${FUND_DEMO_PASSWORD:-DevOnly-Fund1-ChangeMe!}"
+replace_literal 'http://localhost:3000' "${FRONTEND_PUBLIC_ORIGIN:-http://localhost:3000}"
 
 exec /opt/keycloak/bin/kc.sh "$@"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stack locale sans Docker : PostgreSQL natif + 16 services uvicorn + pipeline complet.
+# Stack locale sans Docker : PostgreSQL natif + 19 services uvicorn + pipeline complet.
 # Usage :
 #   scripts/local-stack.sh up        # initdb, migrations, seed, services, pipeline (idempotent)
 #   scripts/local-stack.sh services  # (re)démarre uniquement les services
@@ -46,7 +46,8 @@ declare -A PORTS=(
   [signal-service]=9007 [opportunity-service]=9008 [product-service]=9009
   [action-service]=9010 [rule-management-service]=9011 [rule-engine-service]=9012
   [rule-simulation-service]=9013 [feature-store-service]=9014 [ml-engine-service]=9015
-  [portfolio-service]=9016 [notification-service]=9017 [api-gateway]=$GATEWAY_PORT
+  [portfolio-service]=9016 [notification-service]=9017
+  [financial-intelligence-service]=9018 [api-gateway]=$GATEWAY_PORT
 )
 
 url() { echo "http://127.0.0.1:${PORTS[$1]}"; }
@@ -83,7 +84,7 @@ pg_up() {
 
 migrate() {
   # Comme scripts/migrate.sh : ces schémas sont provisionnés hors Alembic.
-  for schema in rule feature_store ml portfolio; do
+  for schema in rule feature_store ml portfolio financial_intelligence; do
     pg_run "$PG_BIN/psql" -h 127.0.0.1 -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -qc "CREATE SCHEMA IF NOT EXISTS $schema"
   done
   (cd "$PROJECT_ROOT/database" && DATABASE_URL="$DATABASE_URL" "$PYTHON" -m alembic -c alembic.ini upgrade head)
@@ -124,6 +125,7 @@ start_service() {
     ML_ENGINE_SERVICE_URL="$(url ml-engine-service)"
     PORTFOLIO_SERVICE_URL="$(url portfolio-service)"
     NOTIFICATION_SERVICE_URL="$(url notification-service)"
+    FINANCIAL_INTELLIGENCE_SERVICE_URL="$(url financial-intelligence-service)"
     NOTIFICATION_SCOPE_SIGNING_SECRET=local-native-notification-signing-secret
     export CUSTOMER_SERVICE_URL ACCOUNT_SERVICE_URL TRANSACTION_SERVICE_URL
     export ANALYTICS_SERVICE_URL SIGNAL_SERVICE_URL OPPORTUNITY_SERVICE_URL
@@ -132,6 +134,7 @@ start_service() {
     export RULE_MANAGEMENT_SERVICE_URL RULE_ENGINE_SERVICE_URL
     export RULE_SIMULATION_SERVICE_URL FEATURE_STORE_SERVICE_URL
     export ML_ENGINE_SERVICE_URL PORTFOLIO_SERVICE_URL NOTIFICATION_SERVICE_URL
+    export FINANCIAL_INTELLIGENCE_SERVICE_URL
     export NOTIFICATION_SCOPE_SIGNING_SECRET
     nohup "$PYTHON" -m uvicorn boa_oi.api:app --host 127.0.0.1 --port "$port" --log-level warning \
       >"$STATE_DIR/logs/$name.log" 2>&1 &

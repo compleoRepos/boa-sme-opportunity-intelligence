@@ -93,3 +93,19 @@ GRANT USAGE ON SCHEMA action TO opportunity_service, rule_management_service;
 GRANT SELECT ON action.opportunity_actions TO opportunity_service, rule_management_service;
 GRANT USAGE ON SCHEMA feature_store TO feature_store_service, ml_engine_service;
 GRANT SELECT ON feature_store.feature_set_registry TO feature_store_service, ml_engine_service;
+
+-- Lot 16 Financial Intelligence : le service compose via HTTP et ne lit que son
+-- modèle d'autorisation. Il peut ajouter un audit, jamais le modifier ni le supprimer.
+SELECT format('ALTER SCHEMA financial_intelligence OWNER TO %I', :'admin_role') \gexec
+REVOKE CREATE ON SCHEMA financial_intelligence FROM financial_intelligence_service;
+GRANT USAGE ON SCHEMA financial_intelligence TO financial_intelligence_service;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA financial_intelligence FROM financial_intelligence_service;
+ALTER DEFAULT PRIVILEGES IN SCHEMA financial_intelligence
+  REVOKE ALL ON TABLES FROM financial_intelligence_service;
+GRANT SELECT ON
+  financial_intelligence.external_consumers,
+  financial_intelligence.external_portfolios,
+  financial_intelligence.external_portfolio_companies,
+  financial_intelligence.data_access_grants
+TO financial_intelligence_service;
+GRANT SELECT, INSERT ON financial_intelligence.access_audit TO financial_intelligence_service;

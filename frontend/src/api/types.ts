@@ -1,4 +1,4 @@
-export type Role = 'RELATIONSHIP_MANAGER' | 'BRANCH_MANAGER' | 'ADMIN' | 'DATA_ANALYST' | 'BUSINESS_ANALYST' | 'ML_STEWARD' | 'RULE_APPROVER'
+export type Role = 'RELATIONSHIP_MANAGER' | 'BRANCH_MANAGER' | 'ADMIN' | 'DATA_ANALYST' | 'BUSINESS_ANALYST' | 'ML_STEWARD' | 'RULE_APPROVER' | 'EXTERNAL_CONSUMER'
 
 export interface PageMeta {
   pageSize: number
@@ -449,9 +449,11 @@ export interface DevPersona {
   description: string
   subject: string
   username: string
+  clientId?: string
   email?: string
   displayName: string
   roles: Role[]
+  scopes?: string[]
   branchIds?: string[]
   relationshipManagerIds?: string[]
 }

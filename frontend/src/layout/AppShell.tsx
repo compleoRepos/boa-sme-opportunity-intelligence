@@ -1,4 +1,4 @@
-import { Activity, BriefcaseBusiness, Building2, ChevronDown, ChevronRight, ClipboardCheck, Cpu, Database, FlaskConical, GitBranch, LayoutDashboard, LogOut, Menu, PackageSearch, Search, ShieldCheck, UserRound, X } from 'lucide-react'
+import { Activity, BriefcaseBusiness, Building2, ChevronDown, ChevronRight, ClipboardCheck, Cpu, Database, FlaskConical, GitBranch, Landmark, LayoutDashboard, LogOut, Menu, PackageSearch, Search, ShieldCheck, UserRound, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useRelationshipManagerDashboard } from '../api/hooks'
@@ -24,6 +24,7 @@ export function AppShell() {
   const sidebarRef = useDialogA11y<HTMLElement>(() => setMobileOpen(false), { active: mobileModal, inertAppRoot: false })
   const isBranchManager = auth.hasRole('BRANCH_MANAGER')
   const isRm = auth.hasRole('RELATIONSHIP_MANAGER') && !isBranchManager
+  const isExternalConsumer = auth.hasRole('EXTERNAL_CONSUMER')
   const canMlStudio = auth.hasRole('ML_STEWARD') || auth.hasRole('RULE_APPROVER') || auth.hasRole('ADMIN')
   const canBackOffice = auth.hasRole('ADMIN') || auth.hasRole('BUSINESS_ANALYST') || auth.hasRole('RULE_APPROVER') || auth.hasRole('DATA_ANALYST') || auth.hasRole('ML_STEWARD')
   const dashboard = useRelationshipManagerDashboard(isRm)
@@ -74,13 +75,15 @@ export function AppShell() {
     return () => document.removeEventListener('mousedown', onClick)
   }, [profileOpen])
 
-  const roleLabel = isBranchManager ? 'Responsable d’agence' : isRm ? 'Chargé de clientèle PME' : auth.hasRole('ML_STEWARD') ? 'Responsable modèles · Digital Factory' : auth.hasRole('ADMIN') || auth.hasRole('BUSINESS_ANALYST') ? 'Digital Factory · Back office' : auth.hasRole('RULE_APPROVER') ? 'Approbation des règles' : canBackOffice ? 'Analyse de données' : auth.roles[0]?.replaceAll('_', ' ') || auth.username
+  const roleLabel = isExternalConsumer ? 'Investisseur externe · Fonds' : isBranchManager ? 'Responsable d’agence' : isRm ? 'Chargé de clientèle PME' : auth.hasRole('ML_STEWARD') ? 'Responsable modèles · Digital Factory' : auth.hasRole('ADMIN') || auth.hasRole('BUSINESS_ANALYST') ? 'Digital Factory · Back office' : auth.hasRole('RULE_APPROVER') ? 'Approbation des règles' : canBackOffice ? 'Analyse de données' : auth.roles[0]?.replaceAll('_', ' ') || auth.username
   const priorities = dashboard.data?.kpis.highPriorityCustomers
   const actionsDue = dashboard.data?.kpis.actionsDue
 
   const navigation = useMemo(() => {
     const items: Array<{ to: string; label: string; icon: typeof LayoutDashboard; end?: boolean; count?: number; section?: string }> = []
-    if (isRm) {
+    if (isExternalConsumer) {
+      items.push({ to: '/financial-intelligence/portfolios', label: 'Portfolio Intelligence', icon: Landmark, section: 'Financial Intelligence' })
+    } else if (isRm) {
       items.push({ to: '/', label: 'Mon portefeuille', icon: LayoutDashboard, end: true, count: priorities, section: 'Portefeuille PME' })
       items.push({ to: '/clients', label: 'Mes PME', icon: Building2 })
       items.push({ to: '/actions', label: 'Mes actions', icon: ClipboardCheck, count: actionsDue })
@@ -105,7 +108,7 @@ export function AppShell() {
       items.push({ to: '/back-office/audit', label: 'Audit', icon: ShieldCheck })
     }
     return items
-  }, [isRm, isBranchManager, canBackOffice, canMlStudio, priorities, actionsDue])
+  }, [isExternalConsumer, isRm, isBranchManager, canBackOffice, canMlStudio, priorities, actionsDue])
 
   const submitSearch = (event: FormEvent) => {
     event.preventDefault()
@@ -143,7 +146,7 @@ export function AppShell() {
           </span>)}
         </nav>
         <div className="topbar-spacer" />
-        <form className="search global-search" onSubmit={submitSearch} role="search"><Search size={16} /><input className="input sm" placeholder="Rechercher une PME (nom, identifiant)…" aria-label="Rechercher une PME" value={search} onChange={(event) => setSearch(event.target.value)} /></form>
+        {!isExternalConsumer && <form className="search global-search" onSubmit={submitSearch} role="search"><Search size={16} /><input className="input sm" placeholder="Rechercher une PME (nom, identifiant)…" aria-label="Rechercher une PME" value={search} onChange={(event) => setSearch(event.target.value)} /></form>}
         {auth.devMode && <DemoLauncher />}
         <div className="profile" ref={profileRef}>
           <button type="button" className="profile-btn" onClick={() => setProfileOpen((open) => !open)} aria-expanded={profileOpen} aria-haspopup="menu">

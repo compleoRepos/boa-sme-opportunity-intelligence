@@ -5,8 +5,8 @@ import hmac
 import os
 from collections import Counter
 from collections.abc import Sequence
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import date, datetime, timedelta, timezone
+from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import Depends, Header, Query, Request, Response
@@ -140,25 +140,29 @@ def _rows(
     )
 
 
-def _latest_scores(session: Session, customer_ids: list[Any]) -> dict[Any, PropensityScoreRecord]:
+def _latest_scores(
+    session: Session,
+    customer_ids: list[Any],
+    *,
+    as_of: date | None = None,
+) -> dict[Any, PropensityScoreRecord]:
     if not customer_ids:
         return {}
-    ranked = (
-        select(
-            PropensityScoreRecord.id.label("id"),
-            func.row_number()
-            .over(
-                partition_by=PropensityScoreRecord.customer_id,
-                order_by=(
-                    PropensityScoreRecord.as_of_date.desc(),
-                    PropensityScoreRecord.created_at.desc(),
-                ),
-            )
-            .label("position"),
+    ranked_query = select(
+        PropensityScoreRecord.id.label("id"),
+        func.row_number()
+        .over(
+            partition_by=PropensityScoreRecord.customer_id,
+            order_by=(
+                PropensityScoreRecord.as_of_date.desc(),
+                PropensityScoreRecord.created_at.desc(),
+            ),
         )
-        .where(PropensityScoreRecord.customer_id.in_(customer_ids))
-        .subquery()
-    )
+        .label("position"),
+    ).where(PropensityScoreRecord.customer_id.in_(customer_ids))
+    if as_of is not None:
+        ranked_query = ranked_query.where(PropensityScoreRecord.as_of_date <= as_of)
+    ranked = ranked_query.subquery()
     records = session.scalars(
         select(PropensityScoreRecord)
         .join(ranked, PropensityScoreRecord.id == ranked.c.id)
@@ -720,16 +724,18 @@ def notification_digest_kpis(
 def customer_propensity(
     customer_id: str,
     request: Request,
+    as_of: Annotated[date | None, Query(alias="asOf")] = None,
     principal: Principal = Depends(current_principal),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
+    reject_unknown_filters(request, {"asOf"})
     row = session.execute(
         _scoped_customers(session, principal).where(Customer.customer_ref == customer_id)
     ).first()
     if row is None:
         raise not_found("Customer")
     customer, _manager, _branch_code = row
-    score_record = _latest_scores(session, [customer.id]).get(customer.id)
+    score_record = _latest_scores(session, [customer.id], as_of=as_of).get(customer.id)
     if score_record is None:
         raise Problem(
             404, "PROPENSITY_NOT_SCORED", "No propensity score is available for this SME."
@@ -756,12 +762,14 @@ def customer_propensity(
     return {
         "customerId": customer.customer_ref,
         "score": propensity,
+        "asOf": score_record.as_of_date.isoformat(),
         "scoreMeaning": "observation shadow d'intérêt commercial estimé",
         "priorityLevel": priority_level,
         "model": {
             "modelId": "sales-propensity-logistic",
             "modelVersion": score_record.model_version,
             "featureSetVersion": score_record.feature_set_version,
+            "trainingDatasetVersion": score_record.training_dataset_version,
             "scoredAt": score_record.created_at.isoformat(),
         },
         "combination": {

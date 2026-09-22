@@ -7,6 +7,18 @@ import type { DevPersona } from '../api/types'
  */
 export const DEV_PERSONAS: DevPersona[] = [
   {
+    id: 'fund',
+    label: 'Fonds Atlas Croissance',
+    description: 'Investisseur externe · Financial Intelligence synthétique',
+    subject: 'external-fund-a',
+    username: 'fund.demo',
+    clientId: 'boa-sme-spa',
+    email: 'fund.demo@synthetic.invalid',
+    displayName: 'Fonds Atlas Croissance',
+    roles: ['EXTERNAL_CONSUMER'],
+    scopes: ['financial.read', 'signals.read', 'opportunities.read', 'portfolio.read'],
+  },
+  {
     id: 'cc',
     label: 'Ahmed Mansouri',
     description: 'Chargé de clientèle PME · Agence Casablanca Anfa',
@@ -66,8 +78,10 @@ export function personaHeader(persona: DevPersona) {
   return JSON.stringify({
     subject: persona.subject,
     username: persona.username,
+    ...(persona.clientId ? { clientId: persona.clientId } : {}),
     ...(persona.email ? { email: persona.email } : {}),
     roles: persona.roles,
+    scopes: persona.scopes ?? [],
     branchIds: persona.branchIds ?? [],
     relationshipManagerIds: persona.relationshipManagerIds ?? [],
   })
