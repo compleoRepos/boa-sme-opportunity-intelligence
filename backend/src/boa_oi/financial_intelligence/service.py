@@ -382,6 +382,24 @@ class FinancialIntelligenceComposer:
             raise Problem(
                 502, "DEPENDENCY_INVALID_RESPONSE", "Portfolio response must be an object."
             )
+        allowed_portfolio_fields = {
+            "customerId",
+            "score",
+            "asOf",
+            "scoreMeaning",
+            "priorityLevel",
+            "model",
+            "combination",
+            "factors",
+            "warnings",
+            "correlationId",
+        }
+        if set(portfolio) - allowed_portfolio_fields:
+            raise Problem(
+                502,
+                "DEPENDENCY_INVALID_RESPONSE",
+                "Portfolio response contains unknown fields.",
+            )
 
         raw_model = portfolio.get("model")
         if raw_model is None:
@@ -391,6 +409,19 @@ class FinancialIntelligenceComposer:
         else:
             raise Problem(
                 502, "DEPENDENCY_INVALID_RESPONSE", "Portfolio model metadata must be an object."
+            )
+        allowed_model_fields = {
+            "modelId",
+            "modelVersion",
+            "featureSetVersion",
+            "trainingDatasetVersion",
+            "scoredAt",
+        }
+        if set(model) - allowed_model_fields:
+            raise Problem(
+                502,
+                "DEPENDENCY_INVALID_RESPONSE",
+                "Portfolio model metadata contains unknown fields.",
             )
         for field in ("featureSetVersion", "modelVersion", "trainingDatasetVersion"):
             value = model.get(field)
@@ -413,6 +444,25 @@ class FinancialIntelligenceComposer:
                 "Portfolio governance metadata must be a non-empty object.",
             )
         if combination:
+            allowed_combination_fields = {
+                "method",
+                "mlObservationMode",
+                "mlScore",
+                "rulesScore",
+                "mlWeight",
+                "rulesWeight",
+                "policyId",
+                "policyVersion",
+                "combinedPriorityScore",
+                "summary",
+                "shadowReadOnly",
+            }
+            if set(combination) - allowed_combination_fields:
+                raise Problem(
+                    502,
+                    "DEPENDENCY_INVALID_RESPONSE",
+                    "Portfolio governance metadata contains unknown fields.",
+                )
             rules_weight = combination.get("rulesWeight")
             ml_weight = combination.get("mlWeight")
             if not _is_json_number(rules_weight) or not _is_json_number(ml_weight):

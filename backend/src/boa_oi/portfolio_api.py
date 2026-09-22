@@ -159,7 +159,13 @@ def _latest_scores(
             ),
         )
         .label("position"),
-    ).where(PropensityScoreRecord.customer_id.in_(customer_ids))
+    ).where(
+        PropensityScoreRecord.customer_id.in_(customer_ids),
+        or_(
+            PropensityScoreRecord.valid_until.is_(None),
+            PropensityScoreRecord.valid_until >= PropensityScoreRecord.as_of_date,
+        ),
+    )
     if as_of is not None:
         ranked_query = ranked_query.where(
             PropensityScoreRecord.as_of_date <= as_of,
@@ -230,7 +236,10 @@ def _opportunities(
         exclusive_end = datetime.combine(
             as_of + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc
         )
-        statement = statement.where(Opportunity.generated_at < exclusive_end)
+        statement = statement.where(
+            Opportunity.generated_at < exclusive_end,
+            or_(Opportunity.expires_at.is_(None), Opportunity.expires_at >= exclusive_end),
+        )
     records = session.scalars(
         statement.order_by(Opportunity.priority_score.desc(), Opportunity.generated_at.desc())
     )

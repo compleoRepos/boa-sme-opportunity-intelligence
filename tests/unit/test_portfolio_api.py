@@ -330,6 +330,24 @@ def test_propensity_as_of_excludes_expired_score(monkeypatch):
     assert response.json()["code"] == "PROPENSITY_NOT_SCORED"
 
 
+def test_propensity_without_as_of_excludes_score_never_valid_at_its_cutoff(monkeypatch):
+    monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
+    factory, _customers = factory_and_ids()
+    with factory.begin() as session:
+        score = session.scalar(
+            select(PropensityScoreRecord).where(PropensityScoreRecord.customer_ref == "SME-00001")
+        )
+        assert score is not None
+        score.valid_until = date(2026, 9, 29)
+
+    identity = principal("BRANCH_MANAGER", branches=("BR-01",))
+    response = client_for("portfolio-service", factory, identity).get(
+        "/internal/v1/customers/SME-00001/propensity"
+    )
+    assert response.status_code == 404
+    assert response.json()["code"] == "PROPENSITY_NOT_SCORED"
+
+
 def test_latest_visibility_as_of_excludes_future_snapshot(monkeypatch):
     monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
     factory, customers = factory_and_ids()
@@ -407,6 +425,64 @@ def test_propensity_as_of_excludes_future_opportunity(monkeypatch):
                 fallback_cause_json=None,
                 rule_id=deterministic_uuid("rule", "future"),
                 deduplication_key="future-opportunity-must-not-leak",
+            )
+        )
+
+    identity = principal("BRANCH_MANAGER", branches=("BR-01",))
+    response = client_for("portfolio-service", factory, identity).get(
+        "/internal/v1/customers/SME-00001/propensity",
+        params={"asOf": "2026-09-30"},
+    )
+    assert response.status_code == 200
+    combination = response.json()["combination"]
+    assert combination["rulesScore"] == 0
+    assert combination["combinedPriorityScore"] == 0
+    assert combination["policyId"] is None
+    assert response.json()["priorityLevel"] == "P4"
+
+
+def test_propensity_as_of_excludes_expired_open_opportunity(monkeypatch):
+    monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
+    factory, customers = factory_and_ids()
+    with factory.begin() as session:
+        session.add(
+            Opportunity(
+                id=deterministic_uuid("opportunity", "SME-00001", "expired"),
+                opportunity_ref="OPP-EXPIRED-MUST-NOT-LEAK",
+                customer_id=customers["SME-00001"][0],
+                customer_ref="SME-00001",
+                customer_name="Entreprise SME-00001",
+                opportunity_type="EXPIRED_RULE",
+                status="OPEN",
+                status_updated_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+                status_reason=None,
+                expires_at=datetime(2026, 9, 29, 23, 59, tzinfo=timezone.utc),
+                cooldown_until=None,
+                last_action_at=None,
+                horizon="30D",
+                confidence_score=Decimal("0.99"),
+                confidence_level="HIGH",
+                confidence_components_json=[],
+                priority_score=Decimal("99"),
+                priority_level="P1",
+                priority_components_json=[],
+                why_json=[],
+                what_text="Expired opportunity",
+                when_text="Before asOf",
+                recommended_products_json=[],
+                recommendation_nature="NEED_DISCOVERY",
+                explanation_json={},
+                generated_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+                engine_version="expired-engine",
+                rule_version="expired-rule",
+                scoring_policy_id="expired-policy",
+                scoring_policy_version=1,
+                rules_weight=Decimal("1"),
+                ml_weight=Decimal("0"),
+                fallback_mode="RULES_ONLY",
+                fallback_cause_json=None,
+                rule_id=deterministic_uuid("rule", "expired"),
+                deduplication_key="expired-opportunity-must-not-leak",
             )
         )
 

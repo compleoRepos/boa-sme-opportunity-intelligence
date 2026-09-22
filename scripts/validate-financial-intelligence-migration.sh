@@ -307,16 +307,17 @@ jq -n \
       serviceMayInsertAudit:true,
       serviceMayMutateAudit:false,
       serviceMayTruncateAudit:false,
-      administrativeMutationTriggersProtected:true,
-      serviceMayMutateEntitlements:false
-      ,grantPortfolioConsumerConsistency:true
-      ,membershipHistoryUsesValidityWindow:true
-      ,grantRequiresOAuthClient:true
-      ,grantPurposeIsFixed:true
+      administrativeDirectDmlProtected:true,
+      serviceMayMutateEntitlements:false,
+      grantPortfolioConsumerConsistency:true,
+      membershipHistoryUsesValidityWindow:true,
+      grantRequiresOAuthClient:true,
+      grantPurposeIsFixed:true
     },
     limitations:[
       "POC / SYNTHETIC DATA / NON-PRODUCTION.",
-      "La validation ne remplace pas l homologation IAM, DPO, securite et exploitation BOA."
+      "La validation ne remplace pas l homologation IAM, DPO, securite et exploitation BOA.",
+      "Les triggers prouvent le refus des mutations DML directes. Un propriétaire DBA peut altérer ou supprimer un trigger; une garantie WORM exige une séparation de rôles et un stockage d audit externe à valider avec BOA."
     ]
   }' > "$EVIDENCE"
 jq -e '.status=="PASS" and .matrix.auditAppendOnly=="PASS"' "$EVIDENCE" >/dev/null

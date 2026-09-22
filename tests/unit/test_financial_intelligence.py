@@ -1038,6 +1038,8 @@ def test_composer_rejects_ml_influence_or_non_shadow_mode(
         {"combination": []},
         {"combination": "RULES_ONLY"},
         {"combination": {}},
+        {"unexpected": True},
+        {"model": {"unexpected": "field"}},
         {
             "combination": {
                 "method": "RULES_ONLY",
@@ -1051,6 +1053,15 @@ def test_composer_rejects_ml_influence_or_non_shadow_mode(
                 "method": "RULES_ONLY",
                 "mlObservationMode": "POC_SHADOW",
                 "rulesWeight": 1,
+            }
+        },
+        {
+            "combination": {
+                "method": "RULES_ONLY",
+                "mlObservationMode": "POC_SHADOW",
+                "rulesWeight": 1,
+                "mlWeight": 0,
+                "unexpected": "field",
             }
         },
     ],
