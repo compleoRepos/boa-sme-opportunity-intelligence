@@ -220,6 +220,28 @@ if PGPASSWORD=local-fi-role-only psql -h 127.0.0.1 -p "$HOST_PORT" \
 fi
 if PGPASSWORD=local-fi-role-only psql -h 127.0.0.1 -p "$HOST_PORT" \
   -U financial_intelligence_service -d "$EXISTING_DB" --set=ON_ERROR_STOP=1 \
+  -c "DELETE FROM financial_intelligence.access_audit" >/dev/null 2>&1; then
+  echo 'FAIL runtime audit delete unexpectedly allowed' >&2
+  exit 1
+fi
+if PGPASSWORD=local-fi-role-only psql -h 127.0.0.1 -p "$HOST_PORT" \
+  -U financial_intelligence_service -d "$EXISTING_DB" --set=ON_ERROR_STOP=1 \
+  -c "TRUNCATE financial_intelligence.access_audit" >/dev/null 2>&1; then
+  echo 'FAIL runtime audit truncate unexpectedly allowed' >&2
+  exit 1
+fi
+for mutation in \
+  "UPDATE financial_intelligence.access_audit SET result='DENY'" \
+  "DELETE FROM financial_intelligence.access_audit" \
+  "TRUNCATE financial_intelligence.access_audit"
+do
+  if psql_admin "$EXISTING_DB" -c "$mutation" >/dev/null 2>&1; then
+    echo "FAIL administrative audit mutation unexpectedly allowed: $mutation" >&2
+    exit 1
+  fi
+done
+if PGPASSWORD=local-fi-role-only psql -h 127.0.0.1 -p "$HOST_PORT" \
+  -U financial_intelligence_service -d "$EXISTING_DB" --set=ON_ERROR_STOP=1 \
   -c "INSERT INTO financial_intelligence.external_consumers (id,consumer_ref,display_name,consumer_type,status,allowed_scopes,synthetic_data) VALUES ('00000000-0000-0000-0000-000000000106','FORBIDDEN','Forbidden','FUND','ACTIVE','[]',true)" >/dev/null 2>&1; then
   echo 'FAIL runtime entitlement insert unexpectedly allowed' >&2
   exit 1
@@ -232,7 +254,10 @@ fi
 audit_before=$(sql_value "$EXISTING_DB" "SELECT count(*) FROM financial_intelligence.access_audit")
 assert_equal immutable_audit_rows 1 "$audit_before"
 psql_admin "$EXISTING_DB" <<'SQL' >/dev/null
+BEGIN;
+SET LOCAL boa.allow_fi_audit_truncate = 'true';
 TRUNCATE financial_intelligence.access_audit;
+COMMIT;
 DELETE FROM financial_intelligence.data_access_grants;
 DELETE FROM financial_intelligence.external_portfolio_companies;
 DELETE FROM financial_intelligence.external_portfolios;
@@ -279,6 +304,7 @@ jq -n \
       destructiveDowngradeRefusedWithData:"PASS",
       runtimeLeastPrivilege:"PASS",
       auditAppendOnly:"PASS"
+      ,auditTruncateProtected:"PASS"
       ,consumerPortfolioIntegrity:"PASS"
       ,inactiveMembershipRequiresEnd:"PASS"
       ,oauthClientBinding:"PASS"
@@ -289,6 +315,8 @@ jq -n \
       serviceMayReadEntitlements:true,
       serviceMayInsertAudit:true,
       serviceMayMutateAudit:false,
+      serviceMayTruncateAudit:false,
+      administrativeMutationTriggersProtected:true,
       serviceMayMutateEntitlements:false
       ,grantPortfolioConsumerConsistency:true
       ,membershipHistoryUsesValidityWindow:true

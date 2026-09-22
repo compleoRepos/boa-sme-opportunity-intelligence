@@ -179,9 +179,13 @@ def visibility_projection(customer: dict[str, Any] | None) -> VisibilityProjecti
 def signal_projection(payload: Any, *, as_of: date) -> list[SignalProjection]:
     rows = payload.get("data", []) if isinstance(payload, dict) else []
     result = []
+    from_date = as_of - timedelta(days=364)
     for row in rows:
         detected = row.get("detectedAt")
-        if not detected or date.fromisoformat(str(detected)[:10]) > as_of:
+        if not detected:
+            continue
+        detected_date = date.fromisoformat(str(detected)[:10])
+        if not from_date <= detected_date <= as_of:
             continue
         result.append(
             SignalProjection(
@@ -205,9 +209,13 @@ def signal_projection(payload: Any, *, as_of: date) -> list[SignalProjection]:
 def opportunity_projection(payload: Any, *, as_of: date) -> list[OpportunityProjection]:
     rows = payload.get("data", []) if isinstance(payload, dict) else []
     result = []
+    from_date = as_of - timedelta(days=364)
     for row in rows:
         generated = row.get("generatedAt")
-        if not generated or date.fromisoformat(str(generated)[:10]) > as_of:
+        if not generated:
+            continue
+        generated_date = date.fromisoformat(str(generated)[:10])
+        if not from_date <= generated_date <= as_of:
             continue
         result.append(
             OpportunityProjection(

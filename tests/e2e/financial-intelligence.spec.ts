@@ -4,6 +4,7 @@ import { expect, test, type Browser } from '@playwright/test'
 import { devMode, login } from './auth'
 
 const asOf = '2026-09-30'
+const keycloakOrigin = process.env.E2E_KEYCLOAK_ORIGIN ?? 'http://localhost:8081'
 const evidenceDirectory = path.resolve(
   process.cwd(),
   process.env.FI_EVIDENCE_DIR ?? '../../docs/evidence/financial-intelligence',
@@ -186,6 +187,30 @@ test('grant expiré et scope manquant sont refusés sans fuite de ressource', as
   expect(adminResponse.status()).toBe(403)
   expect((await adminResponse.json()).code).toBe('FI_ROLE_MISSING')
   await adminContext.close()
+
+  const serviceSecret = process.env.E2E_FI_SERVICE_CLIENT_SECRET
+  expect(serviceSecret, 'Le secret E2E du client technique FI doit être injecté.').toBeTruthy()
+  const serviceContext = await browser.newContext()
+  const servicePage = await serviceContext.newPage()
+  const serviceTokenResponse = await servicePage.request.post(
+    `${keycloakOrigin}/realms/boa-sme-mvp/protocol/openid-connect/token`,
+    {
+      form: {
+        grant_type: 'client_credentials',
+        client_id: 'financial-intelligence-service',
+        client_secret: serviceSecret!,
+      },
+    },
+  )
+  expect(serviceTokenResponse.status()).toBe(200)
+  const serviceToken = (await serviceTokenResponse.json()).access_token as string
+  const serviceResponse = await servicePage.request.get(
+    `/api/v1/financial-intelligence/portfolios?asOf=${asOf}`,
+    { headers: { Authorization: `Bearer ${serviceToken}` } },
+  )
+  expect(serviceResponse.status()).toBe(403)
+  expect((await serviceResponse.json()).code).toBe('FI_ROLE_MISSING')
+  await serviceContext.close()
 
   const expiredContext = await browser.newContext()
   const expiredPage = await expiredContext.newPage()

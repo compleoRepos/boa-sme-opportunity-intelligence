@@ -439,6 +439,27 @@ def test_authorization_rejects_non_external_roles(session_factory, role: str) ->
         assert exc_info.value.status_code == 403
 
 
+@pytest.mark.parametrize("forbidden_role", ["ADMIN", "SERVICE"])
+def test_authorization_rejects_external_consumer_with_privileged_role(
+    session_factory, forbidden_role: str
+) -> None:
+    with session_factory() as session:
+        request = request_for()
+        request.state.correlation_id = f"trace-mixed-role-{forbidden_role.lower()}"
+        mixed = principal("fund-a", "financial.read")
+        mixed.roles.add(forbidden_role)
+        with pytest.raises(Problem) as exc_info:
+            authorize(
+                session,
+                request=request,
+                principal=mixed,
+                required_scopes=("financial.read",),
+                company_ref="SME-00001",
+                now=NOW,
+            )
+        assert exc_info.value.status_code == 403
+
+
 def test_authorization_requires_explicit_client_binding(session_factory) -> None:
     with session_factory() as session:
         request = request_for()
@@ -499,6 +520,15 @@ def test_point_in_time_projection_and_calculations() -> None:
                     "detectedAt": "2026-09-21T00:00:00Z",
                     "status": "ACTIVE",
                 },
+                {
+                    "signalId": "SIG-TOO-OLD",
+                    "type": "OUTSIDE_WINDOW",
+                    "severity": "LOW",
+                    "value": 1,
+                    "threshold": 1,
+                    "detectedAt": "2025-09-20T00:00:00Z",
+                    "status": "ACTIVE",
+                },
             ]
         },
         as_of=AS_OF,
@@ -521,6 +551,13 @@ def test_point_in_time_projection_and_calculations() -> None:
                     "status": "OPEN",
                     "confidence": 0.9,
                     "generatedAt": "2026-09-21T08:00:00Z",
+                },
+                {
+                    "opportunityId": "OPP-TOO-OLD",
+                    "opportunityType": "OUTSIDE_WINDOW",
+                    "status": "OPEN",
+                    "confidence": 0.9,
+                    "generatedAt": "2025-09-20T08:00:00Z",
                 },
             ]
         },
@@ -677,7 +714,7 @@ def test_internal_api_payload_minimization_and_ml_invariants(session_factory, mo
     assert payload["meta"]["syntheticData"] is True
     assert payload["meta"]["nonProduction"] is True
     assert payload["meta"]["requestId"] == "trace-api"
-    assert payload["meta"]["partial"] is False
+    assert payload["meta"]["partial"] is True
     assert payload["meta"]["featureVersion"] == "features-v1"
     assert payload["meta"]["modelVersion"] == "shadow-v1"
     assert payload["meta"]["trainingDatasetVersion"] == "dataset-v1"
@@ -743,6 +780,7 @@ def test_gateway_routes_and_direct_api_require_valid_principal(
 ) -> None:
     from boa_oi import gateway_api
 
+    assert gateway_api.FI_ROLES == ("EXTERNAL_CONSUMER",)
     fi_paths = set(application_for("financial-intelligence-service").openapi()["paths"])
     assert "/internal/v1/financial-intelligence/portfolios" in fi_paths
     assert "/internal/v1/financial-intelligence/companies/{company_id}/flow-summary" in fi_paths
@@ -792,6 +830,16 @@ def test_gateway_routes_and_direct_api_require_valid_principal(
     )
     assert response.status_code == 200
     assert captured["params"] == {"asOf": AS_OF.isoformat(), "pageSize": "1", "offset": "1"}
+
+    mixed = principal("fund-a", "financial.read")
+    mixed.roles.add("ADMIN")
+    gateway.dependency_overrides[current_principal] = lambda: mixed
+    response = TestClient(gateway).get(
+        "/api/v1/financial-intelligence/portfolios",
+        params={"asOf": AS_OF.isoformat()},
+    )
+    assert response.status_code == 403
+    assert response.json()["code"] == "FI_ROLE_MISSING"
 
 
 def test_portfolio_catalog_is_backend_authorized(session_factory) -> None:

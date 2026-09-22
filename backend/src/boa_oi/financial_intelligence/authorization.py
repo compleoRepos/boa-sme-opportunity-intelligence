@@ -18,6 +18,7 @@ from boa_oi.financial_intelligence_models import (
 from boa_oi.platform import Principal, Problem, correlation_id
 
 ALLOWED_ROLES = frozenset({"EXTERNAL_CONSUMER"})
+FORBIDDEN_ROLES = frozenset({"ADMIN", "SERVICE"})
 FI_PURPOSE = "SYNTHETIC_PORTFOLIO_MONITORING"
 
 
@@ -104,7 +105,7 @@ def authorize(
     checked_at = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     membership_checked_at = (membership_at or checked_at).astimezone(timezone.utc)
     primary_scope = required_scopes[-1]
-    if principal.roles.isdisjoint(ALLOWED_ROLES):
+    if principal.roles.isdisjoint(ALLOWED_ROLES) or not principal.roles.isdisjoint(FORBIDDEN_ROLES):
         _audit(
             session,
             request=request,

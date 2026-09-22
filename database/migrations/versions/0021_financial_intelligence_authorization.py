@@ -233,7 +233,7 @@ def upgrade() -> None:
     )
 
     # Defense in depth for append-only audit. The service role can INSERT/SELECT but
-    # UPDATE/DELETE are denied by this trigger even if a future runtime grant is too broad.
+    # UPDATE/DELETE/TRUNCATE are denied by triggers even if a future grant is too broad.
     op.execute(
         sa.text(
             f"""
@@ -242,6 +242,10 @@ def upgrade() -> None:
             LANGUAGE plpgsql
             AS $$
             BEGIN
+              IF TG_OP = 'TRUNCATE'
+                 AND current_setting('boa.allow_fi_audit_truncate', true) = 'true' THEN
+                RETURN NULL;
+              END IF;
               RAISE EXCEPTION 'financial intelligence access audit is append-only';
             END;
             $$
@@ -254,6 +258,15 @@ def upgrade() -> None:
             CREATE TRIGGER trg_fi_access_audit_append_only
             BEFORE UPDATE OR DELETE ON {SCHEMA}.access_audit
             FOR EACH ROW EXECUTE FUNCTION {SCHEMA}.reject_access_audit_mutation()
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            f"""
+            CREATE TRIGGER trg_fi_access_audit_no_truncate
+            BEFORE TRUNCATE ON {SCHEMA}.access_audit
+            FOR EACH STATEMENT EXECUTE FUNCTION {SCHEMA}.reject_access_audit_mutation()
             """
         )
     )
@@ -270,6 +283,7 @@ def downgrade() -> None:
             "Refusing destructive FI downgrade. Set "
             "boa.allow_fi_destructive_downgrade=true in this migration session after backup."
         )
+    op.execute(sa.text(f"DROP TRIGGER trg_fi_access_audit_no_truncate ON {SCHEMA}.access_audit"))
     op.execute(sa.text(f"DROP TRIGGER trg_fi_access_audit_append_only ON {SCHEMA}.access_audit"))
     op.execute(sa.text(f"DROP FUNCTION {SCHEMA}.reject_access_audit_mutation()"))
     op.drop_table("access_audit", schema=SCHEMA)

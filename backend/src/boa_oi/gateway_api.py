@@ -17,6 +17,7 @@ from boa_oi.platform import (
     Problem,
     correlation_id,
     create_service_app,
+    current_principal,
     require_roles,
 )
 
@@ -139,7 +140,8 @@ async def binary_proxy(request: Request, service: str, path: str) -> Response:
     return Response(result.content, media_type=result.media_type, headers=headers)
 
 
-FI_ROLES = ("EXTERNAL_CONSUMER", "ADMIN", "SERVICE")
+FI_ROLES = ("EXTERNAL_CONSUMER",)
+FI_FORBIDDEN_ROLES = frozenset({"ADMIN", "SERVICE"})
 FI_GATEWAY_TIMEOUT_SECONDS = max(
     15.0, min(float(os.getenv("FI_GATEWAY_TIMEOUT_SECONDS", "600")), 600.0)
 )
@@ -175,13 +177,23 @@ FI_GET_ROUTES = (
 )
 
 
+async def require_fi_principal(
+    principal: Principal = Depends(current_principal),
+) -> Principal:
+    if "EXTERNAL_CONSUMER" not in principal.roles or not principal.roles.isdisjoint(
+        FI_FORBIDDEN_ROLES
+    ):
+        raise Problem(403, "FI_ROLE_MISSING", "Financial Intelligence access is not allowed.")
+    return principal
+
+
 def register_fi_get(public_path: str, internal_template: str) -> None:
     operation_id = "gateway_fi_" + public_path.rsplit("/", 1)[-1].replace("-", "_")
     if "portfolio_id" in public_path:
         operation_id += "_portfolio"
 
     async def endpoint(
-        request: Request, _principal: Principal = Depends(require_roles(*FI_ROLES))
+        request: Request, _principal: Principal = Depends(require_fi_principal)
     ) -> JSONResponse:
         allowed_query = {"asOf"}
         if internal_template == "portfolios":

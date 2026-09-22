@@ -205,17 +205,26 @@ def _latest_visibility(
     return {record.customer_id: record for record in records}
 
 
-def _opportunities(session: Session, customer_ids: list[Any]) -> dict[Any, list[Opportunity]]:
+def _opportunities(
+    session: Session,
+    customer_ids: list[Any],
+    *,
+    as_of: date | None = None,
+) -> dict[Any, list[Opportunity]]:
     result: dict[Any, list[Opportunity]] = {customer_id: [] for customer_id in customer_ids}
     if not customer_ids:
         return result
-    records = session.scalars(
-        select(Opportunity)
-        .where(
-            Opportunity.customer_id.in_(customer_ids),
-            Opportunity.status.in_(("OPEN", "ACCEPTED", "CONTACTED")),
+    statement = select(Opportunity).where(
+        Opportunity.customer_id.in_(customer_ids),
+        Opportunity.status.in_(("OPEN", "ACCEPTED", "CONTACTED")),
+    )
+    if as_of is not None:
+        exclusive_end = datetime.combine(
+            as_of + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc
         )
-        .order_by(Opportunity.priority_score.desc(), Opportunity.generated_at.desc())
+        statement = statement.where(Opportunity.generated_at < exclusive_end)
+    records = session.scalars(
+        statement.order_by(Opportunity.priority_score.desc(), Opportunity.generated_at.desc())
     )
     for record in records:
         result.setdefault(record.customer_id, []).append(record)
@@ -740,7 +749,7 @@ def customer_propensity(
         raise Problem(
             404, "PROPENSITY_NOT_SCORED", "No propensity score is available for this SME."
         )
-    opportunities = _opportunities(session, [customer.id]).get(customer.id, [])
+    opportunities = _opportunities(session, [customer.id], as_of=as_of).get(customer.id, [])
     rules_score = _normalized_rules_score(opportunities)
     propensity = float(score_record.score)
     combined, priority_level, selected = _persisted_priority(propensity, opportunities)

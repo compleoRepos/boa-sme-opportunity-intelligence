@@ -206,7 +206,7 @@ def response_meta(
         requestId=trace_id,
         sources=sources,
         sourceStatus=unique_statuses,
-        partial=any(item.status == "UNAVAILABLE" for item in unique_statuses),
+        partial=any(item.status in {"UNAVAILABLE", "NOT_IMPLEMENTED"} for item in unique_statuses),
         featureVersion=feature_version,
         modelVersion=model_version,
         trainingDatasetVersion=training_dataset_version,

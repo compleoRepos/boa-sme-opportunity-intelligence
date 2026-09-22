@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import cast
 
@@ -308,6 +308,64 @@ def test_propensity_as_of_excludes_future_score(monkeypatch):
     assert payload["asOf"] == "2026-09-30"
     assert payload["model"]["modelVersion"] == "sales-propensity-logit-poc-v1"
     assert payload["model"]["trainingDatasetVersion"] == "synthetic-demo-20260918-v1"
+
+
+def test_propensity_as_of_excludes_future_opportunity(monkeypatch):
+    monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
+    factory, customers = factory_and_ids()
+    with factory.begin() as session:
+        session.add(
+            Opportunity(
+                id=deterministic_uuid("opportunity", "SME-00001", "future"),
+                opportunity_ref="OPP-FUTURE-MUST-NOT-LEAK",
+                customer_id=customers["SME-00001"][0],
+                customer_ref="SME-00001",
+                customer_name="Entreprise SME-00001",
+                opportunity_type="FUTURE_RULE",
+                status="OPEN",
+                status_updated_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+                status_reason=None,
+                expires_at=None,
+                cooldown_until=None,
+                last_action_at=None,
+                horizon="30D",
+                confidence_score=Decimal("0.99"),
+                confidence_level="HIGH",
+                confidence_components_json=[],
+                priority_score=Decimal("99"),
+                priority_level="P1",
+                priority_components_json=[],
+                why_json=[],
+                what_text="Future opportunity",
+                when_text="After asOf",
+                recommended_products_json=[],
+                recommendation_nature="NEED_DISCOVERY",
+                explanation_json={},
+                generated_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+                engine_version="future-engine",
+                rule_version="future-rule",
+                scoring_policy_id="future-policy",
+                scoring_policy_version=1,
+                rules_weight=Decimal("1"),
+                ml_weight=Decimal("0"),
+                fallback_mode="RULES_ONLY",
+                fallback_cause_json=None,
+                rule_id=deterministic_uuid("rule", "future"),
+                deduplication_key="future-opportunity-must-not-leak",
+            )
+        )
+
+    identity = principal("BRANCH_MANAGER", branches=("BR-01",))
+    response = client_for("portfolio-service", factory, identity).get(
+        "/internal/v1/customers/SME-00001/propensity",
+        params={"asOf": "2026-09-30"},
+    )
+    assert response.status_code == 200
+    combination = response.json()["combination"]
+    assert combination["rulesScore"] == 0
+    assert combination["combinedPriorityScore"] == 0
+    assert combination["policyId"] is None
+    assert response.json()["priorityLevel"] == "P4"
 
 
 def test_shadow_propensity_does_not_break_rules_only_priority_ties(monkeypatch):
