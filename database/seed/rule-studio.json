@@ -116,5 +116,96 @@
       "mediumThreshold": 60
     },
     "reason": "Initialisation Rule Studio (données de démonstration)."
+  },
+  {
+    "ruleId": "FLOW_DOMICILIATION_001",
+    "name": "Domiciliation des flux multibancarisés",
+    "description": "Réplique gouvernée de FLOW_DOMICILIATION_001 sur données synthétiques; seuils HYPOTHÈSE À VALIDER AVEC BOA.",
+    "scope": {
+      "segment": [
+        "SMALL",
+        "MEDIUM"
+      ],
+      "sectors": [
+        "ALL"
+      ],
+      "regions": [
+        "ALL"
+      ],
+      "dataKind": "SYNTHETIC"
+    },
+    "logic": "AND",
+    "conditions": [
+      {
+        "metric": "FLOW_VISIBILITY_OPPORTUNITY",
+        "operator": "EQUAL",
+        "value": true,
+        "unit": "BOOLEAN",
+        "period": "90D"
+      },
+      {
+        "metric": "NO_RECENT_DOMICILIATION_ACTION",
+        "operator": "EQUAL",
+        "value": true,
+        "unit": "BOOLEAN",
+        "period": "180D"
+      },
+      {
+        "type": "GROUP",
+        "logic": "OR",
+        "conditions": [
+          {
+            "metric": "INFLOW_GROWTH",
+            "operator": "GREATER_THAN",
+            "value": 0,
+            "unit": "RATIO",
+            "period": "90D"
+          },
+          {
+            "metric": "FINGERPRINT_GROWTH_90D",
+            "operator": "GREATER_THAN",
+            "value": 0,
+            "unit": "COUNT",
+            "period": "90D"
+          },
+          {
+            "metric": "DECLARED_TURNOVER_GROWTH",
+            "operator": "GREATER_THAN",
+            "value": 0,
+            "unit": "RATIO",
+            "period": "365D"
+          }
+        ]
+      }
+    ],
+    "recommendation": {
+      "opportunityType": "FLOW_DOMICILIATION",
+      "products": [
+        "BOA_PACK_BUSINESS_PME",
+        "BOA_BUSINESS_ONLINE",
+        "BOA_VIREMENT_MASSE",
+        "BOA_PRELEVEMENT_MASSE"
+      ],
+      "horizon": "1-3_MONTHS",
+      "what": "Part de flux estimée faible ou partielle chez BANK OF AFRICA : proposer la domiciliation des flux et des salaires.",
+      "whenText": "Contacter dans les 1 à 3 mois."
+    },
+    "confidence": {
+      "baseScore": 60,
+      "weights": {
+        "FLOW_VISIBILITY_OPPORTUNITY": 15,
+        "INFLOW_GROWTH": 10,
+        "FINGERPRINT_GROWTH_90D": 10,
+        "DECLARED_TURNOVER_GROWTH": 10
+      }
+    },
+    "lifecycle": {
+      "validityDays": 90,
+      "dismissedCooldownDays": 180,
+      "convertedCooldownDays": 180,
+      "deferredCooldownDays": 180,
+      "expiredCooldownDays": 7
+    },
+    "reason": "Brouillon synthétique seedé pour le circuit gouverné."
   }
 ]

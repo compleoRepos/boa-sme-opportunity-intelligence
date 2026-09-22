@@ -1177,6 +1177,8 @@ button.breakdown-row:hover {
   bottom: var(--sp-5);
   z-index: var(--z-toast);
   width: 380px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
   background: var(--navy-950);
   color: #fff;
   border-radius: var(--r-xl);
@@ -1246,6 +1248,45 @@ button.breakdown-row:hover {
   color: rgba(255, 255, 255, 0.85);
 }
 
+.demo-acts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.demo-acts button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.68);
+  text-align: left;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.demo-acts button:hover,
+.demo-acts button:focus-visible,
+.demo-acts li.current button {
+  border-color: rgba(143, 180, 255, 0.75);
+  background: rgba(143, 180, 255, 0.14);
+  color: #fff;
+}
+
+.demo-acts li.completed button { color: #a9e7c1; }
+.demo-acts li.completed svg { color: #55c984; }
+.demo-act-tools { padding-top: 2px; }
+.demo-act-tools .btn.soft { color: #fff; background: rgba(255, 255, 255, 0.1); }
+.demo-act-tools .btn.soft:disabled { opacity: 0.66; }
+
 .demo-progress {
   display: flex;
   gap: 4px;
@@ -1294,7 +1335,8 @@ body[data-demo-target="action"] [data-demo="action"],
 body[data-demo-target="branch"] [data-demo="branch"],
 body[data-demo-target="rule"] [data-demo="rule"],
 body[data-demo-target="simulation"] [data-demo="simulation"],
-body[data-demo-target="models"] [data-demo="models"] {
+body[data-demo-target="models"] [data-demo="models"],
+body[data-demo-target="ml-studio"] [data-demo="ml-studio"] {
   outline: 2px solid var(--accent);
   outline-offset: 6px;
   border-radius: var(--r-lg);

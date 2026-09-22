@@ -94,14 +94,14 @@ def downgrade() -> None:
         None,
     )
     if transition_unique is not None:
-        op.drop_constraint(transition_unique, TABLE, schema=SCHEMA, type_="unique")
+        op.drop_constraint(op.f(transition_unique), TABLE, schema=SCHEMA, type_="unique")
     checks = inspector.get_check_constraints(TABLE, schema=SCHEMA)
     transition_check = next(
         (item["name"] for item in checks if "transition_status" in str(item.get("sqltext"))),
         None,
     )
     if transition_check is not None:
-        op.drop_constraint(transition_check, TABLE, schema=SCHEMA, type_="check")
+        op.drop_constraint(op.f(transition_check), TABLE, schema=SCHEMA, type_="check")
     columns = {item["name"] for item in inspector.get_columns(TABLE, schema=SCHEMA)}
     for name in (
         "pending_outcome_type",

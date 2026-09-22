@@ -633,7 +633,11 @@ services:
     environment:
       <<: *backend-environment
       DEMO_DATA_SEED: ${DEMO_DATA_SEED:-20260918}
+      RULE_SEED_TOKEN_URL: http://keycloak:8080/realms/boa-sme-mvp/protocol/openid-connect/token
+      RULE_SEED_CLIENT_ID: pipeline-runner
+      RULE_SEED_CLIENT_SECRET: ${PIPELINE_CLIENT_SECRET:-DevOnly-PipelineClient-ChangeMe!}
     networks:
+      - app
       - data
     depends_on:
       postgres: { condition: service_healthy }

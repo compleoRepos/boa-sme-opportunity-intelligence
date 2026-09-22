@@ -531,6 +531,12 @@ def downgrade() -> None:
     op.drop_table("_0017_policy_version_backup", schema="opportunity")
     op.drop_table("_0017_policy_backup", schema="opportunity")
     op.drop_table("_0017_opportunity_backup", schema="opportunity")
+    op.execute(
+        sa.text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_scoring_policy_single_active "
+            "ON opportunity.scoring_policy_versions (status) WHERE status = 'ACTIVE'"
+        )
+    )
     op.alter_column(
         "opportunities", "fallback_mode", schema="opportunity", server_default="HYBRID_ML"
     )

@@ -18,13 +18,23 @@ PGUSER=${LOCAL_PGUSER:-boa_admin}
 PGPASSWORD_VALUE=${LOCAL_PGPASSWORD:-local-only}
 PGDATABASE=${LOCAL_PGDATABASE:-boa_sme}
 PG_BIN=${PG_BIN:-/usr/lib/postgresql/16/bin}
-PG_OS_USER=${PG_OS_USER:-claude}
-PYTHON=${LOCAL_PYTHON:-$PROJECT_ROOT/../.venv-boa/bin/python}
+if [[ -z ${PG_OS_USER:-} ]]; then
+  if [[ $(id -u) -eq 0 ]]; then PG_OS_USER=postgres; else PG_OS_USER=$(id -un); fi
+fi
+PYTHON=${LOCAL_PYTHON:-}
+if [[ -z "$PYTHON" ]]; then
+  if [[ -x "$PROJECT_ROOT/../.venv-boa/bin/python" ]]; then
+    PYTHON="$PROJECT_ROOT/../.venv-boa/bin/python"
+  else
+    PYTHON=$(command -v python3)
+  fi
+fi
 AS_OF=${AS_OF_DATE:-2026-09-30}
 CUSTOMER_COUNT=${PIPELINE_CUSTOMER_COUNT:-500}
 BATCH=${PIPELINE_BATCH_SIZE:-50}
 GATEWAY_PORT=${LOCAL_GATEWAY_PORT:-8080}
 DATABASE_URL="postgresql+psycopg://$PGUSER:$PGPASSWORD_VALUE@127.0.0.1:$PGPORT/$PGDATABASE"
+export PYTHONPATH="$PROJECT_ROOT/backend/src:$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 
 mkdir -p "$STATE_DIR/logs" "$STATE_DIR/pids"
 if [[ $(id -u) -eq 0 ]]; then chown -R "$PG_OS_USER" "$STATE_DIR"; fi
@@ -36,12 +46,20 @@ declare -A PORTS=(
   [signal-service]=9007 [opportunity-service]=9008 [product-service]=9009
   [action-service]=9010 [rule-management-service]=9011 [rule-engine-service]=9012
   [rule-simulation-service]=9013 [feature-store-service]=9014 [ml-engine-service]=9015
-  [portfolio-service]=9016 [api-gateway]=$GATEWAY_PORT
+  [portfolio-service]=9016 [notification-service]=9017 [api-gateway]=$GATEWAY_PORT
 )
 
 url() { echo "http://127.0.0.1:${PORTS[$1]}"; }
 
-pg_run() { runuser -u "$PG_OS_USER" -- "$@"; }
+pg_run() {
+  if [[ $(id -un) == "$PG_OS_USER" ]]; then
+    "$@"
+  elif [[ $(id -u) -eq 0 ]]; then
+    runuser -u "$PG_OS_USER" -- "$@"
+  else
+    sudo -n -u "$PG_OS_USER" -- "$@"
+  fi
+}
 
 pg_up() {
   if [[ ! -d "$PGDATA" ]]; then
@@ -86,7 +104,7 @@ start_service() {
     cd "$PROJECT_ROOT/backend"
     export SERVICE_NAME="$name" PORT="$port" HOST=127.0.0.1 DATABASE_URL="$DATABASE_URL"
     export BOA_AUTH_DISABLED=true OIDC_ISSUER_URL=http://localhost/realms/local OIDC_AUDIENCE=boa-sme-api
-    export APP_ENV=local-demo LOG_LEVEL=WARNING PYTHONUNBUFFERED=1
+    export APP_ENV=local LOG_LEVEL=WARNING PYTHONUNBUFFERED=1
     CUSTOMER_SERVICE_URL="$(url customer-service)"
     ACCOUNT_SERVICE_URL="$(url account-service)"
     TRANSACTION_SERVICE_URL="$(url transaction-service)"
@@ -105,13 +123,16 @@ start_service() {
     FEATURE_STORE_SERVICE_URL="$(url feature-store-service)"
     ML_ENGINE_SERVICE_URL="$(url ml-engine-service)"
     PORTFOLIO_SERVICE_URL="$(url portfolio-service)"
+    NOTIFICATION_SERVICE_URL="$(url notification-service)"
+    NOTIFICATION_SCOPE_SIGNING_SECRET=local-native-notification-signing-secret
     export CUSTOMER_SERVICE_URL ACCOUNT_SERVICE_URL TRANSACTION_SERVICE_URL
     export ANALYTICS_SERVICE_URL SIGNAL_SERVICE_URL OPPORTUNITY_SERVICE_URL
     export PRODUCT_SERVICE_URL ACTION_SERVICE_URL BANKING_INTEGRATION_SERVICE_URL
     export MOCK_BANK_URL MOCK_BANKING_API_URL BANKING_API_URL
     export RULE_MANAGEMENT_SERVICE_URL RULE_ENGINE_SERVICE_URL
     export RULE_SIMULATION_SERVICE_URL FEATURE_STORE_SERVICE_URL
-    export ML_ENGINE_SERVICE_URL PORTFOLIO_SERVICE_URL
+    export ML_ENGINE_SERVICE_URL PORTFOLIO_SERVICE_URL NOTIFICATION_SERVICE_URL
+    export NOTIFICATION_SCOPE_SIGNING_SECRET
     nohup "$PYTHON" -m uvicorn boa_oi.api:app --host 127.0.0.1 --port "$port" --log-level warning \
       >"$STATE_DIR/logs/$name.log" 2>&1 &
     echo $! >"$pid_file"
@@ -132,42 +153,45 @@ services_up() {
   echo "Services démarrés. Gateway : http://127.0.0.1:$GATEWAY_PORT"
 }
 
-post_json() {
-  local target="$1" path="$2" payload="$3" key="$4"
-  curl -fsS -X POST "$target$path" -H 'Content-Type: application/json' -H "X-Correlation-ID: local-$key" \
-    -H "Idempotency-Key: local-$key" --data "$payload" -o /dev/null -w "%{http_code} $path\n"
-}
-
 pipeline() {
-  local ids start end run
-  run=${PIPELINE_RUN_ID:-$(date -u +%Y%m%dT%H%M%S)}
-  for ((start=1; start<=CUSTOMER_COUNT; start+=BATCH)); do
-    end=$((start + BATCH - 1)); [[ $end -le $CUSTOMER_COUNT ]] || end=$CUSTOMER_COUNT
-    ids=$(seq -f 'SME-%05g' "$start" "$end" | jq -R . | jq -sc .)
-    post_json "$(url analytics-service)" /internal/v1/analytics/recompute \
-      "$(jq -nc --argjson ids "$ids" --arg asOf "$AS_OF" '{customerIds:$ids,asOf:$asOf,periods:["7D","30D","90D","180D","365D"]}')" "$run-an-$start"
-    post_json "$(url signal-service)" /internal/v1/signals/evaluate \
-      "$(jq -nc --argjson ids "$ids" --arg asOf "$AS_OF" '{customerIds:$ids,asOf:$asOf,periods:["90D"]}')" "$run-sig-$start"
-    post_json "$(url opportunity-service)" /internal/v1/opportunities/generate \
-      "$(jq -nc --argjson ids "$ids" --arg asOf "$AS_OF" '{customerIds:$ids,asOf:$asOf}')" "$run-opp-$start"
-    post_json "$(url feature-store-service)" /internal/v1/features/materialize \
-      "$(jq -nc --argjson ids "$ids" --arg asOf "$AS_OF" '{customerIds:$ids,asOf:$asOf}')" "$run-fs-$start"
-    post_json "$(url ml-engine-service)" /internal/v1/ml/scores/batch \
-      "$(jq -nc --argjson ids "$ids" --arg asOf "$AS_OF" '{customerIds:$ids,asOf:$asOf}')" "$run-ml-$start"
-  done
-  echo "Pipeline terminé (asOf=$AS_OF, $CUSTOMER_COUNT PME)."
+  local run output source_revision source_branch code_digest code_tree
+  run=${PIPELINE_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}
+  output=${PIPELINE_EVIDENCE_FILE:-$STATE_DIR/pipeline-results.json}
+  source_revision=$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || echo UNKNOWN)
+  source_branch=$(git -C "$PROJECT_ROOT" branch --show-current 2>/dev/null || echo UNKNOWN)
+  if [[ -z $(git -C "$PROJECT_ROOT" status --porcelain -- backend database frontend/src infrastructure scripts tests .github/workflows) ]]; then
+    code_tree=CLEAN
+  else
+    code_tree=DIRTY
+  fi
+  code_digest=$(
+    cd "$PROJECT_ROOT"
+    git ls-files -z --cached --others --exclude-standard backend database frontend/src infrastructure scripts tests .github/workflows \
+      | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}'
+  )
+  "$PYTHON" "$PROJECT_ROOT/scripts/run_pipeline_benchmark.py" \
+    --customer-count "$CUSTOMER_COUNT" \
+    --batch-size "$BATCH" \
+    --as-of "$AS_OF" \
+    --run-id "$run" \
+    --analytics-url "$(url analytics-service)" \
+    --signal-url "$(url signal-service)" \
+    --opportunity-url "$(url opportunity-service)" \
+    --feature-store-url "$(url feature-store-service)" \
+    --ml-engine-url "$(url ml-engine-service)" \
+    --source LOCAL_NATIVE_NO_DOCKER \
+    --source-revision "$source_revision" \
+    --source-branch "$source_branch" \
+    --code-digest "$code_digest" \
+    --code-tree "$code_tree" \
+    --output "$output"
+  printf 'Preuve pipeline : %s\n' "$output"
 }
 
 seed_rules() {
-  # Règles Rule Studio de démonstration (brouillons), créées via le Gateway avec la persona back-office.
-  local persona='{"subject":"admin-01","username":"youssef.tazi","roles":["ADMIN","BUSINESS_ANALYST","RULE_APPROVER"],"branchIds":["ALL"]}'
-  local existing
-  existing=$(curl -fsS -H "X-Dev-Principal: $persona" "http://127.0.0.1:$GATEWAY_PORT/api/v1/rules?pageSize=100" | jq -r '.meta.totalCount // (.data | length)')
-  if [[ "${existing:-0}" -gt 0 ]]; then echo "Rule Studio déjà initialisé ($existing règles)."; return; fi
-  jq -c '.[]' "$PROJECT_ROOT/database/seed/rule-studio.json" | while read -r rule; do
-    curl -fsS -X POST "http://127.0.0.1:$GATEWAY_PORT/api/v1/rules" -H 'Content-Type: application/json' \
-      -H "X-Dev-Principal: $persona" -H "Idempotency-Key: seed-rule-$(echo "$rule" | jq -r .ruleId)" --data "$rule" -o /dev/null -w "%{http_code} rule $(echo "$rule" | jq -r .ruleId)\n"
-  done
+  # Chaque règle est vérifiée par ruleId puis créée uniquement si elle manque.
+  (cd "$PROJECT_ROOT" && "$PYTHON" -m database.seed.rule_studio \
+    --rules-url "http://127.0.0.1:$GATEWAY_PORT/api/v1/rules")
 }
 
 down() {

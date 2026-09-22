@@ -921,6 +921,15 @@ export interface MlStudioGate {
 export interface MlStudioSummary {
   mode: 'RULES_ONLY' | 'ML_SHADOW' | 'HYBRID_RERANK' | string
   weights: { rules: number; ml: number }
+  activePolicy?: {
+    policyId: string
+    version: number
+    status: string
+    rulesWeight: number
+    mlWeight: number
+    activatedBy?: string | null
+    activatedAt?: string | null
+  } | null
   productionPerformanceClaim: boolean
   champion?: { modelVersion: string; status: string; updatedAt: string } | null
   labels: { available: number; mature: number }

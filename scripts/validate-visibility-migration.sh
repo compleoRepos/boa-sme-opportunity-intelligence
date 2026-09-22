@@ -10,6 +10,7 @@ POSTGRES_ADMIN_PASSWORD=${POSTGRES_ADMIN_PASSWORD:-VisibilityMigration-LocalOnly
 CONTAINER_NAME="boa-visibility-migration-${$}"
 EXISTING_DATABASE="boa_visibility_existing_${$}"
 FRESH_DATABASE="boa_visibility_fresh_${$}"
+ADMIN_ONLY_DATABASE="boa_visibility_admin_only_${$}"
 OUTPUT_FILE=${VISIBILITY_MIGRATION_EVIDENCE_FILE:-$PROJECT_ROOT/docs/evidence/visibility/RESULTATS-MIGRATION-VISIBILITE.json}
 CHECKSUM_FILE="${OUTPUT_FILE}.sha256"
 HOST_PORT=""
@@ -58,6 +59,14 @@ alembic_run() {
     DATABASE_URL="$database_url" PYTHONPATH="$PROJECT_ROOT/backend/src" \
       alembic -c alembic.ini "$@"
   )
+}
+
+apply_runtime_grants() {
+  local database=$1
+  "${DOCKER[@]}" exec --interactive "$CONTAINER_NAME" psql \
+    --set=ON_ERROR_STOP=1 --username "$POSTGRES_ADMIN_USER" --dbname "$database" \
+    --set=admin_role="$POSTGRES_ADMIN_USER" \
+    <"$PROJECT_ROOT/infrastructure/postgres/10-runtime-grants.sql"
 }
 
 bootstrap_roles() {
@@ -169,6 +178,22 @@ done
 HOST_PORT=$("${DOCKER[@]}" port "$CONTAINER_NAME" 5432/tcp | awk -F: 'END {print $NF}')
 [[ "$HOST_PORT" =~ ^[0-9]+$ ]]
 
+"${DOCKER[@]}" exec "$CONTAINER_NAME" createdb \
+  --username "$POSTGRES_ADMIN_USER" "$ADMIN_ONLY_DATABASE"
+assert_value admin_only_service_roles_absent 0 "$(sql postgres "
+  SELECT count(*) FROM pg_roles
+   WHERE rolname IN ('customer_service','analytics_service','opportunity_service',
+                     'rule_management_service','feature_store_service','ml_engine_service');")"
+alembic_run "$ADMIN_ONLY_DATABASE" upgrade head
+assert_value admin_only_upgrade_to_head 0020_multibank_visibility \
+  "$(sql "$ADMIN_ONLY_DATABASE" 'SELECT version_num FROM alembic_version')"
+alembic_run "$ADMIN_ONLY_DATABASE" downgrade base
+assert_value admin_only_downgrade_to_base 0 "$(sql "$ADMIN_ONLY_DATABASE" "
+  SELECT count(*) FROM public.alembic_version;")"
+alembic_run "$ADMIN_ONLY_DATABASE" upgrade head
+assert_value admin_only_reupgrade_to_head 0020_multibank_visibility \
+  "$(sql "$ADMIN_ONLY_DATABASE" 'SELECT version_num FROM alembic_version')"
+
 bootstrap_roles
 "${DOCKER[@]}" exec "$CONTAINER_NAME" createdb \
   --username "$POSTGRES_ADMIN_USER" "$EXISTING_DATABASE"
@@ -217,6 +242,7 @@ sentinel_before=$(sql "$EXISTING_DATABASE" "
   );")
 
 alembic_run "$EXISTING_DATABASE" upgrade 0020_multibank_visibility
+apply_runtime_grants "$EXISTING_DATABASE"
 assert_value existing_upgrade_to_0020 0020_multibank_visibility \
   "$(sql "$EXISTING_DATABASE" 'SELECT version_num FROM alembic_version')"
 assert_value customer_columns_added 9 \
@@ -358,22 +384,8 @@ assert_value user_data_preserved_on_downgrade "$sentinel_before" "$(sql "$EXISTI
     (SELECT row_to_json(r)::text FROM opportunity.opportunity_rules r
       WHERE opportunity_type='USER_SENTINEL' AND version='user-v1')
   );")"
-assert_value analytics_customer_select_revoked f \
-  "$(privilege "$EXISTING_DATABASE" analytics_service SELECT customer.customers)"
-assert_value feature_store_customer_select_revoked f \
-  "$(privilege "$EXISTING_DATABASE" feature_store_service SELECT customer.customers)"
-assert_value opportunity_action_select_revoked f \
-  "$(privilege "$EXISTING_DATABASE" opportunity_service SELECT action.opportunity_actions)"
-assert_value rule_simulation_action_select_revoked f \
-  "$(privilege "$EXISTING_DATABASE" rule_management_service SELECT action.opportunity_actions)"
-assert_value ml_feature_store_usage_revoked f \
-  "$(schema_privilege "$EXISTING_DATABASE" ml_engine_service feature_store)"
-for role in customer_service product_service opportunity_service portfolio_service feature_store_service rule_management_service; do
-  assert_value "${role}_analytics_usage_revoked" f \
-    "$(schema_privilege "$EXISTING_DATABASE" "$role" analytics)"
-done
-
 alembic_run "$EXISTING_DATABASE" upgrade 0020_multibank_visibility
+apply_runtime_grants "$EXISTING_DATABASE"
 assert_value reupgrade_to_0020 0020_multibank_visibility \
   "$(sql "$EXISTING_DATABASE" 'SELECT version_num FROM alembic_version')"
 assert_value reupgrade_relations_restored 4 "$(relation_count "$EXISTING_DATABASE")"
@@ -399,6 +411,7 @@ assert_value user_data_preserved_on_reupgrade "$sentinel_before" "$(sql "$EXISTI
 
 # Blank-database path: the P0 oracle must traverse 0001 through the unique head.
 alembic_run "$FRESH_DATABASE" upgrade head
+apply_runtime_grants "$FRESH_DATABASE"
 assert_value fresh_upgrade_to_unique_head 0020_multibank_visibility \
   "$(sql "$FRESH_DATABASE" 'SELECT version_num FROM alembic_version')"
 assert_value fresh_single_version_row 1 \
@@ -424,10 +437,12 @@ assert_value fresh_seed_set 4 "$(sql "$FRESH_DATABASE" "
 assert_value fresh_privilege_oracle t \
   "$(privilege "$FRESH_DATABASE" analytics_service UPDATE analytics.flow_visibility_snapshots)"
 
+mapfile -t migration_files < <(cd "$PROJECT_ROOT" && find database/migrations/versions -type f -name '*.py' | sort)
 source_files=(
   backend/src/boa_oi/models/entities.py
-  database/migrations/versions/0001_initial.py
-  database/migrations/versions/0020_multibank_visibility.py
+  "${migration_files[@]}"
+  infrastructure/postgres/10-runtime-grants.sql
+  scripts/migrate.sh
   scripts/validate-visibility-migration.sh
 )
 source_digest=$(
@@ -457,6 +472,7 @@ jq -n \
   --arg alembicVersion "$alembic_version" \
   --arg existingDatabase "$EXISTING_DATABASE" \
   --arg freshDatabase "$FRESH_DATABASE" \
+  --arg adminOnlyDatabase "$ADMIN_ONLY_DATABASE" \
   '{
     schemaVersion:"1.0",
     runId:$runId,
@@ -477,11 +493,14 @@ jq -n \
       alembicVersion:$alembicVersion,
       existingDatabase:$existingDatabase,
       freshDatabase:$freshDatabase,
+      adminOnlyDatabase:$adminOnlyDatabase,
       serviceRolesAndOwnedSchemasBootstrapped:true,
+      alembicAdminOnlyCycleExecutedBeforeServiceRoleBootstrap:true,
       temporaryContainerAndDatabasesRemovedOnExit:true
     },
     matrix:{
       uniqueAlembicHead:{from:"revision graph",to:"0020_multibank_visibility",status:"PASS"},
+      adminOnlyFullCycle:{from:"blank",to:"head",via:"base",then:"head",status:"PASS"},
       blankDatabaseToHead:{from:"blank",to:"0020_multibank_visibility",status:"PASS"},
       existingDatabaseUpgrade:{from:"0019_ml_studio_catalog_merge",to:"0020_multibank_visibility",status:"PASS"},
       downgrade:{from:"0020_multibank_visibility",to:"0019_ml_studio_catalog_merge",status:"PASS"},
@@ -505,10 +524,11 @@ jq -n \
         protectedDowngradeFailsClosed:"PASS"
       },
       privileges:{
+        alembicIndependentOfNamedRuntimeRoles:"PASS",
+        runtimeGrantsAppliedOutsideAlembic:"PASS",
         explicitSelectAndDmlGrantsAfterUpgrade:"PASS",
         deniedDeleteAndExcessInsert:"PASS",
         crossSchemaUsageGrantsAfterUpgrade:"PASS",
-        explicitRevokesAfterDowngrade:"PASS",
         grantsRestoredOnReupgrade:"PASS"
       }
     },

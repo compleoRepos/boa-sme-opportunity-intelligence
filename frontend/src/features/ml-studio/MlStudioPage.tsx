@@ -57,7 +57,7 @@ export function MlStudioPage() {
     window.history.replaceState(null, '', `${url.pathname}${url.search}`)
   }
   return <>
-    <header className="page-head ml-studio-head">
+    <header className="page-head ml-studio-head" data-demo="ml-studio">
       <div><p className="eyebrow accent">Studio ML · gouvernance commerciale</p><h1>Analyser, entraîner, comparer, gouverner</h1><p className="subtitle">Un modèle entraîné ne modifie ni le champion, ni la politique active, ni les opportunités. Toute influence ML reste soumise aux portes G1 à G3.</p></div>
       <div className="ml-mode-lock"><LockKeyhole size={18} /><span><strong>POC_SHADOW</strong><small>Aucune activation automatique</small></span></div>
     </header>
@@ -81,7 +81,7 @@ function OverviewTab() {
   const summary = query.data
   return <div className="stack">
     <section className="grid cols-4 ml-summary-grid">
-      <article className="kpi tone-blue"><span className="kpi-label">Mode actif</span><strong className="kpi-value compact">{label(summary.mode)}</strong><span className="kpi-note">Règles {formatPercent(summary.weights.rules)} · ML {formatPercent(summary.weights.ml)}</span></article>
+      <article className="kpi tone-blue"><span className="kpi-label">Mode actif</span><strong className="kpi-value compact">{label(summary.mode)}</strong><span className="kpi-note">Règles {formatPercent(summary.weights.rules)} · ML {formatPercent(summary.weights.ml)}</span><small className="muted">{summary.activePolicy ? `${summary.activePolicy.policyId} · v${summary.activePolicy.version}` : 'Aucune politique active'}</small></article>
       <article className="kpi tone-violet"><span className="kpi-label">Modèle champion</span><strong className="kpi-value compact">{summary.champion?.modelVersion || 'Aucun'}</strong><span className="kpi-note">{summary.champion ? `${summary.champion.status} · ${formatDate(summary.champion.updatedAt)}` : 'Aucun modèle actif'}</span></article>
       <article className="kpi tone-teal"><span className="kpi-label">Résultats / étiquettes matures</span><strong className="kpi-value num">{formatNumber(summary.labels.available)} / {formatNumber(summary.labels.mature)}</strong><span className="kpi-note">Valeurs calculées par l’API</span></article>
       <article className="kpi tone-orange"><span className="kpi-label">Dernière évaluation</span><strong className="kpi-value compact">{summary.latestEvaluation?.status || 'Aucune'}</strong><span className="kpi-note">Brier {formatNumber(summary.latestEvaluation?.brierScore, 4)} · ECE {formatNumber(summary.latestEvaluation?.expectedCalibrationError, 4)} · {formatDate(summary.latestEvaluation?.createdAt)}</span></article>
