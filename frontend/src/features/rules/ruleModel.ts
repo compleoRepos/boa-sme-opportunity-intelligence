@@ -1,3 +1,4 @@
+import { label } from '../../api/format'
 import type { RuleConditionDefinition, RuleConditionGroup, RuleExpression, RuleLogic, RuleOperator, RuleUnit } from '../../api/types'
 
 export const METRICS: Array<[string, string]> = [
@@ -42,6 +43,10 @@ export const metricLabel = (metric: string) => METRICS.find(([value]) => value =
 export const operatorLabel = (operator: string) => OPERATORS.find(([value]) => value === operator)?.[1] || operator.toLowerCase()
 export const unitLabel = (unit: string) => UNITS.find(([value]) => value === unit)?.[1] || unit
 export const periodLabel = (period: string) => PERIODS.find(([value]) => value === period)?.[1] || period
+
+export function scopeValuesLabel(values?: string[], fallback = 'Tous') {
+  return values?.length ? values.map(label).join(', ') : fallback
+}
 
 export const newCondition = (): RuleConditionDefinition => ({ id: crypto.randomUUID(), type: 'CONDITION', metric: 'INFLOW_GROWTH', operator: 'INCREASE_BY', value: 25, unit: 'PERCENT', period: '90D', weight: 20 })
 export const newGroup = (): RuleConditionGroup => ({ id: crypto.randomUUID(), type: 'GROUP', logic: 'AND', conditions: [newCondition()] })

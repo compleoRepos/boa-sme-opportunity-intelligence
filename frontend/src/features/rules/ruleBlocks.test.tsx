@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import type { RuleConditionGroup } from '../../api/types'
 import { ReadableRule, RuleBuilder } from './RuleBlocks'
-import { conditionSentence, newGroup } from './ruleModel'
+import { conditionSentence, newGroup, scopeValuesLabel } from './ruleModel'
 
 const conditions = [
   { id: 'c1', type: 'CONDITION' as const, metric: 'INFLOW_GROWTH', operator: 'INCREASE_BY' as const, value: 25, unit: 'PERCENT', period: '90D' },
@@ -34,6 +34,12 @@ describe('Rule Studio — lecture et édition', () => {
     expect(screen.getAllByRole('button', { name: 'OU' })[0]).toHaveAttribute('aria-pressed', 'true')
     fireEvent.change(screen.getAllByLabelText(/Valeur condition/)[0]!, { target: { value: '30' } })
     expect(screen.getAllByLabelText(/Valeur condition/)[0]).toHaveValue(30)
+  })
+
+  it('affiche un périmètre total quand une ancienne règle ne fournit pas de secteurs', () => {
+    expect(scopeValuesLabel(undefined)).toBe('Tous')
+    expect(scopeValuesLabel([])).toBe('Tous')
+    expect(scopeValuesLabel(['SMALL', 'MEDIUM'])).toBe('Petite entreprise, Moyenne')
   })
 })
 

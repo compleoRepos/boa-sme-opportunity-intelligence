@@ -22,7 +22,21 @@ const initialDraft = (): SaveRuleInput => ({
   confidence: { baseScore: 20, weights: {}, highThreshold: 80, mediumThreshold: 60 }, lifecycle: { ...DEFAULT_LIFECYCLE }, reason: '',
 })
 
-const fromRule = (rule: RuleDefinition): SaveRuleInput => ({ name: rule.name, description: rule.description || '', scope: rule.scope, logic: rule.logic, conditions: rule.conditions, recommendation: rule.recommendation, confidence: rule.confidence, lifecycle: rule.lifecycle || { ...DEFAULT_LIFECYCLE }, reason: '' })
+export const fromRule = (rule: RuleDefinition): SaveRuleInput => ({
+  name: rule.name,
+  description: rule.description || '',
+  scope: {
+    segment: rule.scope?.segment?.length ? rule.scope.segment : ['SME'],
+    sectors: rule.scope?.sectors?.length ? rule.scope.sectors : ['ALL'],
+    regions: rule.scope?.regions?.length ? rule.scope.regions : ['ALL'],
+  },
+  logic: rule.logic,
+  conditions: rule.conditions,
+  recommendation: rule.recommendation,
+  confidence: rule.confidence,
+  lifecycle: rule.lifecycle || { ...DEFAULT_LIFECYCLE },
+  reason: '',
+})
 
 function weightsFrom(expressions: RuleExpression[], into: Record<string, number> = {}) {
   expressions.forEach((item) => { if (isGroup(item)) weightsFrom(item.conditions, into); else into[item.metric] = item.weight ?? into[item.metric] ?? 0 })
@@ -95,7 +109,7 @@ export function RuleBuilderPage() {
         <Panel eyebrow="05 · Périmètre" title="Population" id="scope">
           <div className="stack">
             <ChipField legend="Segments" options={SEGMENTS} value={draft.scope.segment} onChange={(segment) => setDraft({ ...draft, scope: { ...draft.scope, segment } })} />
-            <ChipField legend="Secteurs" options={SECTORS} value={draft.scope.sectors} onChange={(sectors) => setDraft({ ...draft, scope: { ...draft.scope, sectors } })} />
+            <ChipField legend="Secteurs" options={SECTORS} value={draft.scope.sectors || ['ALL']} onChange={(sectors) => setDraft({ ...draft, scope: { ...draft.scope, sectors } })} />
             <ChipField legend="Régions" options={REGIONS} value={draft.scope.regions || ['ALL']} onChange={(regions) => setDraft({ ...draft, scope: { ...draft.scope, regions } })} />
           </div>
         </Panel>

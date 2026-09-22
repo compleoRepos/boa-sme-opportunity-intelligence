@@ -585,7 +585,7 @@ export type RuleExpression = RuleConditionDefinition | RuleConditionGroup
 
 export interface RuleScope {
   segment: string[]
-  sectors: string[]
+  sectors?: string[]
   regions?: string[]
 }
 
