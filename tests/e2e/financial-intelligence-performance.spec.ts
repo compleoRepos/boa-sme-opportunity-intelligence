@@ -40,6 +40,7 @@ test('benchmark portfolio FI 10/50/100/500 PME avec P50/P95 documentés', async 
   for (const benchmark of cases) {
     const durationsMs: number[] = []
     const downstreamCallCounts: number[] = []
+    const mlGovernanceStatuses: string[] = []
     for (let iteration = 1; iteration <= iterations; iteration += 1) {
       authorization = ''
       await page.goto(`/financial-intelligence/portfolios?asOf=${asOf}`)
@@ -60,9 +61,19 @@ test('benchmark portfolio FI 10/50/100/500 PME avec P50/P95 documentés', async 
       const payload = await response.json()
       expect(payload.data.companyCount).toBe(benchmark.size)
       expect(payload.meta.executionMode).toBe('DETERMINISTIC_RULES')
-      expect(payload.meta.mlMode).toBe('POC_SHADOW')
-      expect(payload.meta.rulesWeight).toBe(1)
-      expect(payload.meta.mlWeight).toBe(0)
+      expect(['VERIFIED', 'UNAVAILABLE']).toContain(payload.meta.mlGovernanceStatus)
+      mlGovernanceStatuses.push(payload.meta.mlGovernanceStatus)
+      if (payload.meta.mlGovernanceStatus === 'VERIFIED') {
+        expect(payload.meta.deploymentMode).toBe('POC_SHADOW')
+        expect(payload.meta.mlMode).toBe('POC_SHADOW')
+        expect(payload.meta.rulesWeight).toBe(1)
+        expect(payload.meta.mlWeight).toBe(0)
+      } else {
+        expect(payload.meta.deploymentMode).toBeNull()
+        expect(payload.meta.mlMode).toBeNull()
+        expect(payload.meta.rulesWeight).toBeNull()
+        expect(payload.meta.mlWeight).toBeNull()
+      }
       expect(payload.meta.downstreamCallCount).toBe(benchmark.size * 5)
       expect(payload.meta.fanOutConcurrency).toBeLessThanOrEqual(20)
       downstreamCallCounts.push(payload.meta.downstreamCallCount)
@@ -84,6 +95,7 @@ test('benchmark portfolio FI 10/50/100/500 PME avec P50/P95 documentés', async 
       iterations,
       durationsMs,
       downstreamCallCounts,
+      mlGovernanceStatuses: [...new Set(mlGovernanceStatuses)],
       p50Ms,
       p95Ms,
       dashboardDurationMs,

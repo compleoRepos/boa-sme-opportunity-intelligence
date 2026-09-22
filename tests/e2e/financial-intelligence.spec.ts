@@ -174,6 +174,19 @@ test('le token Fonds B reste limité à son portfolio', async ({ browser }) => {
 
 test('grant expiré et scope manquant sont refusés sans fuite de ressource', async ({ browser }) => {
   test.skip(devMode, 'Ce scénario exige les sujets et scopes OIDC distincts du realm Keycloak.')
+  const {
+    context: adminContext,
+    page: adminPage,
+    identityHeaders: adminIdentityHeaders,
+  } = await authenticatedPage(browser, 'admin')
+  const adminResponse = await adminPage.request.get(
+    `/api/v1/financial-intelligence/portfolios?asOf=${asOf}`,
+    { headers: adminIdentityHeaders() },
+  )
+  expect(adminResponse.status()).toBe(403)
+  expect((await adminResponse.json()).code).toBe('FI_ROLE_MISSING')
+  await adminContext.close()
+
   const expiredContext = await browser.newContext()
   const expiredPage = await expiredContext.newPage()
   await login(expiredPage, 'fondsExpire')
@@ -204,6 +217,8 @@ test('contrats FI : point-in-time, minimisation, lineage et cohérence des réf�
   const payload = await summary.json()
   expect(payload.meta.contractVersion).toBe('fi.v1')
   expect(payload.meta.executionMode).toBe('DETERMINISTIC_RULES')
+  expect(payload.meta.mlGovernanceStatus).toBe('VERIFIED')
+  expect(payload.meta.deploymentMode).toBe('POC_SHADOW')
   expect(payload.meta.mlMode).toBe('POC_SHADOW')
   expect(payload.meta.rulesWeight).toBe(1)
   expect(payload.meta.mlWeight).toBe(0)
@@ -227,12 +242,26 @@ test('contrats FI : point-in-time, minimisation, lineage et cohérence des réf�
   )
   expect(signals.status()).toBe(200)
   expect(opportunities.status()).toBe(200)
-  expect((await signals.json()).data.map((item: { signalRef: string }) => item.signalRef)).toEqual(
+  const signalPayload = await signals.json()
+  const opportunityPayload = await opportunities.json()
+  expect(signalPayload.data.length).toBeGreaterThan(0)
+  expect(opportunityPayload.data.length).toBeGreaterThan(0)
+  expect(signalPayload.data.map((item: { signalRef: string }) => item.signalRef)).toEqual(
     payload.data.signals.map((item: { signalRef: string }) => item.signalRef),
   )
-  expect((await opportunities.json()).data.map((item: { opportunityId: string }) => item.opportunityId)).toEqual(
+  expect(
+    opportunityPayload.data.map((item: { opportunityId: string }) => item.opportunityId),
+  ).toEqual(
     payload.data.opportunities.map((item: { opportunityId: string }) => item.opportunityId),
   )
+  for (const signal of signalPayload.data) {
+    expect(signal.status).toBeNull()
+    expect(signal.stateAsOfStatus).toBe('NOT_IMPLEMENTED')
+  }
+  for (const opportunity of opportunityPayload.data) {
+    expect(opportunity.status).toBeNull()
+    expect(opportunity.stateAsOfStatus).toBe('NOT_IMPLEMENTED')
+  }
 
   const historical = await page.request.get(
     '/api/v1/financial-intelligence/portfolios/PORTFOLIO-FUND-001/summary?asOf=2024-12-31',
