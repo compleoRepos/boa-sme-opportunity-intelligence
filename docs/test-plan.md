@@ -423,7 +423,7 @@ Les exigences sont traçables vers les familles de tests :
 | Microservices et APIs | Contrats, interservices, E2E |
 | PostgreSQL et données cohérentes | Intégration base, générateur, performance |
 | Analytics et fenêtres historiques | Unitaires, métier, faux positifs |
-| Signaux et quatre opportunités | Unitaires, BR-001 à BR-012, intégration |
+| Signaux et cinq opportunités | Unitaires, BR-001 à BR-012, intégration et visibilité multibancarisée |
 | Confiance, priorité, explication | Unitaires, contrats, E2E |
 | Keycloak et RBAC | Intégration auth, sécurité, E2E par rôle |
 | Actions, outcomes et feedback loop | Intégration, E2E, audit |

@@ -56,6 +56,12 @@ Le moteur calcule une lacune par **famille** : la détention d'un produit d'une 
 
 ## Données et usages
 
+### Visibilité multibancarisée et domiciliation des flux
+
+La détention observée par Product Service décrit uniquement les produits détenus chez BANK OF AFRICA. Pour une PME dont la visibilité des flux est `PARTIAL` ou `LOW`, un produit absent est donc requalifié `ABSENT_OR_ELSEWHERE` et affiché « produit non détenu chez BOA (peut être détenu ailleurs) ». Cette formulation prudente interdit d’inférer la détention dans une banque tierce sans donnée externe.
+
+La règle gouvernée `FLOW_DOMICILIATION` recommande exclusivement quatre références existantes de la famille `CASH_MANAGEMENT` : `BOA_PACK_BUSINESS_PME`, `BOA_BUSINESS_ONLINE`, `BOA_VIREMENT_MASSE` et `BOA_PRELEVEMENT_MASSE`. Leur présence dans une opportunité signifie qu’un échange commercial de domiciliation peut être examiné ; elle ne prouve ni l’éligibilité du client, ni la disponibilité contractuelle, ni une décision de crédit. Les ciblages et critères restent **HYPOTHÈSE À VALIDER AVEC BOA**.
+
 Les anciennes références génériques du prototype restent en base en statut inactif lorsque le seed synthétique est rejoué, afin de préserver les clés historiques. La migration `0018` transforme les recommandations des seules règles techniques et Rule Studio synthétiques connues, identifiées par `demo-data-generator`, et recalcule le checksum de la version Rule Studio. Elle ne réécrit aucune configuration utilisateur ou BOA. Les nouvelles règles avec un code absent du catalogue sont refusées ; une règle publiée obsolète rencontrée par Opportunity provoque une erreur explicite et aucune recommandation partielle n’est persistée.
 
 La commande ci-dessous met à jour les 28 produits du référentiel et régénère uniquement les détentions créées par `demo-data-generator`; elle ne supprime pas les détentions importées par un autre acteur.

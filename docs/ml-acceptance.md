@@ -7,11 +7,11 @@
 
 > Ce document reste la checklist normative jusqu’à une éventuelle activation séparée. L’implémentation actuelle impose `POC_SHADOW` et une priorité opérationnelle `RULES_ONLY`. Les résultats locaux/synthétiques sont descriptifs ; aucun résultat ne vaut validation de performance, calibration, training-readiness ou gouvernance de production. Les blockers restent persistés tant que les historiques BOA observés, matures et approuvés ne sont pas disponibles.
 
-## État de l’aperçu Studio ML au 21 septembre 2026
+## État du Studio ML au 21 septembre 2026
 
-La branche `feat/ml-studio-parallel` implémente l’entraînement CPU gouverné, la progression persistée, l’annulation, l’idempotence, la comparaison, la séparation auteur/approbateur/admin et une interface en six onglets. Les portes locales passent avec 266 tests backend, 31 tests frontend et une migration PostgreSQL combinée jusqu’à `0019_ml_studio_catalog_merge`.[6]
+La branche `feat/ml-studio-parallel`, puis sa prolongation multibancarisation, implémentent l’entraînement CPU gouverné, la progression persistée, l’annulation, l’idempotence, la comparaison, la simulation de politique, la séparation auteur/approbateur/admin et une interface en six onglets. La migration PostgreSQL conserve une tête unique après `0019_ml_studio_catalog_merge` et la nouvelle révision fonctionnelle 0020.[6]
 
-Ce résultat ne franchit pas G2 ou G3. L’E2E Karim et la capture 1440 px ne sont pas exécutés, les historiques BOA sont absents et la simulation d’impact avant/après retourne explicitement `501 NOT_IMPLEMENTED` faute de dataset point-in-time serveur réunissant scores règles et ML. Aucune promotion, activation ou influence commerciale n’est autorisée.
+Le parcours E2E multi-rôles Karim/Nadia/Youssef entraîne deux candidats `DEMO_ONLY`, les compare, simule une politique 90/10 à partir de données persistées, refuse l’auto-approbation et la promotion du modèle synthétique, puis bloque l’activation à G3. Ce résultat ne franchit toutefois ni G2 ni G3 : les historiques BOA, la validation indépendante et la performance shadow approuvée restent absents. Aucune promotion, activation ou influence commerciale n’est autorisée.
 
 ## 1. Statuts et preuve attendue
 

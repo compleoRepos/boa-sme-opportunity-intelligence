@@ -1,7 +1,7 @@
 # Contrats API-first — BOA SME Opportunity Intelligence
 
 **Statut :** contrat cible du MVP  
-**Version du contrat :** `1.6.0`
+**Version du contrat :** `1.7.0`
 **Préfixe public :** `/api/v1`  
 **Préfixe interne :** `/internal/v1`  
 **Format :** REST/JSON et XLSX, OpenAPI 3.0
@@ -563,7 +563,7 @@ Le Customer 360 peut être composé par le Gateway ou un endpoint d’agrégatio
 | `POST` | `/api/v1/admin/ml/governance/trainings/{id}/cancel` | `ML_STEWARD`, `ADMIN` | Demande l’annulation persistée d’un job non terminal. |
 | `GET` | `/api/v1/admin/ml/governance/model-comparisons` | `ML_STEWARD`, `RULE_APPROVER`, `ADMIN`, `SERVICE` | Compare deux versions uniquement si un jeu de test commun est résolu. |
 | `GET` | `/api/v1/admin/ml/governance/studio-summary` | `ML_STEWARD`, `RULE_APPROVER`, `ADMIN`, `SERVICE` | Expose mode, poids, champion, labels, portes G0–G4, seuils et blockers sans chiffre frontend codé en dur. |
-| `POST` | `/api/v1/admin/scoring-policies/{id}/versions/{version}/simulate` | auteur de politique | Retourne `501 NOT_IMPLEMENTED`, conserve `DRAFT` et liste les sorties attendues tant qu’aucun dataset point-in-time règles/ML n’existe. |
+| `POST` | `/api/v1/admin/scoring-policies/{id}/versions/{version}/simulate` | auteur de politique | Simule côté serveur la distribution de priorité avant/après à partir d’opportunités et scores shadow persistés, refuse l’absence de score exploitable, audite le résultat et passe la version à `SIMULATED` sans modifier la priorité opérationnelle. |
 | `POST` | `/api/v1/admin/ml/governance/evaluation/metrics` | `DATA_ANALYST`, `ADMIN` ; `SERVICE` sur route interne seulement | Persiste une évaluation descriptive avec Brier/ECE. Les tableaux fournis étant déclaratifs et non résolus depuis les snapshots, le blocker `DECLARATIVE_EVALUATION_INPUT_NOT_LINKED_TO_SNAPSHOTS` est systématique ; aucun claim de production. |
 | `POST` | `/api/v1/admin/ml/governance/evaluation/labels` | `DATA_ANALYST`, `ADMIN` ; `SERVICE` sur route interne seulement | Évalue la maturité sans rendre les labels training-ready, persiste un audit corrélé et refuse les rôles commerciaux. |
 
@@ -922,7 +922,7 @@ components:
 
 Les stratégies implémentées sont `RuleBasedOpportunityStrategy` et `StatisticalOpportunityStrategy`. L’interface prépare une future `MLOpportunityStrategy`, sans appel GenAI dans la décision du MVP.
 
-Règles contractuelles des quatre opportunités :
+Règles contractuelles des cinq opportunités :
 
 | Type | Conditions minimales | Horizon |
 |---|---|---|
@@ -1428,3 +1428,43 @@ Le connecteur est configuré par `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMT
 ## Référence des notifications
 
 [13]: ./lots/LOT-06-NOTIFICATIONS-EMAIL.md "Rapport de validation du lot 6 — notifications email"
+
+
+## 22. Contrats implémentés — visibilité des flux multibancarisés
+
+### 22.1 Lecture client et déclaration autorisée
+
+`GET /api/v1/customers/{customerId}` et chaque élément de `GET /api/v1/customers` exposent désormais `bankingRelationship`, `bankingRelationshipDeclaration` et `flowVisibility`. `bankingRelationship` vaut `EXCLUSIVE`, `PRIMARY`, `SECONDARY` ou `UNKNOWN`. `flowVisibility.level` vaut `HIGH`, `PARTIAL`, `LOW` ou `UNKNOWN`; `estimatedShare` est un ratio nullable, `method` vaut `DECLARED`, `TURNOVER_RATIO`, `TRANSACTION_FINGERPRINTS` ou `NONE`, et `asOf` indique la date de référence. Les preuves détaillées restent structurées et datées.
+
+`GET /api/v1/customers/{customerId}?asOf=YYYY-MM-DD` applique une coupe temporelle stricte. La dernière relation déclarée avant la coupe et le dernier chiffre d’affaires dont la date métier est antérieure ou égale à la coupe sont résolus séparément ; une saisie future ne peut ni fuiter dans le passé, ni masquer un fait historique valide.
+
+`PUT /api/v1/customers/{customerId}/banking-relationship` accepte le corps suivant :
+
+```json
+{
+  "bankingRelationship": "SECONDARY",
+  "reason": "Relation secondaire confirmée lors de l’échange client",
+  "declaredTurnover": 51830454.88,
+  "declaredTurnoverAsOf": "2026-09-30"
+}
+```
+
+La route exige un `RELATIONSHIP_MANAGER` propriétaire du portefeuille ou le `BRANCH_MANAGER` de l’agence. Un CC hors portefeuille reçoit `403 CUSTOMER_OUTSIDE_PORTFOLIO` ; le changement est audité avec auteur, horodatage, motif et valeurs avant/après. Il ne remplace pas une source SI BOA et reste une déclaration autorisée de démonstration.
+
+### 22.2 Lacunes produit prudentes
+
+`GET /api/v1/customers/{customerId}/product-gaps` est exposé par le Gateway et réapplique le scope client côté Gateway puis Product Service. Pour une visibilité `PARTIAL` ou `LOW`, un produit non détenu chez BOA porte le statut `ABSENT_OR_ELSEWHERE`, le booléen `isGap=true` et le libellé « produit non détenu chez BOA (peut être détenu ailleurs) ». Le service n’affirme donc jamais que le client ne possède pas ce produit dans une autre banque.
+
+### 22.3 Dashboards et opportunités
+
+`GET /api/v1/dashboards/me` et `GET /api/v1/dashboards/branch` ajoutent `flowVisibility` à chaque ligne de portefeuille et `visibilityDistribution` au niveau agrégé. Le filtrage par visibilité dans le dashboard CC est local à la liste déjà limitée par le backend au portefeuille du CC ; il ne peut pas élargir le scope. Le dashboard agence conserve uniquement les PME des CC de l’agence et expose la répartition `HIGH/PARTIAL/LOW/UNKNOWN` ainsi que `FLOW_DOMICILIATION` dans les agrégats par type.
+
+Les opportunités `FLOW_DOMICILIATION` exposent `recommendationNature="WIN_BACK"` pour une visibilité `PARTIAL` ou `LOW`, les textes métier gouvernés, les preuves de méthode/part estimée et les produits précis du catalogue Cash Management. La priorité persistée reste `RULES_ONLY`, avec `rulesWeight=1` et `mlWeight=0` ; le score ML shadow est séparé et ne change pas ce classement.
+
+### 22.4 Seuils et limites
+
+Les seuils de part `0,70/0,30`, les pénalités `-10/-25/-5`, le minimum de deux empreintes sur 90 jours et le cooldown de 180 jours sont **HYPOTHÈSE À VALIDER AVEC BOA**. Une modification justifiée depuis l’administration crée une version inactive de politique ; seule la publication gouvernée de `FLOW_DOMICILIATION` l’active atomiquement. Le cooldown interroge uniquement les actions dont `opportunityType="FLOW_DOMICILIATION"`. Aucun compte d’une banque tierce, aucune donnée externe, aucun LLM et aucun GPU ne sont requis ou simulés. Le contrat produit une aide commerciale explicable, jamais une décision de crédit.
+
+## Référence de la visibilité des flux
+
+[14]: ./lots/LOT-15-MULTIBANCARISATION-VISIBILITE.md "Lot 15 — multibancarisation et visibilité des flux"

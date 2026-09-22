@@ -83,7 +83,7 @@ Cette table décrit les gardes d’écran, puis les routes API auxquelles l’é
 | `/back-office` et `/back-office/regles*` | `RuleStudioRoute` | `BUSINESS_ANALYST`, `RULE_APPROVER`, `ADMIN` | Rule Studio, versions, audit, simulation, cycle de vie | Séparation auteur/approbateur **IMPLÉMENTÉE** au Gateway et dans un E2E ciblé |
 | `/back-office/seuils` | `RoleRoute(['ADMIN'])` | `ADMIN` | `/api/v1/admin/engine` | Écran **IMPLÉMENTÉ** ; test de refus UI/API exhaustif **NON IDENTIFIÉ** |
 | `/back-office/modeles` | `RuleStudioRoute` | Auteur, approbateur, admin | modèles ML et gouvernance | **IMPLÉMENTÉ** ; labels/performance BOA **À VALIDER** |
-| `/back-office/studio-ml` | `MlStudioRoute` | `ML_STEWARD`, `RULE_APPROVER`, `ADMIN` | six onglets Studio ML ; entraînement, comparaison, politiques et audit selon rôle | **IMPLÉMENTÉ** ; tests unitaires frontend **PASS**, E2E Karim **NON EXÉCUTÉ** |
+| `/back-office/studio-ml` | `MlStudioRoute` | `ML_STEWARD`, `RULE_APPROVER`, `ADMIN` | six onglets Studio ML ; entraînement, comparaison, simulation, politiques et audit selon rôle | **IMPLÉMENTÉ et PROUVÉ** ; tests frontend et E2E multi-rôles Karim/Nadia/Youssef **PASS local** |
 | `/back-office/audit` | `RuleStudioRoute` | Auteur, approbateur, admin | audit Rule Studio | **IMPLÉMENTÉ** ; couverture objet et non-divulgation **À VALIDER** |
 | `/back-office/libelles` | `RoleRoute(['ADMIN'])` | `ADMIN` | lecture/mise à jour labels | **IMPLÉMENTÉ** ; tests ciblés de catalogue présents |
 | `/back-office/notifications` | `RoleRoute(['ADMIN'])` | `ADMIN` | notifications et digest subscriptions | **IMPLÉMENTÉ** ; tests de rôle du digest interne, couverture Gateway complète **À VALIDER** |

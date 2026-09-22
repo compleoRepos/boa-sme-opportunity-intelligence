@@ -71,7 +71,7 @@ Les mentions **HYPOTHÈSE À VALIDER AVEC BOA** signalent explicitement toute pr
 
 ### 14. Qui fixe les règles, les seuils et les pondérations, et peut-on les modifier sans trace ?
 
-**Réponse — IMPLÉMENTÉ et PROUVÉ pour la gouvernance de configuration.** Les règles et la Scoring Policy sont versionnées, simulables, soumises, approuvées et publiées avec séparation des rôles. Seule une policy `RULES_ONLY` peut être activée ; une version avec poids ML non nul est rejetée par l’API et PostgreSQL. Tout seuil ou poids BOA reste une **HYPOTHÈSE À VALIDER AVEC BOA**. Source : [`docs/business-rules.md`](../business-rules.md) et [`backend/src/boa_oi/scoring_policy/`](../../backend/src/boa_oi/scoring_policy/).
+**Réponse — IMPLÉMENTÉ et PROUVÉ pour la gouvernance de configuration.** Les règles et la Scoring Policy sont versionnées, simulables, soumises, approuvées et publiées avec séparation des rôles. La règle `FLOW_DOMICILIATION_001` est notamment seedée en `DRAFT`, simulée sur 500 PME synthétiques, soumise par un analyste et approuvée par un approbateur distinct ; l’auto-approbation est refusée. Seule une policy `RULES_ONLY` peut être activée ; une version avec poids ML non nul est rejetée par l’API et PostgreSQL. Tout seuil ou poids BOA reste une **HYPOTHÈSE À VALIDER AVEC BOA**. Source : [`docs/business-rules.md`](../business-rules.md), [`docs/lots/LOT-15-MULTIBANCARISATION-VISIBILITE.md`](../lots/LOT-15-MULTIBANCARISATION-VISIBILITE.md) et [`backend/src/boa_oi/scoring_policy/`](../../backend/src/boa_oi/scoring_policy/).
 
 ### 15. Comment limiter les faux positifs dus à la saisonnalité ou à un événement ponctuel ?
 
@@ -131,11 +131,11 @@ Les mentions **HYPOTHÈSE À VALIDER AVEC BOA** signalent explicitement toute pr
 
 ### 29. Que se passe-t-il si une source BOA est partielle, lente, dupliquée ou hors service ?
 
-**Réponse — IMPLÉMENTÉ dans les contrats de résilience, NON PROUVÉ sur les SI BOA.** Les imports disposent d’idempotence, corrélation, erreurs explicites, pagination et contrôles de fraîcheur ; une donnée inconnue, absente ou en erreur ne doit pas devenir silencieusement une absence commerciale. Les modes dégradés par source, seuils de fraîcheur et responsabilités de reprise sont **À VALIDER** avec les propriétaires BOA. Source : [`docs/industrialization-governance.md`](../industrialization-governance.md), [`docs/api.md`](../api.md) et [`docs/test-plan.md`](../test-plan.md).
+**Réponse — IMPLÉMENTÉ dans les contrats de résilience, NON PROUVÉ sur les SI BOA.** Les imports disposent d’idempotence, corrélation, erreurs explicites, pagination et contrôles de fraîcheur ; une donnée inconnue, absente ou en erreur ne devient pas silencieusement une absence commerciale. Pour la multibancarisation, le système applique `DECLARED`, puis `TURNOVER_RATIO`, puis `TRANSACTION_FINGERPRINTS`, sinon `UNKNOWN`. Il ne lit aucun compte d’une autre banque et formule une lacune `ABSENT_OR_ELSEWHERE`. Les modes dégradés par source, seuils de fraîcheur et responsabilités de reprise sont **À VALIDER** avec les propriétaires BOA. Source : [`docs/industrialization-governance.md`](../industrialization-governance.md), [`docs/api.md`](../api.md), [`docs/business-rules.md`](../business-rules.md) et [`docs/lots/LOT-15-MULTIBANCARISATION-VISIBILITE.md`](../lots/LOT-15-MULTIBANCARISATION-VISIBILITE.md).
 
 ### 30. Quel est le go/no-go défendable devant le comité aujourd’hui ?
 
-**Réponse — GO pour démontrer un POC `POC_SHADOW` synthétique ; NO-GO pour toute influence ML ou production BOA.** La readiness reste `BLOCKED` : historiques BOA, validation indépendante, DPO/Sécurité, HA, restauration, secrets de production et adaptateurs SI réels manquent. Aucun passage en production, décision de crédit, GPU ou LLM ne doit être inféré.
+**Réponse — GO pour démontrer un POC `POC_SHADOW` synthétique, y compris la visibilité multibancarisée prudente ; NO-GO pour toute influence ML ou production BOA.** La preuve locale montre 50 PME `LOW`, 50 `PARTIAL`, 100 opportunités `FLOW_DOMICILIATION` et 100 recommandations `WIN_BACK` sur 500 PME synthétiques. Elle ne démontre aucune donnée externe, performance commerciale ou politique BOA. La readiness reste `BLOCKED` : historiques BOA, validation indépendante, DPO/Sécurité, HA, restauration, secrets de production et adaptateurs SI réels manquent. Aucun passage en production, décision de crédit, GPU ou LLM ne doit être inféré.
 
 ## Points ouverts de comité
 

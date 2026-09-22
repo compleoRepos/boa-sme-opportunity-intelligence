@@ -1,6 +1,6 @@
 # Statut final de préparation pilote — BOA SME Opportunity Intelligence
 
-**Date :** 21 septembre 2026
+**Date :** 22 septembre 2026
 
 ## Décision
 
@@ -16,16 +16,17 @@ Le déploiement AWS est **hors périmètre à la demande du propriétaire du pro
 
 | Domaine | Statut | Résultat vérifié |
 |---|---|---|
-| Dépôt GitHub | **PASS** | dépôt public `compleoRepos/boa-sme-opportunity-intelligence`; branche `feat/pilot-readiness` publiée au commit catalogue `0b7b2b5`[10] |
+| Dépôt GitHub | **PASS — branche lot 15 publique** | dépôt public `compleoRepos/boa-sme-opportunity-intelligence`; branche `feat/multibank-visibility`, preuves rattachées au commit fonctionnel `7842902` |
 | Stack locale | **PASS** | 23 services définis ; lors du run final, 22 services étaient `healthy` et le worker de notification `running` sans healthcheck |
-| Tests backend | **PASS** | 259 tests unitaires ; 7 avertissements historiques non bloquants |
-| Frontend | **PASS** | TypeScript, build Vite et 27 tests Vitest répartis dans 7 fichiers |
-| E2E | **PASS** | 20/20 parcours Playwright en 3,7 minutes ; cas, statuts et durées versionnés[12] |
+| Tests backend | **PASS** | 283 tests unitaires ; 10 avertissements non bloquants |
+| Frontend | **PASS** | TypeScript, build Vite et 35 tests Vitest répartis dans 9 fichiers |
+| E2E | **PASS** | 24/24 parcours Playwright, 0 échec, 0 ignoré et 0 flaky en 107,7 secondes ; mode `DEV_PERSONA`, login navigateur Keycloak non exercé[16] |
 | Catalogue produit indicatif | **PASS local** | 28 produits publics, 7 familles, 6 produits Trade Finance, filtre famille, provenance, readiness, scope backend et rejet des codes/détentions inconnus[5][11] |
 | Migration catalogue | **PASS local** | `0001→0018`, `0017→0018`, downgrade `0018→0017` et ré-upgrade ; règles synthétiques bornées et règles utilisateur préservées[5] |
 | Charge 50 000 PME | **PASS dans le protocole isolé** | 50 000 clients, affectations et opportunités synthétiques ; tous les scénarios dotés d’un seuil passent ; les deux dashboards sans cible sont seulement mesurés[1] |
 | Ingestion gouvernée | **PASS local** | contrat versionné, manifeste, quarantaine, rejouabilité, conflit, catégorisation versionnée et claim concurrent atomique[2] |
 | ML shadow | **PASS pour le comportement shadow** | chaîne 500 PME, 500 observations shadow, zéro fallback ; priorité inchangée ; manifest et évaluation bloqués faute de labels BOA[3] |
+| Visibilité des flux | **PASS local synthétique** | 500 snapshots, trois méthodes actives exercées, règle `FLOW_DOMICILIATION` publiée avec séparation des rôles, 100 recommandations de reconquête, isolation hors portefeuille refusée en 403 et trois captures 1440 × 900[15][16] |
 | Backup/restore | **PASS local** | dump contrôlé, altération détectée, restauration isolée jusqu’à Alembic `0017`, nettoyage et sentinelle vérifiés[4] |
 | Readiness opérationnelle | **PASS local** | logs corrélés, métriques, liveness maintenue, readiness `503` lors de la panne DB puis récupération[4] |
 | Scans de sécurité | **EXÉCUTION PASS / RELEASE BLOCKED** | Gitleaks sans secret, audits de dépendances exécutés, images applicatives à 0 `HIGH`/`CRITICAL`, images externes à 25 `HIGH` et 4 `CRITICAL`[6] |
@@ -53,17 +54,17 @@ Les protocoles 50 000 PME et 500 PME prouvent des exécutions locales synthétiq
 6. **ML :** les outcomes actuels restent des labels candidats. Sans labels historiques BOA matures, dataset temporel approuvé, calibration et validation indépendante, toute promotion ou influence commerciale reste bloquée.[3]
 7. **Conformité :** finalité, minimisation, conservation, base de traitement, résidence, habilitations et procédures d’incident doivent être approuvées par les fonctions BOA compétentes.
 
-## Évolution Studio ML demandée en parallèle
+## Évolutions Studio ML et visibilité des flux
 
-Le chantier Studio ML premium reste absent de `feat/pilot-readiness`, dont la clôture `a8a843e` demeure inchangée. La branche séparée `feat/ml-studio-parallel` contient désormais l’entraînement CPU gouverné, les contrats API et le frontend en six onglets, fusionnés avec le catalogue et validés localement : 266 tests backend, 31 tests frontend et migration PostgreSQL `0019`.[14]
+La branche `feat/ml-studio-parallel` a livré le Studio ML gouverné : entraînement CPU `DEMO_ONLY`, registre et comparaison de modèles, simulation serveur auditée, séparation des rôles Karim/Nadia/Youssef, sept captures 1440 × 900 et E2E multi-rôles. Cette implémentation ne change pas la priorité opérationnelle : `POC_SHADOW`, `RULES_ONLY`, `rules_weight=1`, `ml_weight=0`. Sans labels historiques BOA, validation indépendante G3 et décision formelle, toute promotion réelle reste bloquée.[14]
 
-Cette branche d’aperçu reste **BLOCKED** : l’E2E Karim et la capture 1440 px ne sont pas produits, la simulation d’impact retourne explicitement `501 NOT_IMPLEMENTED`, les labels historiques BOA sont absents et la release globale reste `BLOCKED_IMAGE_CVES`. Elle ne doit pas être présentée comme un Studio ML homologué, une activation ML ou une capacité de production.
+La branche `feat/multibank-visibility` ajoute la visibilité `HIGH/PARTIAL/LOW/UNKNOWN`, l’historique point-in-time des déclarations, la règle gouvernée `FLOW_DOMICILIATION`, la requalification `ABSENT_OR_ELSEWHERE`, les vues CC/agence et les seuils versionnés. Le run final lié à `7842902` produit 500 snapshots après recalcul intégral avec exclusion stricte de tout statut autre que `BOOKED` : 0 `HIGH`, 50 `PARTIAL`, 50 `LOW` et 400 `UNKNOWN`; les trois méthodes actives sont exercées. Cette distribution et tous les volumes sont exclusivement synthétiques ; les paramètres 0,70/0,30, -10/-25/-5, deux empreintes et 180 jours sont **HYPOTHÈSE À VALIDER AVEC BOA**.[15][16]
 
 ## Décision d’usage
 
 **GO** pour une démonstration locale sur données synthétiques, une revue architecture/sécurité, une recette des parcours et la préparation d’un pilote contrôlé.
 
-**NO-GO** pour une release sur `main`, un déploiement de production, un branchement aux données BOA réelles, une activation ML ou une présentation du Studio ML comme livré tant que les blocages ci-dessus ne sont pas levés. Le plan pilote d’une agence, cinq chargés de clientèle et douze semaines demeure une **proposition à valider avec BOA**, et non une volumétrie ou un engagement approuvé.[9]
+**NO-GO** pour une release bancaire de production, un branchement aux données BOA réelles ou une activation ML tant que les blocages ci-dessus ne sont pas levés. Le déploiement de démonstration sur Cloud Computer n’est ni une homologation ni une cible BOA. Le plan pilote d’une agence, cinq chargés de clientèle et douze semaines demeure une **proposition à valider avec BOA**, et non une volumétrie ou un engagement approuvé.[9]
 
 ## Références
 
@@ -81,3 +82,5 @@ Cette branche d’aperçu reste **BLOCKED** : l’E2E Karim et la capture 1440 p
 [12]: evidence/catalog/RESULTATS-PLAYWRIGHT-CATALOGUE.json "Résultats détaillés des vingt E2E"
 [13]: evidence/closure/RESULTATS-CLOTURE-PILOTE.json "Preuve consolidée de clôture pilote"
 [14]: lots/LOT-14-STUDIO-ML-APERÇU.md "Lot 14 — aperçu gouverné du Studio ML"
+[15]: lots/LOT-15-MULTIBANCARISATION-VISIBILITE.md "Lot 15 — multibancarisation et visibilité des flux"
+[16]: evidence/visibility/RESULTATS-VISIBILITE.json "Preuve lot 15 — visibilité, oracles et Playwright"

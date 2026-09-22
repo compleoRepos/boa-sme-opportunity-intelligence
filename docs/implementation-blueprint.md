@@ -32,7 +32,7 @@ La trajectoire retenue privilégie l’exécution vérifiable. Le flux cible est
 | Horizon du stress | `FINANCIAL_STRESS_SIGNAL` porte `horizon = 0-1_MONTH` et le libellé « signal relationnel à examiner ». | `architecture.md` mentionne `0-1_MONTH`, l’API et les règles indiquent `0-1_MONTH`. | Aucun champ, libellé ou test ne parle de score de risque, score de crédit, probabilité de défaut ou décision de crédit. |
 | Produits | Product Service possède catalogue et détention de produits. Customer Service ne duplique pas le catalogue. | Certains endpoints client suggèrent une ownership ambiguë. | `customer_products` appartient au schéma `product`; le Customer 360 compose via API. |
 | Données de démonstration | Le générateur crée clients, comptes, transactions, soldes, produits détenus et règles, mais **zéro opportunité** avant moteur. | Le besoin interdit les opportunités hardcodées. | Un contrôle de seed échoue si `opportunity.opportunities` n’est pas vide avant calcul. |
-| GenAI et ML | Aucun LLM, aucun modèle ML et aucun scoring opaque dans le moteur du MVP. | La roadmap future peut prêter à confusion. | Les quatre opportunités sont produites par règles déterministes et statistiques descriptives auditables. |
+| GenAI et ML | Aucun LLM et aucun scoring ML n’influencent le moteur opérationnel du MVP. | La roadmap future peut prêter à confusion. | Les cinq opportunités sont produites par règles déterministes et statistiques descriptives auditables ; le ML classique reste `POC_SHADOW`. |
 
 ## 3. Bounded contexts et responsabilités exécutables
 
@@ -192,7 +192,7 @@ La construction doit suivre un ordre strict, car plusieurs risques proviennent d
 | 4 | Intégration et seed | Implémenter Banking Integration et Demo Data Generator via HTTP. | 500 PME, 12 mois, secteurs et scénarios présents ; zéro opportunité préchargée. |
 | 5 | Analytics | Calculer métriques, fenêtres, baselines, qualité et saisonnalité simple. | UT métriques et IT recompute sur seed. |
 | 6 | Signaux | Évaluer signaux atomiques avec règles versionnées et preuves. | UT par signal, FP de base, CT signal. |
-| 7 | Opportunités | Générer les quatre opportunités, confidence, priorité, explication et audit. | BR-001 à BR-012 et CT `/explanation`. |
+| 7 | Opportunités | Générer les cinq opportunités, confiance, priorité, explication et audit. | BR-001 à BR-012, visibilité multibancarisée et CT `/explanation`. |
 | 8 | Actions et feedback | Créer Action Service, outcomes, idempotence, projections de statut. | E2E action → contact → conversion et audit. |
 | 9 | Frontend complet | Dashboard, opportunités, Customer 360, signaux, actions, produits, admin. | E2E principal et tests de filtres/recherche/pagination. |
 | 10 | Observabilité, sécurité et CI | Logs, métriques, traces, scans, rate limiting, tests de charge raisonnables. | CI verte, aucune vulnérabilité critique, OPS visible. |

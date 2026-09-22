@@ -1,0 +1,96 @@
+{
+  "schemaVersion": "1.0",
+  "runId": "visibility-migration-20260922T003912Z",
+  "generatedAt": "2026-09-22T00:39:12Z",
+  "status": "PASS",
+  "scope": "LOCAL_ISOLATED_POSTGRESQL_VISIBILITY_MIGRATION",
+  "sourceRevision": {
+    "baseCommit": "78429027c960dfe91a1d41adac3bcdf3df7807c9",
+    "branch": "feat/multibank-visibility",
+    "workingTreeState": "DIRTY",
+    "sourceDigest": "c95af9d9035e583d4f3a5937d43e5a39d9d79a9d5802cefe77e802acbdace824",
+    "digestMethod": "sha256(concatenated sha256sum output in listed order)",
+    "files": [
+      "backend/src/boa_oi/models/entities.py",
+      "database/migrations/versions/0001_initial.py",
+      "database/migrations/versions/0020_multibank_visibility.py",
+      "scripts/validate-visibility-migration.sh"
+    ]
+  },
+  "environment": {
+    "postgresImage": "postgres:16.15-alpine@sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb",
+    "postgresVersion": "16.15",
+    "alembicVersion": "1.20.0",
+    "existingDatabase": "boa_visibility_existing_545480",
+    "freshDatabase": "boa_visibility_fresh_545480",
+    "serviceRolesAndOwnedSchemasBootstrapped": true,
+    "temporaryContainerAndDatabasesRemovedOnExit": true
+  },
+  "matrix": {
+    "uniqueAlembicHead": {
+      "from": "revision graph",
+      "to": "0020_multibank_visibility",
+      "status": "PASS"
+    },
+    "blankDatabaseToHead": {
+      "from": "blank",
+      "to": "0020_multibank_visibility",
+      "status": "PASS"
+    },
+    "existingDatabaseUpgrade": {
+      "from": "0019_ml_studio_catalog_merge",
+      "to": "0020_multibank_visibility",
+      "status": "PASS"
+    },
+    "downgrade": {
+      "from": "0020_multibank_visibility",
+      "to": "0019_ml_studio_catalog_merge",
+      "status": "PASS"
+    },
+    "reupgrade": {
+      "from": "0019_ml_studio_catalog_merge",
+      "to": "0020_multibank_visibility",
+      "status": "PASS"
+    }
+  },
+  "oracles": {
+    "schema": {
+      "pre0020ObjectsAbsent": "PASS",
+      "all0020ColumnsAdded": "PASS",
+      "visibilityTablesIndexesAndConstraintsAdded": "PASS",
+      "all0020ObjectsRemovedOnDowngrade": "PASS",
+      "all0020ObjectsRestoredOnReupgrade": "PASS"
+    },
+    "data": {
+      "flowDomiciliationRuleSeed": "PASS",
+      "selfTransferCategorySeed": "PASS",
+      "inactiveAntiLeakageFeatureSetSeed": "PASS",
+      "migrationOwnedSeedsRemovedOnDowngrade": "PASS",
+      "migrationOwnedSeedsRestoredOnReupgrade": "PASS",
+      "userControlledSentinelsPreservedAcrossCycle": "PASS",
+      "protectedDowngradeFailsClosed": "PASS"
+    },
+    "privileges": {
+      "explicitSelectAndDmlGrantsAfterUpgrade": "PASS",
+      "deniedDeleteAndExcessInsert": "PASS",
+      "crossSchemaUsageGrantsAfterUpgrade": "PASS",
+      "explicitRevokesAfterDowngrade": "PASS",
+      "grantsRestoredOnReupgrade": "PASS"
+    }
+  },
+  "invariants": {
+    "operatingMode": "POC_SHADOW",
+    "scoringMode": "RULES_ONLY",
+    "rulesWeight": 1,
+    "mlWeight": 0,
+    "creditDecisioning": false,
+    "llmOrGpuUsed": false,
+    "boaAssumptionsExplicit": true
+  },
+  "limitations": [
+    "Validation locale sur un conteneur PostgreSQL isolé et des sentinelles synthétiques uniquement; aucune donnée BOA réelle.",
+    "La matrice valide DDL, seeds déterministes, conservation de sentinelles et privilèges SQL; elle ne mesure ni charge, ni concurrence de migration, ni réplication.",
+    "Le downgrade destructif est refusé tant que des données métier 0020 sont présentes; leur export ou suppression gouvernée reste une précondition explicite.",
+    "Les invariants POC_SHADOW, RULES_ONLY, rules_weight=1 et ml_weight=0 sont des contraintes du lot consignées ici; cette matrice de migration ne remplace pas les tests applicatifs dédiés."
+  ]
+}

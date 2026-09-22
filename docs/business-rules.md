@@ -24,7 +24,7 @@ Le moteur ne doit pas utiliser de LLM ou de contenu génératif pour décider qu
 
 1. **Même entrée, même version, même sortie.** Une exécution reproductible utilise le même instant de coupure, les mêmes données, la même configuration et la même version d’algorithme.
 2. **Les règles sont configurables, non dispersées dans l’interface.** Les seuils, fenêtres, poids et activations sont portés par une configuration versionnée du moteur.
-3. **Une tendance exige plusieurs observations.** Un événement isolé ne suffit pas à produire une opportunité, sauf lorsque la règle est explicitement conçue pour un événement ponctuel et que cette exception est auditée. Aucune des quatre règles du MVP n’utilise cette exception.
+3. **Une tendance exige plusieurs observations.** Un événement isolé ne suffit pas à produire une opportunité, sauf lorsque la règle est explicitement conçue pour un événement ponctuel et que cette exception est auditée. Aucune des cinq règles du MVP n’utilise cette exception.
 4. **La comparaison historique prime sur la comparaison naïve.** Une variation par rapport à la période précédente est confrontée à une base historique et, lorsque cela est possible, au comportement saisonnier du client.
 5. **La qualité des données est une condition de décision.** Une donnée absente, trop récente, dupliquée ou incomplète peut empêcher la création d’une opportunité ou la réduire à un signal à examiner.
 6. **L’explication est une sortie obligatoire.** Toute opportunité expose les éléments `WHY`, `WHAT`, `WHEN`, `CONFIDENCE` et `EVIDENCE`, ainsi que les valeurs observées, les seuils et les comparaisons utilisées.
@@ -107,7 +107,7 @@ Les catégories et l’identification des fournisseurs doivent être produites p
 
 ### 4.1 Métriques de croissance et de fréquence
 
-Une métrique de croissance est calculée sur `90D` pour les quatre règles, sauf configuration documentée. Le moteur utilise simultanément `growthRate`, `baselineDelta` et le niveau absolu. Une croissance de 30 % sur une base proche de zéro est donc insuffisante si elle ne franchit pas le `denominatorFloor` et ne présente pas un niveau absolu significatif.
+Une métrique de croissance est calculée sur `90D` pour les règles qui l’utilisent, sauf configuration documentée. Le moteur utilise simultanément `growthRate`, `baselineDelta` et le niveau absolu. Une croissance de 30 % sur une base proche de zéro est donc insuffisante si elle ne franchit pas le `denominatorFloor` et ne présente pas un niveau absolu significatif.
 
 La fréquence internationale est « croissante » lorsque les deux conditions suivantes sont vraies :
 
@@ -145,7 +145,7 @@ Le paramètre `k` est versionné. Avec moins de six observations comparables, la
 
 ### 5.4 Cas de saisonnalité connue
 
-Les profils peuvent déclarer des mois ou périodes saisonniers, par exemple décembre pour le commerce. Cette déclaration ne supprime pas l’analyse : elle impose une comparaison à la baseline saisonnière et exige une persistance supérieure à celle d’un mois normal. Une hausse saisonnière attendue peut générer un signal descriptif, mais ne déclenche aucune des quatre opportunités sans dépassement de la baseline ajustée.
+Les profils peuvent déclarer des mois ou périodes saisonniers, par exemple décembre pour le commerce. Cette déclaration ne supprime pas l’analyse : elle impose une comparaison à la baseline saisonnière et exige une persistance supérieure à celle d’un mois normal. Une hausse saisonnière attendue peut générer un signal descriptif, mais ne déclenche aucune des cinq opportunités sans dépassement de la baseline ajustée.
 
 ## 6. Détection des signaux
 
@@ -178,7 +178,7 @@ Un signal passe à l’état `CONFIRMED` si la condition est vraie dans la fenê
 
 Les signaux identiques pour un même client, type, fenêtre et `asOfDate` sont dédupliqués par une clé idempotente. Une nouvelle version de configuration peut créer une nouvelle décision, mais ne modifie pas le signal audité précédemment.
 
-## 7. Les quatre règles d’opportunité du MVP
+## 7. Les cinq règles d’opportunité du MVP
 
 Les règles sont évaluées sur un snapshot cohérent de données. Une règle ne lit pas directement la base transactionnelle ; elle consomme les métriques et signaux versionnés du service d’analytics et du Signal Detection Service.
 
@@ -251,6 +251,25 @@ La baisse des encaissements ou du solde doit être confirmée par la baseline hi
 
 **Preuves attendues :** baisse des encaissements ou du solde, évolution de l’utilisation de ligne, historique de la tendance, couverture de données et éventuels événements explicatifs.
 
+### Règle E — `FLOW_DOMICILIATION`
+
+**Horizon :** `1-3_MONTHS`
+**Finalité :** détecter une relation bancaire potentiellement multibancarisée lorsque la part de flux estimée chez BANK OF AFRICA est partielle ou faible, puis proposer une démarche de domiciliation des flux. Il s’agit d’une aide commerciale, jamais d’une décision de crédit.
+
+Le moteur calcule un `flowVisibilityLevel` parmi `HIGH`, `PARTIAL`, `LOW` et `UNKNOWN`. Il applique la hiérarchie de méthodes `DECLARED` → `TURNOVER_RATIO` → `TRANSACTION_FINGERPRINTS` → `UNKNOWN`. Une déclaration explicite autorisée prévaut ; à défaut, le ratio `encaissements BOA 12 mois / chiffre d’affaires déclaré` est utilisé si les deux valeurs sont datées et exploitables ; à défaut, des empreintes transactionnelles agrégées peuvent fournir une estimation prudente. Les textes de recommandation sont : « Part de flux estimée faible ou partielle chez BANK OF AFRICA : proposer la domiciliation des flux et des salaires. » et « Contacter dans les 1 à 3 mois. »
+
+| Condition obligatoire | Critère initial configurable |
+|---|---:|
+| visibilité des flux | `flowVisibilityLevel IN (PARTIAL, LOW)` |
+| non-répétition | aucune action `FLOW_DOMICILIATION` récente dans la fenêtre de cooldown |
+| corroboration | croissance des encaissements BOA, hausse des empreintes 90 jours ou croissance du chiffre d’affaires déclaré |
+
+Les produits suggérés appartiennent exclusivement au catalogue public indicatif : `BOA_PACK_BUSINESS_PME`, `BOA_BUSINESS_ONLINE`, `BOA_VIREMENT_MASSE` et `BOA_PRELEVEMENT_MASSE`. Lorsque la visibilité est `PARTIAL` ou `LOW`, la nature de recommandation est `WIN_BACK`. L’absence de produit chez BOA est formulée `ABSENT_OR_ELSEWHERE`, car le produit peut être détenu dans une autre banque. À visibilité `LOW`, `CASH_INVESTMENT` est supprimée ; à visibilité `PARTIAL`, la priorité et la confiance sont pénalisées. Les règles sensibles sont désactivées lorsque la visibilité est insuffisante.
+
+> **HYPOTHÈSE À VALIDER AVEC BOA.** Les seuils `HIGH >= 0,70`, `LOW < 0,30`, les pénalités `-10/-25/-5`, le minimum de deux empreintes sur 90 jours et le cooldown de 180 jours sont des paramètres de démonstration synthétique. Ils ne sont ni des politiques commerciales approuvées, ni des constats sur la clientèle BOA.
+
+Ces paramètres sont versionnés. Une édition justifiée crée une politique inactive ; elle ne devient effective qu’avec la publication gouvernée de la version Rule Studio `FLOW_DOMICILIATION`. Le cooldown actif porte sur les actions dont `opportunityType` vaut exactement `FLOW_DOMICILIATION`, sans recherche dans une note en texte libre.
+
 ## 8. Conditions communes de génération
 
 Une opportunité est créée seulement si :
@@ -297,7 +316,7 @@ Le MVP utilise une stratégie hybride **règles + statistiques descriptives robu
 3. construire la baseline médiane et la dispersion historique ;
 4. ajuster la comparaison pour la saisonnalité ;
 5. détecter les signaux atomiques ;
-6. appliquer les quatre règles avec leurs conditions obligatoires ;
+6. appliquer les cinq règles avec leurs conditions obligatoires ;
 7. calculer la confidence explicable ;
 8. calculer la priorité ;
 9. produire l’explication et l’audit.
@@ -512,7 +531,7 @@ Le moteur est conforme au MVP lorsque :
 
 1. chaque décision est reproductible avec les mêmes entrées et versions ;
 2. les fenêtres `7D`, `30D`, `90D`, `180D` et `365D` sont disponibles ;
-3. les quatre règles sont évaluées sans logique de décision dans le frontend ;
+3. les cinq règles sont évaluées sans logique de décision dans le frontend ;
 4. une saisonnalité connue et un événement ponctuel ne déclenchent pas automatiquement une opportunité ;
 5. chaque sortie contient `WHY`, `WHAT`, `WHEN`, `CONFIDENCE` et `EVIDENCE` ;
 6. le score de confidence et la priorité sont décomposables ;
@@ -535,7 +554,7 @@ Ce document reprend et précise les exigences fonctionnelles et de gouvernance d
 
 ## Décision finale — vocabulaire et transport
 
-Les quatre types sont `INVESTMENT_FINANCING`, `TRADE_FINANCE`, `CASH_INVESTMENT` et `FINANCIAL_STRESS_SIGNAL`. Ce dernier est un signal relationnel à examiner et ne constitue ni un risque, ni une probabilité de défaut, ni une décision de crédit. Les seuils sont des configurations versionnées ; les produits sont résolus par Product Service.
+Les cinq types sont `INVESTMENT_FINANCING`, `TRADE_FINANCE`, `CASH_INVESTMENT`, `FINANCIAL_STRESS_SIGNAL` et `FLOW_DOMICILIATION`. `FINANCIAL_STRESS_SIGNAL` est un signal relationnel à examiner ; `FLOW_DOMICILIATION` est une aide de conquête ou reconquête commerciale. Aucun ne constitue un risque, une probabilité de défaut ou une décision de crédit. Les seuils sont des configurations versionnées ; les produits sont résolus par Product Service.
 
 Le chemin MVP est HTTP + outbox locale. Les actions utilisent `ACCEPT_OPPORTUNITY` et `DISMISS_OPPORTUNITY`.
 
@@ -618,7 +637,7 @@ Les valeurs initiales suivantes sont des **hypothèses de configuration du pilot
 | À revoir | `deferredCooldownDays` | 30 jours, ou date explicite choisie par le CC |
 | Expiration | `expiredCooldownDays` | 7 jours |
 
-La validité initiale est de 90 jours pour `INVESTMENT_FINANCING` et `TRADE_FINANCE`, 60 jours pour `CASH_INVESTMENT` et 30 jours pour `FINANCIAL_STRESS_SIGNAL`. Ces valeurs sont enregistrées avec la version de règle. Une modification crée une nouvelle version gouvernée dans Rule Studio.
+La validité initiale est de 90 jours pour `INVESTMENT_FINANCING`, `TRADE_FINANCE` et `FLOW_DOMICILIATION`, 60 jours pour `CASH_INVESTMENT` et 30 jours pour `FINANCIAL_STRESS_SIGNAL`. Ces valeurs sont enregistrées avec la version de règle. Une modification crée une nouvelle version gouvernée dans Rule Studio.
 
 ### 22.4 Historique transactionnel minimal
 
