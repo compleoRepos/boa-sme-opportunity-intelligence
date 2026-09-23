@@ -49,7 +49,9 @@ worktree_findings=$(jq 'length' "$WORK_DIR/gitleaks-worktree.json")
 history_findings=$(jq 'length' "$WORK_DIR/gitleaks-history.json")
 [[ "$worktree_findings" -eq 0 ]]
 [[ "$history_findings" -eq 0 ]]
-history_commits=$(git -C "$PROJECT_ROOT" rev-list --count HEAD)
+# Gitleaks scans every reachable ref in the autonomous clone and reports
+# non-merge commits in its "commits scanned" counter.
+history_commits=$(git -C "$HISTORY_REPOSITORY" rev-list --all --no-merges --count)
 
 python3 -m venv "$VENV_DIR"
 "$VENV_DIR/bin/python" -m pip install --disable-pip-version-check --quiet --upgrade pip
