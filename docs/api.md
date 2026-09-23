@@ -1,5 +1,7 @@
 # Contrats API-first — BOA SME Opportunity Intelligence
 
+**Révision fonctionnelle Lot 16 associée à cette mise à jour :** `9c8edc1f09ce7e545c71856ce430b1e2d89dd73d`
+
 **Statut :** contrat cible du MVP  
 **Version du contrat :** `1.7.0`
 **Préfixe public :** `/api/v1`  
@@ -1468,3 +1470,14 @@ Les seuils de part `0,70/0,30`, les pénalités `-10/-25/-5`, le minimum de deux
 ## Référence de la visibilité des flux
 
 [14]: ./lots/LOT-15-MULTIBANCARISATION-VISIBILITE.md "Lot 15 — multibancarisation et visibilité des flux"
+
+
+## 23. Contrats implémentés — Financial Intelligence B2B
+
+La surface `/api/v1/financial-intelligence/**` est read-only, protégée par OIDC et exclusivement ouverte au rôle `EXTERNAL_CONSUMER` sans `ADMIN` ni `SERVICE`, y compris dans un token mixte. Elle exige un `client_id` OAuth non vide, des scopes explicites et un grant sujet/client portant la finalité `SYNTHETIC_PORTFOLIO_MONITORING`. `asOf` est obligatoire. Le catalogue portfolio est paginé ; une composition est limitée à 500 PME avec fan-out borné.
+
+Les endpoints exposent le catalogue autorisé, le résumé portfolio et cinq projections société : summary, signals, opportunities, cash-position et flow-summary. Ils composent les contrats propriétaires ; ils n’accèdent pas directement aux tables Customer, Transaction, Analytics, Signal, Opportunity ou Portfolio. Le bearer externe n’est pas propagé aux domaines internes.
+
+Chaque enveloppe `fi.v1` expose provenance, statuts par source, partialité, version de calcul, `traceId`, compte d’appels downstream et `mlGovernanceStatus`. `POC_SHADOW`, `rulesWeight=1` et `mlWeight=0` ne sont attestés que si Portfolio retourne un objet correctement typé, sans champ inconnu, qui confirme l’ensemble cohérent ; un payload malformé est refusé en `502`, tandis qu’une source absente laisse ces champs à `null`. La propension respecte `score.as_of_date <= asOf`, la fenêtre `valid_until` du score et exclut les opportunités futures ou expirées de son score rules-only ; une sélection de visibilité datée exclut les snapshots futurs. FI rebornne localement les lignes Signal/Opportunity sur `[asOf-364 jours, asOf]`. Les statuts courants Signal/Opportunity ne sont pas présentés comme historiques : `status=null` et `stateAsOfStatus=NOT_IMPLEMENTED`, ce qui rend la réponse partielle. Aucune transaction brute, IBAN, compte ou contrepartie n’est sérialisé.
+
+Le contrat détaillé, les scopes, erreurs et exemples sont décrits dans [`financial-intelligence-api.md`](financial-intelligence-api.md). L’autorisation et le modèle de menace sont décrits dans [`financial-intelligence-security.md`](financial-intelligence-security.md) et [`financial-intelligence-threat-model.md`](financial-intelligence-threat-model.md).

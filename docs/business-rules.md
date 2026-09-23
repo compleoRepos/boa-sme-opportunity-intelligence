@@ -1,5 +1,7 @@
 # Moteur déterministe d’intelligence d’opportunités
 
+**Révision fonctionnelle Lot 16 associée à cette mise à jour :** `9c8edc1f09ce7e545c71856ce430b1e2d89dd73d`
+
 **Produit :** BOA SME Opportunity Intelligence  
 **Statut :** spécification métier du MVP  
 **Version du document :** 1.2.0
@@ -665,3 +667,16 @@ Action Service persiste la commande de transition avant l’appel distant. Les �
 
 [7]: ./api.md "Contrats API-first — cycle de vie Opportunity"
 [8]: ./lots/LOT-02-LIFECYCLE-OPPORTUNITY-ACTIONS.md "Rapport de validation du lot 2"
+
+## 23. Règles Financial Intelligence B2B
+
+1. FI est une capacité de lecture et de composition ; elle ne crée ni signal, ni opportunité, ni priorité, ni décision de crédit.
+2. Seul `EXTERNAL_CONSUMER` est admis ; `ADMIN`, `SERVICE` et les combinaisons du rôle externe avec un rôle privilégié sont refusés sur FI. Le rôle externe seul reste insuffisant : accès = sujet + client OAuth obligatoire + scopes explicites token ∩ Consumer ∩ grants actifs + finalité `SYNTHETIC_PORTFOLIO_MONITORING` + membership Portfolio/Company.
+3. `asOf` est obligatoire ; aucune date implicite n’est fabriquée. Une propension n’est admissible que si `score.as_of_date <= asOf` et si `valid_until` est nul ou supérieur ou égal à `asOf`; aucune opportunité générée après la fin de journée `asOf` ou déjà expirée à cette borne ne peut influencer sa priorité rules-only. Lorsqu’une date est fournie à la sélection de visibilité, tout snapshot futur est exclu.
+4. Les transactions non `BOOKED` restent exclues par Analytics.
+5. Une dépendance indisponible ou une capacité non implémentée produit une réponse partielle explicite ; aucune valeur par défaut ou fixture frontend n’est autorisée.
+6. Les opportunités restituées sont celles du domaine Opportunity et conservent leurs preuves, versions et politique de scoring. FI applique localement la fenêtre `[asOf-364 jours, asOf]` aux lignes Signal/Opportunity. Leur statut courant n’est pas un état historique : FI renvoie `status=null` et `stateAsOfStatus=NOT_IMPLEMENTED`.
+7. Le ML reste `POC_SHADOW`, avec `rulesWeight=1` et `mlWeight=0`; il n’influence aucune priorité FI. Ces valeurs ne sont attestées que si Portfolio les confirme toutes ; sinon elles restent `null` avec `mlGovernanceStatus=UNAVAILABLE`.
+8. Les IBAN, comptes, transactions, contreparties et narratifs bruts sont interdits dans le contrat `fi.v1`.
+9. Un objet inconnu et un objet hors périmètre renvoient le même `404`.
+10. Le dataset, les personas, les portfolios, les grants, les seuils et les SLO du lot sont synthétiques ou **HYPOTHÈSE À VALIDER AVEC BOA**.

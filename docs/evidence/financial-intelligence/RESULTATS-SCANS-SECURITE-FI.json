@@ -1,0 +1,113 @@
+{
+  "runId": "security-scans-20260923T160334Z-3098744",
+  "generatedAt": "2026-09-23T16:10:04Z",
+  "status": "BLOCKED",
+  "scanExecutionStatus": "PASS",
+  "releaseStatus": "BLOCKED_IMAGE_CVES",
+  "scope": "LOCAL_SYNTHETIC_SECURITY_SCANS",
+  "sourceRevision": {
+    "baseCommit": "9c8edc1f09ce7e545c71856ce430b1e2d89dd73d",
+    "sourceDigest": "936d36f03fbb6385a5504870d916d742cec536ab2b153727ce4ffbca0f86b9e2",
+    "digestScope": "security",
+    "digestManifest": "SOURCE-MANIFEST-FI.json",
+    "digestAlgorithm": "SHA-256 of the explicit ordered security input list"
+  },
+  "tools": {
+    "gitleaks": "zricethezav/gitleaks:v8.21.2",
+    "trivy": "aquasec/trivy:0.58.1"
+  },
+  "secrets": {
+    "worktreeFindings": 0,
+    "historyCommits": 48,
+    "historyFindings": 0
+  },
+  "dependencies": {
+    "python": {
+      "audited": 66,
+      "knownVulnerabilities": 0
+    },
+    "frontend": {
+      "audited": 270,
+      "info": 0,
+      "low": 0,
+      "moderate": 2,
+      "high": 0,
+      "critical": 0
+    }
+  },
+  "images": {
+    "application": {
+      "backend": {
+        "baseImage": "python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9",
+        "osFamily": "debian",
+        "osName": "13.7",
+        "high": 52,
+        "critical": 0,
+        "withUpstreamFix": 0,
+        "withoutUpstreamFix": 52
+      },
+      "frontend": {
+        "buildImage": "node:22-alpine@sha256:b6f26b36c8ff49624cfdac716b8ea1138d606df02586a77d364bb5536a634f85",
+        "runtimeImage": "nginxinc/nginx-unprivileged:stable-alpine@sha256:daa17b944bac2b578e962da4c61ad72a59233b3c63abea17113acaf4e6b9aea4",
+        "osFamily": "alpine",
+        "osName": "3.24.1",
+        "high": 0,
+        "critical": 0,
+        "withUpstreamFix": 0,
+        "withoutUpstreamFix": 0
+      }
+    },
+    "external": {
+      "items": [
+        {
+          "image": "postgres:16.15-alpine@sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb",
+          "osFamily": "alpine",
+          "osName": "3.24.2",
+          "high": 21,
+          "critical": 1,
+          "withUpstreamFix": 22,
+          "withoutUpstreamFix": 0
+        },
+        {
+          "image": "quay.io/keycloak/keycloak:26.7.4@sha256:82a77884f3af238beab1e7afd63b5f530e1b5c0590bd7aa60b40a40463e29b2c",
+          "osFamily": "redhat",
+          "osName": "9.8",
+          "high": 7,
+          "critical": 3,
+          "withUpstreamFix": 6,
+          "withoutUpstreamFix": 4
+        },
+        {
+          "image": "docker.io/axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+          "osFamily": "alpine",
+          "osName": "3.24.2",
+          "high": 0,
+          "critical": 0,
+          "withUpstreamFix": 0,
+          "withoutUpstreamFix": 0
+        }
+      ],
+      "summary": {
+        "high": 28,
+        "critical": 4,
+        "withUpstreamFix": 28,
+        "withoutUpstreamFix": 4
+      }
+    }
+  },
+  "checks": {
+    "gitleaksWorktree": "PASS",
+    "gitleaksHistory": "PASS",
+    "pipAudit": "PASS",
+    "npmHighCritical": "PASS",
+    "trivyApplicationImagesNoKnownUpstreamFix": "PASS",
+    "externalImagesPinnedAndScanned": "PASS",
+    "releaseImageGate": "BLOCKED"
+  },
+  "limitations": [
+    "Les bases de vulnérabilités reflètent leur état au moment du run et doivent être rescannées régulièrement.",
+    "Toutes les CVE HIGH/CRITICAL detectees sont visibles et bloquent le statut release; aucune exclusion --ignore-unfixed n est appliquee. Un FixedVersion Trivy indique une correction de composant connue, pas necessairement un digest d image amont deja publie et valide.",
+    "Deux avis MODERATE concernent Vitest, dépendance de développement; ils ne sont pas masqués et restent une dette à traiter.",
+    "Ces scans automatisés ne remplacent ni pentest, ni revue de configuration de la cible BOA, ni analyse de menace, ni signature/SBOM des artefacts publies."
+  ]
+}

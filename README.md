@@ -1,5 +1,6 @@
 # BOA SME Opportunity Intelligence
 
+**Révision fonctionnelle Lot 16 :** `9c8edc1f09ce7e545c71856ce430b1e2d89dd73d`
 MVP d’intelligence commerciale pour portefeuilles PME, composé de microservices FastAPI, PostgreSQL, Keycloak, React et Docker Compose.
 
 Le produit combine des **règles métier versionnées** et un **score de propension commerciale ML CPU-ready** observé en mode **`POC_SHADOW`**. La priorité opérationnelle reste exclusivement `RULES_ONLY` tant que les labels historiques BOA matures et les validations indépendantes ne sont pas disponibles. Il ne prend aucune décision de crédit. Le LLM reste une extension architecturale future et n’est ni appelé ni requis par le runtime.
@@ -40,6 +41,9 @@ Les règles Rule Studio de démonstration (`database/seed/rule-studio.json`) se 
 ./scripts/validate-ml-studio.sh
 ./scripts/validate-visibility-migration.sh
 ./scripts/validate-visibility.sh
+./scripts/validate-lot14-corrections.sh
+./scripts/validate-financial-intelligence-migration.sh
+./scripts/run-financial-intelligence-performance.sh
 ```
 
 La validation ML vérifie les services Docker, la lignée Rule Studio/Signals/Feature Store/ML, l’absence d’influence du score shadow sur Opportunity/Portfolio, la Scoring Policy active `RULES_ONLY`, les labels candidats, le manifest point-in-time bloqué, l’évaluation descriptive sans claim de production, l’absence de dépendance LLM/GPU et le moindre privilège SQL. Les autres commandes produisent des preuves reproductibles de charge isolée, d’ingestion, de migration/rollback, de sauvegarde/restauration, de readiness dégradée et de scans de sécurité. Les deux validations catalogue prouvent séparément les migrations PostgreSQL vierge/existante/downgrade/ré-upgrade et la chaîne Analytics → Signals → Opportunity → produits précis. Les preuves sont versionnées sous `docs/evidence/`.
@@ -53,6 +57,20 @@ La branche `feat/ml-studio-parallel` ajoute un backend d’entraînement CPU gou
 ### Visibilité des flux multibancarisés
 
 La branche `feat/multibank-visibility` ajoute une estimation explicable `HIGH/PARTIAL/LOW/UNKNOWN`, la déclaration autorisée de relation bancaire, la règle gouvernée `FLOW_DOMICILIATION`, la requalification produit `ABSENT_OR_ELSEWHERE` et les vues CC/agence associées. Le protocole `validate-visibility.sh` reconstruit une stack isolée, traite 500 PME synthétiques, exécute le cycle Rule Studio complet et la suite Playwright. Tous les seuils et la volumétrie restent **HYPOTHÈSE À VALIDER AVEC BOA** ; aucune donnée externe, aucun LLM, aucun GPU et aucune décision de crédit ne sont utilisés. Voir le [`lot 15`](docs/lots/LOT-15-MULTIBANCARISATION-VISIBILITE.md).
+
+### Financial Intelligence B2B
+
+La branche `feat/financial-intelligence-api` ajoute une capability read-only pour des fonds, holdings et partenaires autorisés. Elle compose les contrats Customer, Analytics, Signal, Opportunity et Portfolio derrière le Gateway, avec entitlements persistés, scopes OAuth2/OIDC, grants temporels et audit append-only protégé contre les mutations DML directes `UPDATE`/`DELETE`/`TRUNCATE`. Cette protection ne vaut pas stockage WORM face à un DBA propriétaire. L’accès est réservé à `EXTERNAL_CONSUMER`, refuse `ADMIN`/`SERVICE` même dans un token mixte et reste lié strictement au sujet, au client OAuth, aux scopes explicites et à la finalité `SYNTHETIC_PORTFOLIO_MONITORING`. Elle n’expose aucune transaction brute et ne prend aucune décision de crédit.
+
+L’accès de démonstration est explicitement **SYNTHETIC DATA / NON-PRODUCTION**. La priorité reste rules-only et le ML ne peut avoir aucune influence opérationnelle. `POC_SHADOW`, `rulesWeight=1` et `mlWeight=0` ne sont affichés que lorsque Portfolio retourne un objet valide qui les atteste ; sinon les métadonnées restent nulles avec `mlGovernanceStatus=UNAVAILABLE` ou la réponse malformée est refusée. La propension respecte `score.as_of_date <= asOf`, exclut les scores expirés ainsi que les opportunités futures ou expirées ; une sélection de visibilité datée exclut les snapshots futurs. FI rebornne localement les projections Signal/Opportunity. Leurs statuts non historisés sont déclarés `NOT_IMPLEMENTED` et rendent la réponse partielle. Le fonctionnement reste CPU-only, sans LLM ni GPU. Les preuves JSON référencent un manifeste source qui liste les scopes, fichiers, SHA-256 et algorithmes de digest. Les documents de référence sont le [contrat `fi.v1`](docs/financial-intelligence-api.md), le [modèle de sécurité](docs/financial-intelligence-security.md), le [modèle de menace](docs/financial-intelligence-threat-model.md), le [plan de capacité](docs/financial-intelligence-capacity-plan.md), le [rapport de tests](docs/financial-intelligence-tests.md), le [runbook](docs/financial-intelligence-runbook.md), le [rapport de production readiness](docs/financial-intelligence-production-readiness.md) et le [mapping BIAN candidat](docs/financial-intelligence-bian-mapping.md).
+
+```bash
+APP_ENV=test PYTHONPATH=backend/src:. pytest -q tests/unit/test_financial_intelligence.py
+./scripts/validate-financial-intelligence-migration.sh
+cd tests/e2e && npx playwright test financial-intelligence.spec.ts financial-intelligence-performance.spec.ts
+```
+
+Les résultats mesurés sont versionnés dans `docs/evidence/financial-intelligence/`. Les contrats, seuils, SLO, scopes et mappings finaux sont une **HYPOTHÈSE À VALIDER AVEC BOA**.
 
 ## Documentation
 

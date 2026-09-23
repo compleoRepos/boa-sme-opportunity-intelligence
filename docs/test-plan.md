@@ -1,5 +1,7 @@
 # Plan de tests — BOA SME Opportunity Intelligence
 
+**Révision fonctionnelle Lot 16 associée à cette mise à jour :** `9c8edc1f09ce7e545c71856ce430b1e2d89dd73d`
+
 **Version :** 1.0  
 **Statut :** référentiel de validation du MVP  
 **Périmètre :** frontend Relationship Manager, API Gateway, microservices métier, PostgreSQL, Keycloak/OIDC, adapters bancaires simulés, moteur analytique, moteur de signaux, moteur d’opportunités, actions et audit.
@@ -528,3 +530,50 @@ Une recherche automatisée sur OpenAPI, JSON, schémas, UI, logs et exports refu
 [7]: ./ml-acceptance.md "Acceptation de l’incrément ML"
 [8]: ./ml-engine.md "ML Engine CPU-ready — architecture cible et contrats"
 [9]: ./portfolio-scoping.md "Périmètres agence, chargé de clientèle et portefeuille"
+
+## 22. Financial Intelligence B2B
+
+| ID | Scénario | Résultat attendu |
+|---|---|---|
+| FI-AUTH-001 | appel sans token | `401` |
+| FI-AUTH-002 | rôle externe sans scope | `403 INSUFFICIENT_SCOPE` |
+| FI-AUTH-003 | grant expiré ou révoqué | refus audité |
+| FI-AUTH-004 | rôle `ADMIN` ou `SERVICE` sur une route FI | `403 FI_ROLE_MISSING` |
+| FI-AUTH-005 | token sans `client_id` ou client différent du grant | `403` et refus audité |
+| FI-AUTH-006 | grant avec autre finalité ou client absent | refus par l’autorisation et par les contraintes SQL |
+| FI-AUTH-007 | token `EXTERNAL_CONSUMER` portant aussi `ADMIN` ou `SERVICE` | refus `403` au Gateway et au service FI |
+| FI-SCOPE-001 | Fonds A sur société A | `200` et audit `ALLOW` |
+| FI-SCOPE-002 | Fonds A sur société B | `404`, même forme que société inconnue |
+| FI-SCOPE-003 | injection `consumerId` | `400 UNKNOWN_FILTER` |
+| FI-SCOPE-004 | date antérieure à la membership | `404` |
+| FI-SCOPE-005 | membership actuellement `INACTIVE`, mais `asOf` strictement dans sa fenêtre historique | accès autorisé ; `status` courant ne remplace pas `validFrom`/`validUntil` |
+| FI-DATA-001 | métriques réelles après pipeline | valeurs Analytics présentes et point-in-time |
+| FI-DATA-002 | transaction brute/IBAN/compte | champ absent du DTO |
+| FI-DATA-003 | Analytics indisponible | `partial=true`, `UNAVAILABLE`, aucune valeur inventée |
+| FI-DATA-004 | score de propension postérieur à `asOf` | score futur exclu |
+| FI-DATA-005 | statut Signal/Opportunity à `asOf` | `status=null`, `stateAsOfStatus=NOT_IMPLEMENTED` |
+| FI-DATA-006 | opportunité de priorité postérieure à `asOf` | exclue du score rules-only Portfolio |
+| FI-DATA-007 | ligne Signal/Opportunity hors fenêtre `[asOf-364j, asOf]` | exclue localement par FI |
+| FI-DATA-008 | capacité `NOT_IMPLEMENTED` | `meta.partial=true` et source explicite |
+| FI-DATA-009 | score dont `valid_until < asOf` | score expiré exclu |
+| FI-DATA-010 | snapshot de visibilité postérieur à une date de sélection | snapshot futur exclu |
+| FI-DATA-011 | opportunité `OPEN` expirée avant la fin de journée `asOf` | exclue de la priorité rules-only |
+| FI-DATA-012 | score latest-only avec `valid_until < as_of_date` | score rejeté comme intrinsèquement incohérent |
+| FI-DATA-013 | opportunité propriétaire dont `expiresAt` est antérieur à la fin de journée `asOf` | exclue de la projection FI par défense en profondeur |
+| FI-ML-001 | résumé FI avec Portfolio vérifié | `mlGovernanceStatus=VERIFIED`, `POC_SHADOW`, règles 1, ML 0 |
+| FI-ML-002 | Portfolio indisponible | `mlGovernanceStatus=UNAVAILABLE`, mode et poids `null` |
+| FI-ML-003 | mode non shadow ou influence ML | composition refusée `502 DEPENDENCY_INVALID_RESPONSE` |
+| FI-ML-004 | payload Portfolio non objet, combinaison vide/mal typée ou poids non numériques | composition refusée `502 DEPENDENCY_INVALID_RESPONSE` |
+| FI-ML-005 | champ Portfolio inconnu à la racine, dans `model` ou dans `combination` | composition refusée `502 DEPENDENCY_INVALID_RESPONSE` |
+| FI-E2E-001 | Fonds → portfolio → société → signaux/opportunités | parcours OIDC réel sans API mockée |
+| FI-E2E-002 | captures desktop/mobile | écrans visibles, explicites, non-production |
+| FI-PERF-001 | portfolios 10/50/100/500 | P50/P95, appels downstream, CPU/RAM consignés |
+| FI-MIG-001 | base vierge et existante | upgrade `0021` réussi |
+| FI-MIG-002 | rôle runtime | moindre privilège et aucun accès transactions |
+| FI-MIG-003 | downgrade non autorisé | refus fail-closed |
+| FI-MIG-004 | downgrade explicite puis ré-upgrade | cycle réussi après sauvegarde de test |
+| FI-MIG-005 | `UPDATE`, `DELETE` ou `TRUNCATE` direct de l’audit par runtime ou propriétaire | refus par privilèges/triggers append-only ; altération DDL par DBA hors preuve |
+| FI-MIG-006 | ancien GUC de contournement puis `TRUNCATE` propriétaire | refus ; aucun bypass d’append-only |
+| FI-EVIDENCE-001 | digests runtime, migration et sécurité | concordance avec les scopes et fichiers de `SOURCE-MANIFEST-FI.json` |
+
+Les seuils de performance, le volume de production, les scopes finaux et les SLO sont une **HYPOTHÈSE À VALIDER AVEC BOA**. La validation locale ne remplace ni IAM BOA, ni consentement/DPO, ni test d’intrusion, ni homologation.

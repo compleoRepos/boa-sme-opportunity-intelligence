@@ -1,5 +1,6 @@
 # Architecture exécutable — BOA SME Opportunity Intelligence
 
+**Révision fonctionnelle Lot 16 :** `9c8edc1f09ce7e545c71856ce430b1e2d89dd73d`
 **Version :** 1.1 — architecture MVP avec propension commerciale CPU
 
 **Statut :** décision d’architecture pour implémentation
@@ -312,7 +313,7 @@ IOpportunityStrategy
   ML reranking adapter (propension POC CPU, après éligibilité déterministe)
 ```
 
-Le MVP active `RuleBasedOpportunityStrategy`, les règles publiées de Rule Studio et une propension logistique POC. Feature Store matérialise le Feature Set `sales-features-v2` via les contrats HTTP Customer, Analytics, Signal et Rule Engine. ML Engine consomme ce snapshot par HTTP et persiste `modelVersion`, `featureVersion`, `trainingDatasetVersion`, `deploymentMode` et `traceId`. Opportunity Service applique ensuite un reranking pondéré règles 65 % / ML 35 % aux candidates déjà éligibles. Le moteur ne reçoit pas de texte libre, ne dépend d’aucun LLM ou GPU et ne prend aucune décision de crédit.
+Le MVP active `RuleBasedOpportunityStrategy`, les règles publiées de Rule Studio et une propension logistique POC observée en shadow. Feature Store matérialise le Feature Set `sales-features-v2` via les contrats HTTP Customer, Analytics, Signal et Rule Engine. ML Engine consomme ce snapshot par HTTP et persiste `modelVersion`, `featureVersion`, `trainingDatasetVersion`, `deploymentMode` et `traceId`. Opportunity Service conserve la propension pour analyse mais applique opérationnellement `rulesWeight=1` et `mlWeight=0` : le score ML ne modifie ni l’éligibilité ni la priorité. Le moteur ne reçoit pas de texte libre, ne dépend d’aucun LLM ou GPU et ne prend aucune décision de crédit.
 
 ```text
 GET  /api/v1/opportunities?type=&confidenceMin=&priority=&sector=&segment=&relationshipManagerId=&horizon=&date=&page=&pageSize=
@@ -1064,3 +1065,33 @@ Le monitoring couvre service, qualité des features, distribution des features e
 Seul un port conceptuel futur `OpportunityNarrativePort` est réservé au-dessus d’une opportunité déjà persistée et expurgée. **Aucun appel, SDK, modèle, secret, endpoint ou dépendance LLM n’est autorisé maintenant.** Le port n’intervient jamais dans les features, le score, la fusion, l’éligibilité ou la priorité.
 
 Le premier incrément ML est batch, CPU-only, PostgreSQL et `ML_SHADOW`. Il exclut GPU, streaming, apprentissage en ligne, auto-ML, auto-réentraînement, auto-promotion, causalité, notes libres et candidate créée par ML. Les critères précis sont définis dans [`docs/ml-acceptance.md`](../docs/ml-acceptance.md) et le contrat complet dans [`docs/ml-engine.md`](../docs/ml-engine.md).
+
+
+## Extension Lot 16 — Financial Intelligence B2B
+
+Le Lot 16 ajoute `financial-intelligence-service` comme **couche de composition read-only**, derrière le Gateway. Cette capability possède les entitlements B2B et l’audit d’accès ; elle ne devient propriétaire ni des clients, ni des comptes, ni des transactions, ni des métriques, ni des signaux, ni des opportunités.
+
+```text
+Fonds / Holding autorisé
+        │ OIDC EXTERNAL_CONSUMER + client + scopes + purpose
+        ▼
+API Gateway /api/v1/financial-intelligence
+        │ bearer externe validé
+        ▼
+Financial Intelligence Service
+  ├── entitlement + grant + membership + audit (schéma FI)
+  ├── Customer Service     ─ profil + visibilité Lot 15
+  ├── Analytics Service    ─ agrégats BOOKED point-in-time
+  ├── Signal Service       ─ signaux persistés + versions
+  ├── Opportunity Service  ─ opportunités existantes
+  └── Portfolio Service    ─ projection RULES_ONLY / lineage shadow
+        │ client_credentials FI, jamais le bearer externe
+        ▼
+DTO fi.v1 minimisé — aucune transaction brute
+```
+
+La résolution Consumer → Fund → Portfolio → Company est faite côté serveur. Elle exige le rôle externe, un `client_id` OAuth non vide, des scopes explicites et un grant sujet/client portant la finalité `SYNTHETIC_PORTFOLIO_MONITORING`. `ADMIN`, `SERVICE` et les tokens mixtes externe + rôle privilégié ne peuvent pas emprunter la surface FI. Les appels sortants transportent le `traceId`, une identité technique FI et le même `asOf`. Le fan-out est borné et limité à 500 PME. Une dépendance indisponible ou une capacité `NOT_IMPLEMENTED` rend la réponse `partial=true`; aucune valeur n’est inventée.
+
+Le service réutilise strictement la visibilité multibancaire et les opportunités des propriétaires. La propension est bornée par `score.as_of_date <= asOf`, par `score.valid_until` et exclut toute opportunité future ou expirée de sa priorité rules-only. Toute sélection de visibilité portant une date exclut les snapshots futurs. FI applique en plus localement la fenêtre `[asOf-364 jours, asOf]` aux projections Signal/Opportunity et la borne `expiresAt` aux opportunités. En l’absence d’historique de lifecycle, leurs statuts courants sont omis et marqués `NOT_IMPLEMENTED`. L’exécution reste `DETERMINISTIC_RULES`. FI n’atteste `POC_SHADOW`, `rulesWeight=1` et `mlWeight=0` que si Portfolio retourne un objet correctement typé, sans champ inconnu, qui confirme la combinaison complète ; un payload malformé est refusé en `502`, tandis qu’une source absente laisse les champs à `null` avec `mlGovernanceStatus=UNAVAILABLE`. Il n’existe aucun chemin LLM, GPU ou décision de crédit.
+
+Le rapprochement BIAN est seulement candidat. La cible de découplage est Gateway → services alignables BIAN → adapters BOA → CBS/CRM/Payments/Data Platform. Les noms et responsabilités BIAN sont une **HYPOTHÈSE À VALIDER AVEC BOA** ; voir [`financial-intelligence-bian-mapping.md`](../docs/financial-intelligence-bian-mapping.md).

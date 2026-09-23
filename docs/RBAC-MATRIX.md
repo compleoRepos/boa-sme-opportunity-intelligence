@@ -1,5 +1,7 @@
 # Matrice RBAC — BOA SME Opportunity Intelligence
 
+**Révision fonctionnelle Lot 16 associée à cette mise à jour :** `9c8edc1f09ce7e545c71856ce430b1e2d89dd73d`
+
 **Statut du document :** inventaire statique du dépôt, destiné à la revue BOA. Il décrit les contrôles visibles dans le code et les tests présents ; il ne constitue pas une validation de sécurité en environnement BOA.
 
 **Périmètre analysé :** `gateway_api.py`, `platform.py`, routes backend, realm Keycloak et routes frontend. Les liens ci-dessous sont relatifs au dépôt. Les mentions **HYPOTHÈSE À VALIDER AVEC BOA** signalent toute règle métier, volumétrie, coût, KPI, seuil ou exigence qui n’est pas démontrée par le code ou par un test identifié.
@@ -239,3 +241,19 @@ Le ML doit rester **CPU-only**, **POC/shadow**, sans décision de crédit et san
 [20]: audit/workstreams/repository-docs.md "État des preuves de tests et artefacts présents"
 
 *Document rédigé à partir de la lecture statique du dépôt. Aucun fichier applicatif n’a été modifié.*
+
+
+## 11. Extension Lot 16 — consommateur Financial Intelligence
+
+Le realm ajoute `EXTERNAL_CONSUMER` et quatre scopes FI : `financial.read`, `signals.read`, `opportunities.read` et `portfolio.read`. Ce rôle est le seul admis sur la surface FI ; `ADMIN`, `SERVICE` et les tokens mixtes `EXTERNAL_CONSUMER` + rôle privilégié n’accordent aucun accès externe. FI exige un `client_id` OAuth non vide, l’intersection de scopes explicites entre token, Consumer et grants, la finalité fixe `SYNTHETIC_PORTFOLIO_MONITORING`, puis vérifie le Portfolio et la membership Company.
+
+| Persona / identité | Capacité | Contrôle serveur | Statut |
+|---|---|---|---|
+| Fonds A `fund.demo` | catalogue, portfolio A, sociétés A, signaux et opportunités autorisés | OIDC + Consumer + Fund + Portfolio + membership + grant | **IMPLÉMENTÉ** ; preuve E2E versionnée dans le Lot 16 |
+| Fonds B `fund.b.demo` | portfolio B uniquement | même chaîne, avec ressource hors périmètre rendue `404` | **IMPLÉMENTÉ** ; preuve E2E versionnée dans le Lot 16 |
+| Consumer sans scope | aucune lecture nécessitant le scope absent | intersection deny-by-default | **IMPLÉMENTÉ** ; preuve E2E ciblée |
+| Consumer au grant expiré | aucune lecture, même si le token porte le scope | contrôle de validité/révocation au moment de l’accès | **IMPLÉMENTÉ** ; preuve E2E ciblée |
+| `ADMIN`, client technique `SERVICE` ou rôle externe mixte | aucun accès à `/api/v1/financial-intelligence/**` | double refus Gateway/service, `403` | **IMPLÉMENTÉ** ; tests OIDC/unitaire ciblés |
+| `financial-intelligence-service` | appels internes Customer/Analytics/Signal/Opportunity/Portfolio uniquement | client_credentials `SERVICE`, bearer externe non propagé | **IMPLÉMENTÉ** |
+
+Toutes les routes `/api/v1/financial-intelligence/**` sont read-only. `consumerId` est refusé comme filtre. Un objet inconnu et un objet hors périmètre renvoient uniformément `404 RESOURCE_NOT_FOUND`. Le schéma SQL interdit un grant sans client et toute autre finalité. La séparation IAM BOA, les scopes finaux, le consentement et la politique d’administration des grants sont une **HYPOTHÈSE À VALIDER AVEC BOA**.

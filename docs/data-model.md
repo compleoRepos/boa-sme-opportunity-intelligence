@@ -1,5 +1,7 @@
 # Modèle relationnel PostgreSQL et pipeline de données synthétiques
 
+**Révision fonctionnelle Lot 16 associée à cette mise à jour :** `9c8edc1f09ce7e545c71856ce430b1e2d89dd73d`
+
 **Produit :** BOA SME Opportunity Intelligence  
 **Statut :** modèle implémenté du pilote ; extensions de production explicitement signalées
 **Source fonctionnelle :** exigences du projet [1]
@@ -360,3 +362,14 @@ La migration `0020_multibank_visibility` crée les contraintes, index et privil�
 `ABSENT_OR_ELSEWHERE` signifie qu’un produit n’est pas observé comme détenu chez BOA et que la visibilité des flux ne permet pas d’affirmer son absence ailleurs. Il ne constitue jamais une preuve de détention chez une banque tierce. `FLOW_DOMICILIATION` reste une opportunité commerciale rules-only ; la priorité persistée conserve `rules_weight=1`, `ml_weight=0` et `fallback_mode=RULES_ONLY`.
 
 Les seuils, pénalités, nombre minimal d’empreintes et cooldown sont **HYPOTHÈSE À VALIDER AVEC BOA**. Le dataset 500 PME est synthétique et ne décrit aucune distribution réelle de la clientèle.
+
+
+## 13. Extension Financial Intelligence B2B
+
+La migration additive `0021_financial_intelligence` crée un schéma dédié aux entitlements externes. `ExternalConsumer` représente l’organisation consommatrice, son type, son statut et ses scopes maximaux. `ExternalPortfolio` rattache un portfolio à un Consumer et un Fund. `ExternalPortfolioCompany` conserve les memberships temporels avec `valid_from`, `valid_until` et un statut. La fenêtre semi-ouverte `[valid_from, valid_until[` gouverne les lectures historiques : `INACTIVE` n’efface pas le passé et exige une borne `valid_until` non nulle. `DataAccessGrant` porte le sujet, un `client_id` OIDC obligatoire, un scope explicite, le purpose contraint à `SYNTHETIC_PORTFOLIO_MONITORING`, la période de validité, la référence d’autorisation et, lorsqu’elle existe, la révocation. Son unicité inclut Consumer, sujet, client, scope, purpose et portfolio afin qu’un grant délivré à un client OAuth ne puisse pas être réutilisé par un autre.
+
+`FinancialIntelligenceAccessAudit` journalise chaque décision `ALLOW` ou `DENY` avec sujet, client, Consumer, portfolio, société, endpoint, scope, motif, référence d’autorisation, timestamp et `trace_id`. La table est append-only contre les mutations DML directes : des triggers refusent `UPDATE`, `DELETE` et `TRUNCATE`, y compris au propriétaire administratif, sans variable de session de contournement. Cette protection ne résiste pas à un propriétaire DBA qui modifierait le DDL ; la séparation de rôles et un journal WORM externe restent nécessaires en cible BOA. Le teardown contrôlé passe exclusivement par le downgrade destructif explicite, qui supprime le schéma après levée de son garde séparé. La table ne conserve ni bearer, ni secret, ni transaction brute.
+
+Le rôle runtime FI reçoit uniquement la lecture des entitlements/memberships et l’insertion/lecture de l’audit. Il ne reçoit aucun droit sur les schémas transactionnels métier. Les grants runtime sont séparés d’Alembic. Le downgrade 0021 est fail-closed et exige `boa.allow_fi_destructive_downgrade=true`, car il détruit entitlements et audit.
+
+Les données de Financial Intelligence exposées ne sont pas dupliquées dans le schéma FI : les métriques, visibilité, signaux, opportunités et propensions sont composés depuis leurs services propriétaires. Le dataset du lot reste synthétique ; la rétention, la base légale, le consentement, le modèle d’identité et le schéma de production sont une **HYPOTHÈSE À VALIDER AVEC BOA**.

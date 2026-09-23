@@ -1,4 +1,6 @@
-# Scénario de démonstration — 15 minutes, cinq actes
+# Scénario de démonstration — 15 minutes, six actes
+
+**Révision fonctionnelle Lot 16 associée à cette mise à jour :** `9c8edc1f09ce7e545c71856ce430b1e2d89dd73d`
 
 **Produit :** BOA SME Opportunity Intelligence
 **Objet :** script de démonstration technique et métier du POC
@@ -94,21 +96,37 @@ Les preuves techniques citées ci-dessous sont des preuves de dépôt. Elles ne 
 | **Plan de repli** | Si le tableau agence n’est pas disponible, revenir au dashboard CC et montrer le refus d’un accès hors périmètre dans le parcours E2E. Ne pas utiliser une vue back office pour remplacer artificiellement la vue agence. |
 | **Statut** | Navigation agence et contrôles testés : **IMPLÉMENTÉ / PROUVÉ** pour le POC. Homologation sécurité, périmètre BOA et exigences d’accès de production : **NON IMPLÉMENTÉ / À VALIDER** — **HYPOTHÈSE À VALIDER AVEC BOA**. |
 
-## Acte 5 — Rule Studio et gouvernance ML
+## Acte 5 — Rule Studio gouverné
 
-**Durée : 3 minutes.**
+**Durée : 2 minutes.**
 
 | Élément | Script de démonstration |
 |---|---|
-| **Persona** | Youssef Tazi, persona `backoffice`, puis Nadia Ouazzani, persona `approbateur`. Les rôles techniques sont respectivement `BUSINESS_ANALYST` et `RULE_APPROVER`. Pour la lecture du registre, utiliser le back office autorisé. |
-| **Écran / route** | Rule Studio : `/back-office/regles`, puis `/back-office/regles/SME_INVESTMENT_001` ou la règle effectivement présente. Gouvernance ML : `/back-office/modeles`. Le catalogue et les routes sont présents dans [`RuleStudioPage.tsx`](../frontend/src/features/rules/RuleStudioPage.tsx) et [`AppShell.tsx`](../frontend/src/layout/AppShell.tsx). |
-| **Gestes** | 1. Ouvrir Rule Studio et sélectionner une règle réellement retournée par l’API. 2. Lire les blocs `SI`, `ET`, `ALORS` et la version affichée. 3. Ouvrir « Modifier » ou une règle de démonstration, sans affirmer qu’un seuil précis est présent si l’écran ne le montre pas. 4. Valider la configuration et lancer la simulation si le bouton et la période sont disponibles. 5. Lire uniquement les résultats de simulation réellement renvoyés par l’API ; ne pas annoncer une population ou un nombre de correspondances à l’avance. 6. Soumettre à approbation. 7. Passer à Nadia, approuver puis publier si l’état du workflow le permet. 8. Ouvrir « Versions & audit ». 9. Ouvrir `/back-office/modeles`, consulter le registre, le seuil, les coefficients, le mode et `productionPerformanceClaim`. |
-| **Phrase à dire** | « Le métier configure une règle sans code ; le workflow sépare l’auteur et l’approbateur. Le registre montre un score shadow versionné. La priorité reste entièrement issue des règles ; aucune promotion ML n’est permise sans preuves BOA. Aucun LLM ni GPU n’est requis. » |
-| **Preuve technique** | **IMPLÉMENTÉ / PROUVÉ :** `tests/e2e/rule-studio.spec.ts` couvre le workflow des règles. `tests/e2e/governance.spec.ts` vérifie une policy active règles `1`/ML `0`, `POC_SHADOW`, `productionPerformanceClaim=false`, le rejet d’une activation hybride et le blocage d’une promotion synthétique. Le lot 10 relie ces assertions à une preuve Docker JSON. |
-| **Question difficile probable** | « Pourquoi montrer un modèle si vous n’avez pas de labels BOA matures, et le modèle est-il déjà en production ? » |
-| **Réponse courte** | « Nous montrons le socle de gouvernance et le chemin CPU shadow, pas une homologation. L’entraînement BOA, la calibration et les performances BOA sont **NON IMPLÉMENTÉS**. Le score ne change pas la priorité ; la readiness production est `BLOCKED`. » |
-| **Plan de repli** | Si la règle ciblée n’existe pas, ouvrir `/back-office/regles` et choisir une règle retournée par l’API. Si la simulation n’aboutit pas, montrer l’état du job sans annoncer de résultat. Si le back office ou le registre est indisponible, afficher les E2E et [`finalization-status-2026-09-19.md`](./finalization-status-2026-09-19.md), puis rappeler explicitement que l’absence de preuve ne doit pas être remplacée par une valeur inventée. |
-| **Statut** | Rule Studio, workflow et registre : **IMPLÉMENTÉ / PROUVÉ** pour le POC. Entraînement, labels, calibration et performance BOA : **NON IMPLÉMENTÉ**. Passage en production, seuils d’acceptation, modèle champion et critères d’arrêt BOA : **À VALIDER** — **HYPOTHÈSE À VALIDER AVEC BOA**. LLM/GPU : **NON REQUIS** par choix d’architecture ; aucun appel runtime n’est nécessaire. |
+| **Persona** | Youssef Tazi, persona `backoffice`, puis Nadia Ouazzani, persona `approbateur`. Les rôles techniques sont respectivement `BUSINESS_ANALYST` et `RULE_APPROVER`. |
+| **Écran / route** | `/back-office/regles`, puis `/back-office/regles/SME_INVESTMENT_001` ou une règle effectivement retournée par l’API. |
+| **Gestes** | 1. Ouvrir Rule Studio et sélectionner une règle réelle. 2. Lire les blocs `SI`, `ET`, `ALORS` et la version affichée. 3. Ouvrir « Modifier » et lancer la simulation si le bouton et la période sont disponibles. 4. Lire uniquement le résultat retourné par l’API. 5. Soumettre à approbation. 6. Passer à Nadia, approuver puis publier si l’état du workflow le permet. 7. Ouvrir « Versions & audit ». |
+| **Phrase à dire** | « Le métier configure une règle sans code ; le workflow sépare l’auteur et l’approbateur. Les résultats de simulation viennent du serveur et chaque transition est auditée. » |
+| **Preuve technique** | **IMPLÉMENTÉ / PROUVÉ :** `tests/e2e/rule-studio.spec.ts` couvre le workflow des règles et `tests/e2e/governance.spec.ts` vérifie la séparation des tâches. |
+| **Question difficile probable** | « Une règle publiée peut-elle devenir une décision de crédit ? » |
+| **Réponse courte** | « Non. Elle produit des signaux et opportunités commerciales à examiner. Elle n’accorde, ne refuse, ne chiffre et ne tarifie aucun crédit. » |
+| **Plan de repli** | Si la règle ciblée n’existe pas, ouvrir `/back-office/regles` et choisir une règle retournée par l’API. Si la simulation n’aboutit pas, montrer l’état du job sans annoncer de résultat. |
+| **Statut** | Rule Studio et workflow : **IMPLÉMENTÉS / PROUVÉS** pour le POC. Seuils métier et homologation BOA : **HYPOTHÈSE À VALIDER AVEC BOA**. |
+
+## Acte 6 — Studio ML gouverné
+
+**Durée : 1 minute.**
+
+| Élément | Script de démonstration |
+|---|---|
+| **Persona** | Karim El Mansouri, persona `backoffice`, avec les rôles de gouvernance ML nécessaires à la lecture du Studio. |
+| **Écran / route** | `/back-office/studio-ml`, distinct du registre historique `/back-office/modeles`. |
+| **Gestes** | 1. Ouvrir le Studio ML. 2. Parcourir les six onglets. 3. Lire les versions de dataset, features et modèle disponibles. 4. Vérifier la frise G0–G4 et la politique active. 5. Montrer `DEMO_ONLY`, `POC_SHADOW`, `RULES_ONLY`, règles `1` et ML `0`. |
+| **Phrase à dire** | « Le Studio prépare et audite un modèle classique CPU en shadow. Le score reste une observation : il ne modifie ni l’éligibilité, ni l’ordre commercial, ni une décision de crédit. Aucun LLM ni GPU n’est requis. » |
+| **Preuve technique** | **IMPLÉMENTÉ / PROUVÉ :** `tests/e2e/ml-studio.spec.ts` couvre les six onglets, l’entraînement de démonstration et le cycle multi-rôles. `tests/e2e/governance.spec.ts` vérifie la policy active règles `1`/ML `0`, `POC_SHADOW`, le rejet d’une activation hybride et le blocage d’une promotion synthétique. |
+| **Question difficile probable** | « Pourquoi montrer un modèle sans labels BOA matures, et est-il déjà en production ? » |
+| **Réponse courte** | « Nous montrons le socle de gouvernance et le chemin CPU shadow, pas une homologation. La calibration et les performances BOA sont **NON IMPLÉMENTÉES**. La readiness production reste `BLOCKED`. » |
+| **Plan de repli** | Si le Studio est indisponible, afficher les preuves ML versionnées sans inventer de résultat, puis rappeler que l’absence de preuve interdit toute promotion. |
+| **Statut** | Studio ML, registre et traçabilité : **IMPLÉMENTÉS / PROUVÉS** pour le POC. Labels, calibration et performance BOA : **NON IMPLÉMENTÉS**. Promotion réelle et critères d’arrêt BOA : **HYPOTHÈSE À VALIDER AVEC BOA**. |
 
 ## 3. Conclusion à prononcer après quinze minutes
 
@@ -131,7 +149,7 @@ Les prochaines décisions ne peuvent pas être inventées par le dépôt : donn�
 
 ## 5. Enregistrement vidéo optionnel
 
-[`scripts/record-demo.cjs`](../scripts/record-demo.cjs) automatise la navigation dans la stack locale et produit plusieurs séquences WebM ainsi qu'un fichier de marques temporelles. Ces séquences techniques peuvent servir au montage des cinq actes ci-dessus, mais ne remplacent ni le scénario, ni les tests E2E, ni les artefacts de preuve.
+[`scripts/record-demo.cjs`](../scripts/record-demo.cjs) automatise la navigation dans la stack locale et produit plusieurs séquences WebM ainsi qu'un fichier de marques temporelles. Ces séquences techniques peuvent servir au montage des six actes ci-dessus, mais ne remplacent ni le scénario, ni les tests E2E, ni les artefacts de preuve.
 
 ```bash
 node scripts/record-demo.cjs
