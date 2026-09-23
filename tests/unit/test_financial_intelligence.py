@@ -559,6 +559,14 @@ def test_point_in_time_projection_and_calculations() -> None:
                     "confidence": 0.9,
                     "generatedAt": "2025-09-20T08:00:00Z",
                 },
+                {
+                    "opportunityId": "OPP-EXPIRED",
+                    "opportunityType": "EXPIRED",
+                    "status": "OPEN",
+                    "confidence": 0.9,
+                    "generatedAt": "2026-09-19T08:00:00Z",
+                    "expiresAt": "2026-09-20T23:00:00Z",
+                },
             ]
         },
         as_of=AS_OF,

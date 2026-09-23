@@ -20,6 +20,7 @@ compose+=(--env-file "$ENV_FILE")
 
 mkdir -p "$EVIDENCE_DIR"
 raw_samples=$(mktemp)
+playwright_raw=$(mktemp)
 playwright_json="$EVIDENCE_DIR/RESULTATS-PLAYWRIGHT-PERFORMANCE-FI.json"
 resources_json="$EVIDENCE_DIR/RESULTATS-RESSOURCES-FI.json"
 services=(financial-intelligence api-gateway customer analytics signal opportunity portfolio)
@@ -48,6 +49,7 @@ cleanup() {
     wait "$sampler_pid" >/dev/null 2>&1 || true
   fi
   rm -f "$raw_samples"
+  rm -f "$playwright_raw"
 }
 trap cleanup EXIT
 
@@ -74,8 +76,23 @@ code_digest=$(
   FI_DIGEST_MANIFEST="SOURCE-MANIFEST-FI.json" \
   FI_PORTFOLIO_CONCURRENCY=${FI_PORTFOLIO_CONCURRENCY:-20} \
   ./node_modules/.bin/playwright test financial-intelligence-performance.spec.ts \
-    --config playwright.config.ts --reporter=json >"$playwright_json"
+    --config playwright.config.ts --reporter=json >"$playwright_raw"
 )
+
+jq \
+  --arg branch "$branch" \
+  --arg revision "$revision" \
+  --arg codeDigest "$code_digest" \
+  '. + {
+    source:{
+      branch:$branch,
+      revision:$revision,
+      codeDigest:$codeDigest,
+      digestScope:"runtime",
+      digestManifest:"SOURCE-MANIFEST-FI.json",
+      digestAlgorithm:"SHA-256 of path-sorted sha256sum lines"
+    }
+  }' "$playwright_raw" >"$playwright_json"
 
 kill "$sampler_pid" >/dev/null 2>&1 || true
 wait "$sampler_pid" >/dev/null 2>&1 || true

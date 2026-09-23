@@ -221,6 +221,9 @@ def opportunity_projection(payload: Any, *, as_of: date) -> list[OpportunityProj
         generated_date = date.fromisoformat(str(generated)[:10])
         if not from_date <= generated_date <= as_of:
             continue
+        expires = row.get("expiresAt")
+        if expires and date.fromisoformat(str(expires)[:10]) <= as_of:
+            continue
         result.append(
             OpportunityProjection(
                 opportunityId=str(row["opportunityId"]),
