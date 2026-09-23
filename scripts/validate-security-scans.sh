@@ -15,6 +15,7 @@ require_command python3
 RUN_SUFFIX="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 WORK_DIR=$(mktemp -d "/tmp/boa-security-scans-${RUN_SUFFIX}.XXXXXX")
 VENV_DIR="$WORK_DIR/venv"
+HISTORY_REPOSITORY="$WORK_DIR/history-repository"
 OUTPUT_FILE=${SECURITY_EVIDENCE_FILE:-$PROJECT_ROOT/docs/evidence/security/RESULTATS-SCANS-SECURITE.json}
 GITLEAKS_IMAGE="zricethezav/gitleaks:v8.21.2"
 TRIVY_IMAGE="aquasec/trivy:0.58.1"
@@ -36,17 +37,21 @@ docker_cli run --rm --user "$user_flag" \
   "$GITLEAKS_IMAGE" detect --source /repo --no-git \
   --config /repo/.gitleaks.toml --redact \
   --report-format json --report-path /work/gitleaks-worktree.json
+git clone --quiet --no-local "$PROJECT_ROOT" "$HISTORY_REPOSITORY"
+[[ $(git -C "$HISTORY_REPOSITORY" rev-parse HEAD) == "$(git -C "$PROJECT_ROOT" rev-parse HEAD)" ]]
 docker_cli run --rm --user "$user_flag" \
-  -v "$PROJECT_ROOT:/repo:ro" -v "$WORK_DIR:/work" \
-  "$GITLEAKS_IMAGE" detect --source /repo \
-  --config /repo/.gitleaks.toml --redact \
+  -v "$HISTORY_REPOSITORY:/history:ro" -v "$PROJECT_ROOT:/config:ro" -v "$WORK_DIR:/work" \
+  "$GITLEAKS_IMAGE" detect --source /history \
+  --config /config/.gitleaks.toml --redact \
   --report-format json --report-path /work/gitleaks-history.json
 
 worktree_findings=$(jq 'length' "$WORK_DIR/gitleaks-worktree.json")
 history_findings=$(jq 'length' "$WORK_DIR/gitleaks-history.json")
 [[ "$worktree_findings" -eq 0 ]]
 [[ "$history_findings" -eq 0 ]]
-history_commits=$(git -C "$PROJECT_ROOT" rev-list --count HEAD)
+# Gitleaks scans every reachable ref in the autonomous clone and reports
+# non-merge commits in its "commits scanned" counter.
+history_commits=$(git -C "$HISTORY_REPOSITORY" rev-list --all --no-merges --count)
 
 python3 -m venv "$VENV_DIR"
 "$VENV_DIR/bin/python" -m pip install --disable-pip-version-check --quiet --upgrade pip
@@ -210,6 +215,6 @@ jq -n \
   --argjson externalCritical "$external_critical" \
   --argjson externalWithFix "$external_with_fix" \
   --argjson externalWithoutFix "$external_without_fix" \
-  '{runId:$runId,generatedAt:$generatedAt,status:(if $imageReleaseGate == "READY" then "PASS" else "BLOCKED" end),scanExecutionStatus:"PASS",releaseStatus:$imageReleaseGate,scope:"LOCAL_SYNTHETIC_SECURITY_SCANS",sourceRevision:{baseCommit:$baseCommit,sourceDigest:$sourceDigest},tools:{gitleaks:$gitleaksImage,trivy:$trivyImage},secrets:{worktreeFindings:$worktreeFindings,historyCommits:$historyCommits,historyFindings:$historyFindings},dependencies:{python:{audited:$pythonDependencies,knownVulnerabilities:$pythonVulnerabilities},frontend:{audited:$npmDependencies,info:$npmInfo,low:$npmLow,moderate:$npmModerate,high:$npmHigh,critical:$npmCritical}},images:{application:{backend:{baseImage:$backendBaseImage,osFamily:$backendOsFamily,osName:$backendOsName,high:$backendHigh,critical:$backendCritical,withUpstreamFix:$backendWithFix,withoutUpstreamFix:$backendWithoutFix},frontend:{buildImage:$frontendBuildImage,runtimeImage:$frontendRuntimeImage,osFamily:$frontendOsFamily,osName:$frontendOsName,high:$frontendHigh,critical:$frontendCritical,withUpstreamFix:$frontendWithFix,withoutUpstreamFix:$frontendWithoutFix}},external:{items:$externalImages,summary:{high:$externalHigh,critical:$externalCritical,withUpstreamFix:$externalWithFix,withoutUpstreamFix:$externalWithoutFix}}},checks:{gitleaksWorktree:"PASS",gitleaksHistory:"PASS",pipAudit:"PASS",npmHighCritical:"PASS",trivyApplicationImagesNoKnownUpstreamFix:"PASS",externalImagesPinnedAndScanned:"PASS",releaseImageGate:$imageScanCheck},limitations:["Les bases de vulnérabilités reflètent leur état au moment du run et doivent être rescannées régulièrement.","Toutes les CVE HIGH/CRITICAL detectees sont visibles et bloquent le statut release; aucune exclusion --ignore-unfixed n est appliquee. Un FixedVersion Trivy indique une correction de composant connue, pas necessairement un digest d image amont deja publie et valide.","Deux avis MODERATE concernent Vitest, dépendance de développement; ils ne sont pas masqués et restent une dette à traiter.","Ces scans automatisés ne remplacent ni pentest, ni revue de configuration de la cible BOA, ni analyse de menace, ni signature/SBOM des artefacts publies."]}' >"$OUTPUT_FILE"
+  '{runId:$runId,generatedAt:$generatedAt,status:(if $imageReleaseGate == "READY" then "PASS" else "BLOCKED" end),scanExecutionStatus:"PASS",releaseStatus:$imageReleaseGate,scope:"LOCAL_SYNTHETIC_SECURITY_SCANS",sourceRevision:{baseCommit:$baseCommit,sourceDigest:$sourceDigest,digestScope:"security",digestManifest:"SOURCE-MANIFEST-FI.json",digestAlgorithm:"SHA-256 of the explicit ordered security input list"},tools:{gitleaks:$gitleaksImage,trivy:$trivyImage},secrets:{worktreeFindings:$worktreeFindings,historyCommits:$historyCommits,historyFindings:$historyFindings},dependencies:{python:{audited:$pythonDependencies,knownVulnerabilities:$pythonVulnerabilities},frontend:{audited:$npmDependencies,info:$npmInfo,low:$npmLow,moderate:$npmModerate,high:$npmHigh,critical:$npmCritical}},images:{application:{backend:{baseImage:$backendBaseImage,osFamily:$backendOsFamily,osName:$backendOsName,high:$backendHigh,critical:$backendCritical,withUpstreamFix:$backendWithFix,withoutUpstreamFix:$backendWithoutFix},frontend:{buildImage:$frontendBuildImage,runtimeImage:$frontendRuntimeImage,osFamily:$frontendOsFamily,osName:$frontendOsName,high:$frontendHigh,critical:$frontendCritical,withUpstreamFix:$frontendWithFix,withoutUpstreamFix:$frontendWithoutFix}},external:{items:$externalImages,summary:{high:$externalHigh,critical:$externalCritical,withUpstreamFix:$externalWithFix,withoutUpstreamFix:$externalWithoutFix}}},checks:{gitleaksWorktree:"PASS",gitleaksHistory:"PASS",pipAudit:"PASS",npmHighCritical:"PASS",trivyApplicationImagesNoKnownUpstreamFix:"PASS",externalImagesPinnedAndScanned:"PASS",releaseImageGate:$imageScanCheck},limitations:["Les bases de vulnérabilités reflètent leur état au moment du run et doivent être rescannées régulièrement.","Toutes les CVE HIGH/CRITICAL detectees sont visibles et bloquent le statut release; aucune exclusion --ignore-unfixed n est appliquee. Un FixedVersion Trivy indique une correction de composant connue, pas necessairement un digest d image amont deja publie et valide.","Deux avis MODERATE concernent Vitest, dépendance de développement; ils ne sont pas masqués et restent une dette à traiter.","Ces scans automatisés ne remplacent ni pentest, ni revue de configuration de la cible BOA, ni analyse de menace, ni signature/SBOM des artefacts publies."]}' >"$OUTPUT_FILE"
 
 echo "[security-scans] scanExecution=PASS releaseStatus=$image_release_gate: $OUTPUT_FILE"

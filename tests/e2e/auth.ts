@@ -18,13 +18,17 @@ export const accounts = {
   karim: { persona: 'ml-01', username: process.env.E2E_ML_STEWARD_USERNAME || 'ml.steward.demo', password: process.env.E2E_ML_STEWARD_PASSWORD || 'DevOnly-MlSteward1-ChangeMe!' },
   admin: { persona: 'backoffice', username: process.env.E2E_ADMIN_USERNAME || 'admin.demo', password: process.env.E2E_ADMIN_PASSWORD || 'DevOnly-Admin1-ChangeMe!' },
   approbateur: { persona: 'approbateur', username: process.env.E2E_RULE_APPROVER_USERNAME || 'rule.approver.demo', password: process.env.E2E_RULE_APPROVER_PASSWORD || 'DevOnly-RuleApprover1-ChangeMe!' },
+  fonds: { persona: 'fund-001', username: process.env.E2E_FUND_USERNAME || 'fund.demo', password: process.env.E2E_FUND_PASSWORD || 'DevOnly-Fund1-ChangeMe!' },
+  fondsB: { persona: 'fund-001', username: process.env.E2E_FUND_B_USERNAME || 'fund.b.demo', password: process.env.E2E_FUND_PASSWORD || 'DevOnly-Fund1-ChangeMe!' },
+  fondsExpire: { persona: 'fund-001', username: process.env.E2E_FUND_EXPIRED_USERNAME || 'fund.expired.demo', password: process.env.E2E_FUND_PASSWORD || 'DevOnly-Fund1-ChangeMe!' },
+  fondsScopeLimite: { persona: 'fund-001', username: process.env.E2E_FUND_LIMITED_USERNAME || 'fund.missing-scope.demo', password: process.env.E2E_FUND_PASSWORD || 'DevOnly-Fund1-ChangeMe!' },
 } as const
 
 export async function login(page: Page, account: keyof typeof accounts) {
   const target = accounts[account]
   await page.goto('/login')
   if (devMode) {
-    await page.getByRole('button', { name: new RegExp(target.persona === 'cc' ? 'Ahmed' : target.persona === 'agence' ? 'Salma' : target.persona === 'approbateur' ? 'Nadia' : target.persona === 'ml-01' ? 'Karim' : 'Youssef') }).click()
+    await page.getByRole('button', { name: new RegExp(target.persona === 'cc' ? 'Ahmed' : target.persona === 'agence' ? 'Salma' : target.persona === 'approbateur' ? 'Nadia' : target.persona === 'ml-01' ? 'Karim' : target.persona === 'fund-001' ? 'Fonds Atlas' : 'Youssef') }).click()
   } else {
     // Keycloak peut être déclenché automatiquement par l'initialisation OIDC ou manuellement
     // depuis l'écran local. Le helper accepte les deux comportements sans attendre un bouton

@@ -17,6 +17,7 @@ from boa_oi.platform import (
     Problem,
     correlation_id,
     create_service_app,
+    current_principal,
     require_roles,
 )
 
@@ -44,6 +45,7 @@ SERVICES = {
     "ml-engine": "ML_ENGINE_SERVICE_URL",
     "portfolio": "PORTFOLIO_SERVICE_URL",
     "notification": "NOTIFICATION_SERVICE_URL",
+    "financial-intelligence": "FINANCIAL_INTELLIGENCE_SERVICE_URL",
 }
 GLOBAL_ANALYTICS_ROLES = ("DATA_ANALYST", "ML_STEWARD", "ADMIN", "SERVICE")
 
@@ -88,6 +90,7 @@ async def proxy(
     body: Any | None = None,
     idempotency_key: str | None = None,
     response_status: int | None = None,
+    timeout: float = 15.0,
 ) -> JSONResponse:
     customer_id = request.path_params.get("customer_id")
     opportunity_id = request.path_params.get("opportunity_id")
@@ -102,6 +105,7 @@ async def proxy(
         params=dict(request.query_params),
         json=body,
         idempotency_key=idempotency_key,
+        timeout=timeout,
         incoming_authorization=request.headers.get("Authorization"),
         dev_principal=request.headers.get("X-Dev-Principal"),
     )
@@ -134,6 +138,92 @@ async def binary_proxy(request: Request, service: str, path: str) -> Response:
     if result.sha256:
         headers["X-Content-SHA256"] = result.sha256
     return Response(result.content, media_type=result.media_type, headers=headers)
+
+
+FI_ROLES = ("EXTERNAL_CONSUMER",)
+FI_FORBIDDEN_ROLES = frozenset({"ADMIN", "SERVICE"})
+FI_GATEWAY_TIMEOUT_SECONDS = max(
+    15.0, min(float(os.getenv("FI_GATEWAY_TIMEOUT_SECONDS", "600")), 600.0)
+)
+FI_GET_ROUTES = (
+    (
+        "/api/v1/financial-intelligence/portfolios",
+        "portfolios",
+    ),
+    (
+        "/api/v1/financial-intelligence/portfolios/{portfolio_id}/summary",
+        "portfolios/{portfolio_id}/summary",
+    ),
+    (
+        "/api/v1/financial-intelligence/companies/{company_id}/summary",
+        "companies/{company_id}/summary",
+    ),
+    (
+        "/api/v1/financial-intelligence/companies/{company_id}/signals",
+        "companies/{company_id}/signals",
+    ),
+    (
+        "/api/v1/financial-intelligence/companies/{company_id}/opportunities",
+        "companies/{company_id}/opportunities",
+    ),
+    (
+        "/api/v1/financial-intelligence/companies/{company_id}/cash-position",
+        "companies/{company_id}/cash-position",
+    ),
+    (
+        "/api/v1/financial-intelligence/companies/{company_id}/flow-summary",
+        "companies/{company_id}/flow-summary",
+    ),
+)
+
+
+async def require_fi_principal(
+    principal: Principal = Depends(current_principal),
+) -> Principal:
+    if "EXTERNAL_CONSUMER" not in principal.roles or not principal.roles.isdisjoint(
+        FI_FORBIDDEN_ROLES
+    ):
+        raise Problem(403, "FI_ROLE_MISSING", "Financial Intelligence access is not allowed.")
+    return principal
+
+
+def register_fi_get(public_path: str, internal_template: str) -> None:
+    operation_id = "gateway_fi_" + public_path.rsplit("/", 1)[-1].replace("-", "_")
+    if "portfolio_id" in public_path:
+        operation_id += "_portfolio"
+
+    async def endpoint(
+        request: Request, _principal: Principal = Depends(require_fi_principal)
+    ) -> JSONResponse:
+        allowed_query = {"asOf"}
+        if internal_template == "portfolios":
+            allowed_query.update({"pageSize", "offset"})
+        unknown_query = sorted(set(request.query_params) - allowed_query)
+        if unknown_query:
+            raise Problem(
+                400,
+                "UNKNOWN_FILTER",
+                f"Unsupported Financial Intelligence query parameter: {unknown_query[0]}",
+            )
+        path = internal_template.format(**request.path_params)
+        return await proxy(
+            request,
+            "financial-intelligence",
+            f"financial-intelligence/{path}",
+            timeout=FI_GATEWAY_TIMEOUT_SECONDS,
+        )
+
+    app.add_api_route(
+        public_path,
+        endpoint,
+        methods=["GET"],
+        tags=["Financial Intelligence"],
+        operation_id=operation_id,
+    )
+
+
+for fi_public_path, fi_internal_path in FI_GET_ROUTES:
+    register_fi_get(fi_public_path, fi_internal_path)
 
 
 @app.get("/api/v1/exports/opportunities.xlsx", tags=["Exports"])

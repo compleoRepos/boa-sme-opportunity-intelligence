@@ -1177,6 +1177,8 @@ button.breakdown-row:hover {
   bottom: var(--sp-5);
   z-index: var(--z-toast);
   width: 380px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
   background: var(--navy-950);
   color: #fff;
   border-radius: var(--r-xl);
@@ -1246,6 +1248,45 @@ button.breakdown-row:hover {
   color: rgba(255, 255, 255, 0.85);
 }
 
+.demo-acts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.demo-acts button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.68);
+  text-align: left;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.demo-acts button:hover,
+.demo-acts button:focus-visible,
+.demo-acts li.current button {
+  border-color: rgba(143, 180, 255, 0.75);
+  background: rgba(143, 180, 255, 0.14);
+  color: #fff;
+}
+
+.demo-acts li.completed button { color: #a9e7c1; }
+.demo-acts li.completed svg { color: #55c984; }
+.demo-act-tools { padding-top: 2px; }
+.demo-act-tools .btn.soft { color: #fff; background: rgba(255, 255, 255, 0.1); }
+.demo-act-tools .btn.soft:disabled { opacity: 0.66; }
+
 .demo-progress {
   display: flex;
   gap: 4px;
@@ -1294,7 +1335,8 @@ body[data-demo-target="action"] [data-demo="action"],
 body[data-demo-target="branch"] [data-demo="branch"],
 body[data-demo-target="rule"] [data-demo="rule"],
 body[data-demo-target="simulation"] [data-demo="simulation"],
-body[data-demo-target="models"] [data-demo="models"] {
+body[data-demo-target="models"] [data-demo="models"],
+body[data-demo-target="ml-studio"] [data-demo="ml-studio"] {
   outline: 2px solid var(--accent);
   outline-offset: 6px;
   border-radius: var(--r-lg);
@@ -1478,6 +1520,78 @@ body[data-demo-target="models"] [data-demo="models"] {
 .ml-job-meta { font-size: var(--fs-xs); }
 .table tr.selected { background: var(--blue-50); }
 
+/* Financial Intelligence B2B : extensions du design system existant */
+.fi-page { min-width: 0; }
+.fi-governance {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--amber-600);
+  border-radius: var(--r-lg);
+  background: var(--amber-100);
+  color: var(--ink-900);
+}
+.fi-governance p { font-size: var(--fs-xs); color: var(--ink-700); }
+.fi-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--red-100);
+  color: var(--red-700);
+  font-size: var(--fs-sm);
+}
+.fi-blocked { min-height: 128px; }
+.fi-metric-grid,
+.fi-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+  margin: 0;
+}
+.fi-metric-grid > div,
+.fi-meta > div {
+  min-width: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-muted);
+}
+.fi-metric-grid dt,
+.fi-meta dt { color: var(--text-muted); font-size: var(--fs-xs); }
+.fi-metric-grid dd,
+.fi-meta dd { margin: 3px 0 0; color: var(--ink-900); font-weight: 700; overflow-wrap: anywhere; }
+.fi-metric-grid dd { font-size: var(--fs-lg); font-variant-numeric: tabular-nums; }
+.fi-metric-grid small,
+.fi-meta small { color: var(--text-muted); font-size: var(--fs-2xs); }
+.fi-source-list,
+.fi-opportunity-list,
+.fi-evidence-list { display: grid; gap: var(--sp-2); }
+.fi-source-list li,
+.fi-opportunity-list li,
+.fi-evidence-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-bottom: 1px solid var(--ink-100);
+}
+.fi-source-list li:last-child,
+.fi-opportunity-list li:last-child,
+.fi-evidence-list li:last-child { border-bottom: 0; }
+.fi-source-list li > span,
+.fi-opportunity-list li > span,
+.fi-evidence-list li > span { display: grid; min-width: 0; }
+.fi-source-list small,
+.fi-opportunity-list small,
+.fi-evidence-list small { color: var(--text-muted); overflow-wrap: anywhere; }
+.fi-source-list svg,
+.fi-evidence-list svg { color: var(--accent); flex-shrink: 0; }
+.fi-table { min-width: 680px; }
+.fi-contract-note { font-size: var(--fs-xs); text-align: right; }
+
 .mini-metric {
   display: grid;
   gap: 4px;
@@ -1598,6 +1712,12 @@ body[data-demo-target="models"] [data-demo="models"] {
 }
 
 @media (max-width: 860px) {
+  .fi-metric-grid,
+  .fi-meta { grid-template-columns: 1fr; }
+  .fi-governance .row { align-items: flex-start; }
+  .fi-source-list li,
+  .fi-opportunity-list li { align-items: flex-start; flex-direction: column; }
+  .fi-page .page-head { align-items: flex-start; flex-direction: column; }
   .ml-gates,
   .manifest-grid { grid-template-columns: 1fr; }
   .ml-mode-lock { width: 100%; }

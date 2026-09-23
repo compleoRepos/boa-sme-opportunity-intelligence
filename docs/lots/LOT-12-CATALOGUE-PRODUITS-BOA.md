@@ -1,5 +1,7 @@
 # Lot 12 — Catalogue produit public BOA et garde-fous Rule Studio
 
+**Révision fonctionnelle Lot 16 associée à cette mise à jour :** `9c8edc1f09ce7e545c71856ce430b1e2d89dd73d`
+
 **Date :** 20 septembre 2026
 
 **Branche :** `feat/pilot-readiness`
@@ -115,7 +117,7 @@ Le correctif de pourcentage du panneau de simulation et le script optionnel [`re
 | Playwright | **PASS**, 20/20 en 3,6 minutes sur `0b7b2b5`, dont catalogue et contournement CC par `customerId`; cas, statuts et durées versionnés[11] |
 | protocole catalogue post-E2E | **PASS**, run `product-catalog-20260921T024540Z-3120162` sur `0b7b2b5`[2] |
 | FAQ comité | **PASS**, 30 questions |
-| scénario de démonstration | **PASS**, 5 actes |
+| scénario de démonstration | **PASS**, 6 actes |
 | manifestes SHA-256 catalogue | **PASS**, quatre fichiers vérifiés depuis la racine par `sha256sum -c docs/evidence/catalog/SHA256SUMS.txt`[10] |
 
 ## 8. CI distante et release
@@ -143,7 +145,7 @@ Le ML est classique, CPU-only, sans LLM ni GPU. Il reste `POC_SHADOW` et n’inf
 [3]: ../evidence/catalog/RESULTATS-MIGRATION-CATALOGUE.json "Preuve migration PostgreSQL vierge, existante et rollback"
 [4]: ../api.md "Contrats Product Service, Rule Studio et erreurs fail-closed"
 [5]: ../data-model.md "Modèle relationnel et migration 0018"
-[6]: ../demo-scenario.md "Scénario de démonstration en cinq actes"
+[6]: ../demo-scenario.md "Scénario de démonstration en six actes"
 [7]: ./LOT-11-INDUSTRIALISATION-EXPLOITATION.md "Industrialisation, sécurité et blocage release"
 [8]: https://github.com/compleoRepos/btp-suivi-projets/actions/runs/35538673248 "Run CI distant annulé par timeout"
 [9]: ../evidence/catalog/CATALOGUE-PRODUITS-1440x900.png "Capture réelle du catalogue produit à 1440×900"

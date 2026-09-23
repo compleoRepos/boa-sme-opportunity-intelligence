@@ -1,4 +1,4 @@
-export type Role = 'RELATIONSHIP_MANAGER' | 'BRANCH_MANAGER' | 'ADMIN' | 'DATA_ANALYST' | 'BUSINESS_ANALYST' | 'ML_STEWARD' | 'RULE_APPROVER'
+export type Role = 'RELATIONSHIP_MANAGER' | 'BRANCH_MANAGER' | 'ADMIN' | 'DATA_ANALYST' | 'BUSINESS_ANALYST' | 'ML_STEWARD' | 'RULE_APPROVER' | 'EXTERNAL_CONSUMER'
 
 export interface PageMeta {
   pageSize: number
@@ -449,9 +449,11 @@ export interface DevPersona {
   description: string
   subject: string
   username: string
+  clientId?: string
   email?: string
   displayName: string
   roles: Role[]
+  scopes?: string[]
   branchIds?: string[]
   relationshipManagerIds?: string[]
 }
@@ -585,7 +587,7 @@ export type RuleExpression = RuleConditionDefinition | RuleConditionGroup
 
 export interface RuleScope {
   segment: string[]
-  sectors: string[]
+  sectors?: string[]
   regions?: string[]
 }
 
@@ -921,6 +923,15 @@ export interface MlStudioGate {
 export interface MlStudioSummary {
   mode: 'RULES_ONLY' | 'ML_SHADOW' | 'HYBRID_RERANK' | string
   weights: { rules: number; ml: number }
+  activePolicy?: {
+    policyId: string
+    version: number
+    status: string
+    rulesWeight: number
+    mlWeight: number
+    activatedBy?: string | null
+    activatedAt?: string | null
+  } | null
   productionPerformanceClaim: boolean
   champion?: { modelVersion: string; status: string; updatedAt: string } | null
   labels: { available: number; mature: number }

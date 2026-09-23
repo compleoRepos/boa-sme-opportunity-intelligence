@@ -29,3 +29,7 @@ export function RuleStudioRoute({ children }: { children: React.ReactNode }) {
 export function MlStudioRoute({ children }: { children: React.ReactNode }) {
   return <RoleRoute roles={['ML_STEWARD', 'RULE_APPROVER', 'ADMIN']}>{children}</RoleRoute>
 }
+
+export function ExternalConsumerRoute({ children }: { children: React.ReactNode }) {
+  return <RoleRoute roles={['EXTERNAL_CONSUMER']}>{children}</RoleRoute>
+}

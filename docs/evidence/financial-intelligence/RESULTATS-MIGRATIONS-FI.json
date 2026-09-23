@@ -1,0 +1,47 @@
+{
+  "status": "PASS",
+  "runId": "fi-migrations-20260923T153249Z",
+  "createdAt": "2026-09-23T15:33:21Z",
+  "source": {
+    "revision": "9c8edc1f09ce7e545c71856ce430b1e2d89dd73d",
+    "branch": "feat/financial-intelligence-api",
+    "codeTree": "CLEAN",
+    "codeDigest": "c9dbe5f3ce95c4a5e390b0a980223e75df92542c43496783ce90600be70b6f86",
+    "digestScope": "migration",
+    "digestManifest": "SOURCE-MANIFEST-FI.json",
+    "digestAlgorithm": "SHA-256 of path-sorted sha256sum lines"
+  },
+  "database": "PostgreSQL 16 isolated container",
+  "matrix": {
+    "adminOnlyFullCycle": "PASS",
+    "existing0020To0021": "PASS",
+    "downgrade0021To0020": "PASS",
+    "reupgrade0020To0021": "PASS",
+    "destructiveDowngradeRefusedWithData": "PASS",
+    "runtimeLeastPrivilege": "PASS",
+    "auditAppendOnly": "PASS",
+    "auditTruncateProtected": "PASS",
+    "consumerPortfolioIntegrity": "PASS",
+    "inactiveMembershipRequiresEnd": "PASS",
+    "oauthClientBinding": "PASS",
+    "purposeBinding": "PASS"
+  },
+  "invariants": {
+    "serviceRoleRequiredByAlembic": false,
+    "serviceMayReadEntitlements": true,
+    "serviceMayInsertAudit": true,
+    "serviceMayMutateAudit": false,
+    "serviceMayTruncateAudit": false,
+    "administrativeDirectDmlProtected": true,
+    "serviceMayMutateEntitlements": false,
+    "grantPortfolioConsumerConsistency": true,
+    "membershipHistoryUsesValidityWindow": true,
+    "grantRequiresOAuthClient": true,
+    "grantPurposeIsFixed": true
+  },
+  "limitations": [
+    "POC / SYNTHETIC DATA / NON-PRODUCTION.",
+    "La validation ne remplace pas l homologation IAM, DPO, securite et exploitation BOA.",
+    "Les triggers prouvent le refus des mutations DML directes. Un propriétaire DBA peut altérer ou supprimer un trigger; une garantie WORM exige une séparation de rôles et un stockage d audit externe à valider avec BOA."
+  ]
+}

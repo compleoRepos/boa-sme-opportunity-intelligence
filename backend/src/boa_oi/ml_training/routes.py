@@ -26,6 +26,9 @@ from boa_oi.models.entities import (
     MLTrainingJob,
     ModelRegistry,
     OutcomeLabelSnapshot,
+    ScoringPolicy,
+    ScoringPolicyAuditLog,
+    ScoringPolicyVersion,
 )
 from boa_oi.platform import (
     Principal,
@@ -40,6 +43,32 @@ PREFIX = "/internal/v1/ml/governance"
 router = APIRouter(prefix=PREFIX, tags=["ML Studio"])
 READ_ROLES = ("ML_STEWARD", "RULE_APPROVER", "ADMIN", "SERVICE")
 AUTHOR_ROLES = ("ML_STEWARD", "ADMIN")
+
+
+def _g3_gate(
+    *,
+    g1_passed: bool,
+    g2_passed: bool,
+    has_champion: bool,
+    has_model_governance_event: bool,
+    has_active_ml_policy: bool,
+    has_policy_activation_event: bool,
+) -> tuple[bool, str | None]:
+    prerequisites = (
+        (g1_passed, "La porte G1 doit être franchie : manifeste historique BOA validé requis."),
+        (g2_passed, "La porte G2 doit être franchie : évaluation indépendante validée requise."),
+        (has_champion, "Un modèle champion gouverné est requis."),
+        (has_model_governance_event, "Une approbation ou promotion ML auditée est requise."),
+        (
+            has_active_ml_policy,
+            "Une politique de fusion ACTIVE avec un poids ML strictement positif est requise.",
+        ),
+        (has_policy_activation_event, "L'activation de la politique doit être auditée."),
+    )
+    for passed, missing in prerequisites:
+        if not passed:
+            return False, missing
+    return True, None
 
 
 class TrainingPayload(BaseModel):
@@ -261,12 +290,20 @@ def studio_summary(session: Session = Depends(get_session)) -> dict[str, Any]:
         .where(ModelRegistry.status.in_(("CHAMPION", "ACTIVE")))
         .order_by(ModelRegistry.updated_at.desc())
     )
-    gate_events = list(
-        session.scalars(
-            select(MLGovernanceAuditLog)
-            .where(MLGovernanceAuditLog.action.in_(("APPROVED", "PROMOTED")))
-            .order_by(MLGovernanceAuditLog.timestamp.desc())
+    gate_events = (
+        list(
+            session.scalars(
+                select(MLGovernanceAuditLog)
+                .where(
+                    MLGovernanceAuditLog.action.in_(("APPROVED", "PROMOTED")),
+                    MLGovernanceAuditLog.object_id == champion.model_id,
+                    MLGovernanceAuditLog.object_version == champion.model_version,
+                )
+                .order_by(MLGovernanceAuditLog.timestamp.desc())
+            )
         )
+        if champion is not None
+        else []
     )
     manifests = list(
         session.scalars(select(MLDatasetManifest).order_by(MLDatasetManifest.created_at.desc()))
@@ -278,6 +315,40 @@ def studio_summary(session: Session = Depends(get_session)) -> dict[str, Any]:
             if item.source_kind == "BOA_HISTORICAL_OBSERVED" and item.status == "VALIDATED"
         ),
         None,
+    )
+    g1_passed = boa_manifest is not None
+    g2_passed = latest_evaluation is not None and latest_evaluation.status == "VALIDATED"
+    active_policy = session.scalar(
+        select(ScoringPolicyVersion)
+        .where(ScoringPolicyVersion.status == "ACTIVE")
+        .order_by(ScoringPolicyVersion.created_at.desc())
+    )
+    active_policy_definition = (
+        session.get(ScoringPolicy, active_policy.policy_id) if active_policy is not None else None
+    )
+    active_ml_policy = (
+        active_policy if active_policy is not None and float(active_policy.ml_weight) > 0 else None
+    )
+    policy_activation_event = (
+        session.scalar(
+            select(ScoringPolicyAuditLog)
+            .where(
+                ScoringPolicyAuditLog.policy_id == active_ml_policy.policy_id,
+                ScoringPolicyAuditLog.policy_version == active_ml_policy.version,
+                ScoringPolicyAuditLog.action == "ACTIVE",
+            )
+            .order_by(ScoringPolicyAuditLog.timestamp.desc())
+        )
+        if active_ml_policy is not None
+        else None
+    )
+    g3_passed, g3_missing = _g3_gate(
+        g1_passed=g1_passed,
+        g2_passed=g2_passed,
+        has_champion=champion is not None,
+        has_model_governance_event=bool(gate_events),
+        has_active_ml_policy=active_ml_policy is not None,
+        has_policy_activation_event=policy_activation_event is not None,
     )
     gates = [
         {
@@ -291,7 +362,7 @@ def studio_summary(session: Session = Depends(get_session)) -> dict[str, Any]:
         {
             "gate": "G1",
             "label": "Données et étiquettes BOA",
-            "status": "PASSED" if boa_manifest else "BLOCKED",
+            "status": "PASSED" if g1_passed else "BLOCKED",
             "actor": boa_manifest.created_by if boa_manifest else None,
             "at": boa_manifest.created_at.isoformat() if boa_manifest else None,
             "missingCondition": None
@@ -301,9 +372,7 @@ def studio_summary(session: Session = Depends(get_session)) -> dict[str, Any]:
         {
             "gate": "G2",
             "label": "Évaluation indépendante",
-            "status": "PASSED"
-            if latest_evaluation and latest_evaluation.status == "VALIDATED"
-            else "BLOCKED",
+            "status": "PASSED" if g2_passed else "BLOCKED",
             "actor": latest_evaluation.created_by if latest_evaluation else None,
             "at": latest_evaluation.created_at.isoformat() if latest_evaluation else None,
             "missingCondition": None
@@ -313,15 +382,16 @@ def studio_summary(session: Session = Depends(get_session)) -> dict[str, Any]:
         {
             "gate": "G3",
             "label": "Activation gouvernée",
-            "status": "PASSED" if champion and gate_events else "BLOCKED",
-            "actor": gate_events[0].user_id if champion and gate_events else None,
-            "at": gate_events[0].timestamp.isoformat() if champion and gate_events else None,
-            "missingCondition": None
-            if champion and gate_events
-            else (
-                "La porte G3 n'est pas franchie : labels historiques BOA et évaluation "
-                "indépendante validée requis."
+            "status": "PASSED" if g3_passed else "BLOCKED",
+            "actor": (
+                policy_activation_event.user_id if policy_activation_event is not None else None
             ),
+            "at": (
+                policy_activation_event.timestamp.isoformat()
+                if policy_activation_event is not None
+                else None
+            ),
+            "missingCondition": g3_missing,
         },
         {
             "gate": "G4",
@@ -346,7 +416,17 @@ def studio_summary(session: Session = Depends(get_session)) -> dict[str, Any]:
     ]
     return {
         "mode": "ML_SHADOW" if champion else "RULES_ONLY",
-        "weights": {"rules": 1, "ml": 0},
+        "weights": {
+            "rules": float(active_policy.rules_weight) if active_policy is not None else 1,
+            "ml": float(active_policy.ml_weight) if active_policy is not None else 0,
+        },
+        "activePolicy": {
+            "policyId": active_policy_definition.policy_id,
+            "version": active_policy.version,
+            "status": active_policy.status,
+        }
+        if active_policy is not None and active_policy_definition is not None
+        else None,
         "productionPerformanceClaim": False,
         "champion": {
             "modelVersion": champion.model_version,

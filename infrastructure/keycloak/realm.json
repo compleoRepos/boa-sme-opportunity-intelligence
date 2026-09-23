@@ -51,6 +51,10 @@
       {
         "name": "RULE_APPROVER",
         "description": "Approve, publish, disable and rollback submitted rules"
+      },
+      {
+        "name": "EXTERNAL_CONSUMER",
+        "description": "Read explicitly granted synthetic Financial Intelligence portfolios"
       }
     ]
   },
@@ -152,6 +156,23 @@
           "config": {
             "user.attribute": "relationshipManagerIds",
             "claim.name": "boa.relationshipManagerIds",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        },
+        {
+          "name": "financial-intelligence-scopes",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "fiScopes",
+            "claim.name": "fi_scopes",
             "jsonType.label": "String",
             "multivalued": "true",
             "id.token.claim": "true",
@@ -710,6 +731,36 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "financial-intelligence-service",
+      "name": "financial-intelligence-service service account",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "DevOnly-FinancialIntelligenceClient-ChangeMe!",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": [
+        "roles",
+        "profile"
+      ],
+      "protocolMappers": [
+        {
+          "name": "boa-sme-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "boa-sme-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "lightweight.claim": "false"
+          }
+        }
+      ]
     }
   ],
   "users": [
@@ -1024,6 +1075,128 @@
       "realmRoles": [
         "SERVICE"
       ]
+    },
+    {
+      "username": "service-account-financial-intelligence-service",
+      "enabled": true,
+      "serviceAccountClientId": "financial-intelligence-service",
+      "realmRoles": [
+        "SERVICE"
+      ]
+    },
+    {
+      "id": "external-fund-a",
+      "username": "fund.demo",
+      "email": "fund.demo@synthetic.invalid",
+      "firstName": "Fonds",
+      "lastName": "Atlas Croissance",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "fiScopes": [
+          "financial.read",
+          "signals.read",
+          "opportunities.read",
+          "portfolio.read"
+        ],
+        "synthetic": [
+          "true"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DevOnly-Fund1-ChangeMe!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "EXTERNAL_CONSUMER"
+      ]
+    },
+    {
+      "id": "external-fund-b",
+      "username": "fund.b.demo",
+      "email": "fund.b.demo@synthetic.invalid",
+      "firstName": "Fonds B",
+      "lastName": "Synthetic Financial Intelligence",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "fiScopes": [
+          "financial.read",
+          "signals.read",
+          "opportunities.read",
+          "portfolio.read"
+        ],
+        "synthetic": [
+          "true"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DevOnly-Fund1-ChangeMe!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "EXTERNAL_CONSUMER"
+      ]
+    },
+    {
+      "id": "external-expired",
+      "username": "fund.expired.demo",
+      "email": "fund.expired.demo@synthetic.invalid",
+      "firstName": "Fonds expiré",
+      "lastName": "Synthetic Financial Intelligence",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "fiScopes": [
+          "financial.read"
+        ],
+        "synthetic": [
+          "true"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DevOnly-Fund1-ChangeMe!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "EXTERNAL_CONSUMER"
+      ]
+    },
+    {
+      "id": "external-missing-scope",
+      "username": "fund.missing-scope.demo",
+      "email": "fund.missing-scope.demo@synthetic.invalid",
+      "firstName": "Fonds scope limité",
+      "lastName": "Synthetic Financial Intelligence",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "fiScopes": [
+          "financial.read"
+        ],
+        "synthetic": [
+          "true"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "DevOnly-Fund1-ChangeMe!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "EXTERNAL_CONSUMER"
+      ]
     }
   ],
   "scopeMappings": [
@@ -1038,7 +1211,8 @@
         "SERVICE",
         "NOTIFICATION_DIGEST_READER",
         "BUSINESS_ANALYST",
-        "RULE_APPROVER"
+        "RULE_APPROVER",
+        "EXTERNAL_CONSUMER"
       ]
     }
   ]

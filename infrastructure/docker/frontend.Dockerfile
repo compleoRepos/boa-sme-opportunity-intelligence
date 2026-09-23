@@ -22,6 +22,8 @@ RUN mkdir -p /out \
        fi
 
 FROM nginxinc/nginx-unprivileged:stable-alpine@sha256:daa17b944bac2b578e962da4c61ad72a59233b3c63abea17113acaf4e6b9aea4
-COPY infrastructure/nginx/default.conf /etc/nginx/conf.d/default.conf
+ARG VITE_KEYCLOAK_URL=http://localhost:8081
+COPY infrastructure/nginx/default.conf /tmp/default.conf
+RUN sed "s|\${KEYCLOAK_PUBLIC_ORIGIN}|${VITE_KEYCLOAK_URL}|g" /tmp/default.conf > /etc/nginx/conf.d/default.conf
 COPY --from=build /out/ /usr/share/nginx/html/
 EXPOSE 8080

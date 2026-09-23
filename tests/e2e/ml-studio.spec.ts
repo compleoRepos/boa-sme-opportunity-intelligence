@@ -50,6 +50,21 @@ test('Karim entraîne un modèle DEMO_ONLY et consulte les six onglets gouverné
   await expect(page.getByText('POC_SHADOW', { exact: true })).toBeVisible()
   await expect(page.getByText(/Aucun LLM, aucun GPU, aucune décision de crédit/)).toBeVisible()
   await expect(page.getByText(/Pourquoi le ML n’influence pas encore les priorités/)).toBeVisible()
+  const activePolicyResponse = await page.request.get('/api/v1/admin/scoring-policies/active', { headers: authHeaders })
+  const summaryResponse = await page.request.get('/api/v1/admin/ml/governance/studio-summary', { headers: authHeaders })
+  expect(activePolicyResponse.status()).toBe(200)
+  expect(summaryResponse.status()).toBe(200)
+  const activePolicy = await activePolicyResponse.json()
+  const summary = await summaryResponse.json()
+  expect(summary.activePolicy).toMatchObject({
+    policyId: activePolicy.policyId,
+    version: activePolicy.version,
+    status: 'ACTIVE',
+    rulesWeight: activePolicy.weights.rules,
+    mlWeight: activePolicy.weights.ml,
+  })
+  const g3 = summary.gates.find((gate: { gate: string }) => gate.gate === 'G3')
+  expect(g3?.status).toBe(activePolicy.weights.ml > 0 ? 'PASSED' : 'BLOCKED')
   await captureViewport(page, 'STUDIO-ML-01-VUE-ENSEMBLE')
 
   await openTab(page, 'Données et étiquettes', /Définitions de cible/)

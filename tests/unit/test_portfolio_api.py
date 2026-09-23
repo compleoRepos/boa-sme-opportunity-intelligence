@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import cast
 
@@ -15,6 +15,7 @@ from boa_oi.models.entities import (
     RelationshipManager,
 )
 from boa_oi.platform import Principal, current_principal
+from boa_oi.portfolio_api import _latest_visibility
 from boa_oi.technical.ids import deterministic_uuid
 from fastapi.testclient import TestClient
 from sqlalchemy import Table, create_engine, select
@@ -269,6 +270,233 @@ def test_shadow_propensity_does_not_change_rules_only_priority(monkeypatch):
     assert rm2["portfolio"][0]["combinedPriorityScore"] == 0
     assert rm1["portfolio"][0]["priorityLevel"] == "P4"
     assert rm2["portfolio"][0]["priorityLevel"] == "P4"
+
+
+def test_propensity_as_of_excludes_future_score(monkeypatch):
+    monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
+    factory, customers = factory_and_ids()
+    with factory.begin() as session:
+        session.add(
+            PropensityScoreRecord(
+                id=deterministic_uuid("score", "SME-00001", "future"),
+                customer_id=customers["SME-00001"][0],
+                customer_ref="SME-00001",
+                as_of_date=date(2026, 10, 31),
+                score_type="SALES_PROPENSITY",
+                score=Decimal("0.99"),
+                threshold=Decimal("0.58"),
+                above_threshold=True,
+                score_band="HIGH",
+                segment="MEDIUM",
+                model_version="future-model-must-not-leak",
+                feature_set_version="future-features-must-not-leak",
+                feature_checksum="f" * 64,
+                contributions_json=[],
+                top_factors_json=[],
+                training_dataset_version="future-dataset-must-not-leak",
+                deployment_mode="POC_SHADOW",
+                created_by="unit-test",
+            )
+        )
+
+    identity = principal("BRANCH_MANAGER", branches=("BR-01",))
+    response = client_for("portfolio-service", factory, identity).get(
+        "/internal/v1/customers/SME-00001/propensity",
+        params={"asOf": "2026-09-30"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["asOf"] == "2026-09-30"
+    assert payload["model"]["modelVersion"] == "sales-propensity-logit-poc-v1"
+    assert payload["model"]["trainingDatasetVersion"] == "synthetic-demo-20260918-v1"
+
+
+def test_propensity_as_of_excludes_expired_score(monkeypatch):
+    monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
+    factory, _customers = factory_and_ids()
+    with factory.begin() as session:
+        score = session.scalar(
+            select(PropensityScoreRecord).where(PropensityScoreRecord.customer_ref == "SME-00001")
+        )
+        assert score is not None
+        score.valid_until = date(2026, 9, 29)
+
+    identity = principal("BRANCH_MANAGER", branches=("BR-01",))
+    response = client_for("portfolio-service", factory, identity).get(
+        "/internal/v1/customers/SME-00001/propensity",
+        params={"asOf": "2026-09-30"},
+    )
+    assert response.status_code == 404
+    assert response.json()["code"] == "PROPENSITY_NOT_SCORED"
+
+
+def test_propensity_without_as_of_excludes_score_never_valid_at_its_cutoff(monkeypatch):
+    monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
+    factory, _customers = factory_and_ids()
+    with factory.begin() as session:
+        score = session.scalar(
+            select(PropensityScoreRecord).where(PropensityScoreRecord.customer_ref == "SME-00001")
+        )
+        assert score is not None
+        score.valid_until = date(2026, 9, 29)
+
+    identity = principal("BRANCH_MANAGER", branches=("BR-01",))
+    response = client_for("portfolio-service", factory, identity).get(
+        "/internal/v1/customers/SME-00001/propensity"
+    )
+    assert response.status_code == 404
+    assert response.json()["code"] == "PROPENSITY_NOT_SCORED"
+
+
+def test_latest_visibility_as_of_excludes_future_snapshot(monkeypatch):
+    monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
+    factory, customers = factory_and_ids()
+    customer_id = customers["SME-00001"][0]
+    with factory.begin() as session:
+        session.add(
+            FlowVisibilitySnapshot(
+                id=deterministic_uuid("flow-visibility", "SME-00001", "future"),
+                customer_id=customer_id,
+                customer_ref="SME-00001",
+                as_of_date=date(2026, 10, 31),
+                level="LOW",
+                estimated_share=Decimal("0.01"),
+                method="FUTURE_MUST_NOT_LEAK",
+                evidence_json=[],
+                fingerprint_count_90d=0,
+                fingerprint_previous_90d=0,
+                categorization_coverage=Decimal("1.0"),
+                calculation_version="future-visibility",
+                input_watermark="future-must-not-leak",
+                created_by="unit-test",
+            )
+        )
+
+    with factory() as session:
+        selected = _latest_visibility(
+            session,
+            [customer_id],
+            as_of=date(2026, 9, 30),
+        )[customer_id]
+    assert selected.as_of_date == date(2026, 9, 30)
+    assert selected.level == "HIGH"
+    assert selected.method == "TURNOVER_RATIO"
+
+
+def test_propensity_as_of_excludes_future_opportunity(monkeypatch):
+    monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
+    factory, customers = factory_and_ids()
+    with factory.begin() as session:
+        session.add(
+            Opportunity(
+                id=deterministic_uuid("opportunity", "SME-00001", "future"),
+                opportunity_ref="OPP-FUTURE-MUST-NOT-LEAK",
+                customer_id=customers["SME-00001"][0],
+                customer_ref="SME-00001",
+                customer_name="Entreprise SME-00001",
+                opportunity_type="FUTURE_RULE",
+                status="OPEN",
+                status_updated_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+                status_reason=None,
+                expires_at=None,
+                cooldown_until=None,
+                last_action_at=None,
+                horizon="30D",
+                confidence_score=Decimal("0.99"),
+                confidence_level="HIGH",
+                confidence_components_json=[],
+                priority_score=Decimal("99"),
+                priority_level="P1",
+                priority_components_json=[],
+                why_json=[],
+                what_text="Future opportunity",
+                when_text="After asOf",
+                recommended_products_json=[],
+                recommendation_nature="NEED_DISCOVERY",
+                explanation_json={},
+                generated_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+                engine_version="future-engine",
+                rule_version="future-rule",
+                scoring_policy_id="future-policy",
+                scoring_policy_version=1,
+                rules_weight=Decimal("1"),
+                ml_weight=Decimal("0"),
+                fallback_mode="RULES_ONLY",
+                fallback_cause_json=None,
+                rule_id=deterministic_uuid("rule", "future"),
+                deduplication_key="future-opportunity-must-not-leak",
+            )
+        )
+
+    identity = principal("BRANCH_MANAGER", branches=("BR-01",))
+    response = client_for("portfolio-service", factory, identity).get(
+        "/internal/v1/customers/SME-00001/propensity",
+        params={"asOf": "2026-09-30"},
+    )
+    assert response.status_code == 200
+    combination = response.json()["combination"]
+    assert combination["rulesScore"] == 0
+    assert combination["combinedPriorityScore"] == 0
+    assert combination["policyId"] is None
+    assert response.json()["priorityLevel"] == "P4"
+
+
+def test_propensity_as_of_excludes_expired_open_opportunity(monkeypatch):
+    monkeypatch.setenv("BOA_ALLOW_NON_POSTGRES_TEST_DB", "true")
+    factory, customers = factory_and_ids()
+    with factory.begin() as session:
+        session.add(
+            Opportunity(
+                id=deterministic_uuid("opportunity", "SME-00001", "expired"),
+                opportunity_ref="OPP-EXPIRED-MUST-NOT-LEAK",
+                customer_id=customers["SME-00001"][0],
+                customer_ref="SME-00001",
+                customer_name="Entreprise SME-00001",
+                opportunity_type="EXPIRED_RULE",
+                status="OPEN",
+                status_updated_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+                status_reason=None,
+                expires_at=datetime(2026, 9, 29, 23, 59, tzinfo=timezone.utc),
+                cooldown_until=None,
+                last_action_at=None,
+                horizon="30D",
+                confidence_score=Decimal("0.99"),
+                confidence_level="HIGH",
+                confidence_components_json=[],
+                priority_score=Decimal("99"),
+                priority_level="P1",
+                priority_components_json=[],
+                why_json=[],
+                what_text="Expired opportunity",
+                when_text="Before asOf",
+                recommended_products_json=[],
+                recommendation_nature="NEED_DISCOVERY",
+                explanation_json={},
+                generated_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+                engine_version="expired-engine",
+                rule_version="expired-rule",
+                scoring_policy_id="expired-policy",
+                scoring_policy_version=1,
+                rules_weight=Decimal("1"),
+                ml_weight=Decimal("0"),
+                fallback_mode="RULES_ONLY",
+                fallback_cause_json=None,
+                rule_id=deterministic_uuid("rule", "expired"),
+                deduplication_key="expired-opportunity-must-not-leak",
+            )
+        )
+
+    identity = principal("BRANCH_MANAGER", branches=("BR-01",))
+    response = client_for("portfolio-service", factory, identity).get(
+        "/internal/v1/customers/SME-00001/propensity",
+        params={"asOf": "2026-09-30"},
+    )
+    assert response.status_code == 200
+    combination = response.json()["combination"]
+    assert combination["rulesScore"] == 0
+    assert combination["combinedPriorityScore"] == 0
+    assert combination["policyId"] is None
+    assert response.json()["priorityLevel"] == "P4"
 
 
 def test_shadow_propensity_does_not_break_rules_only_priority_ties(monkeypatch):

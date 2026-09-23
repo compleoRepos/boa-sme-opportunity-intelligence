@@ -1,0 +1,137 @@
+{
+  "schemaVersion": "1.0",
+  "status": "PASS",
+  "generatedAt": "2026-09-23T16:02:57.252Z",
+  "source": {
+    "branch": "feat/financial-intelligence-api",
+    "revision": "9c8edc1f09ce7e545c71856ce430b1e2d89dd73d",
+    "codeDigest": "ea0ccb2ec5928400f88d45d5b9dbb5dfbd980cf7a4f333e3e1c52191ee0edacf",
+    "digestScope": "runtime",
+    "digestManifest": "SOURCE-MANIFEST-FI.json",
+    "digestAlgorithm": "SHA-256 of path-sorted sha256sum lines"
+  },
+  "environment": {
+    "stack": "Docker Compose isolated",
+    "authentication": "Keycloak OIDC Authorization Code + PKCE",
+    "portfolioConcurrency": 20
+  },
+  "results": [
+    {
+      "portfolioId": "PORTFOLIO-PERF-010",
+      "customerCount": 10,
+      "iterations": 5,
+      "durationsMs": [
+        2209,
+        3912,
+        2481,
+        2491,
+        2245
+      ],
+      "downstreamCallCounts": [
+        50,
+        50,
+        50,
+        50,
+        50
+      ],
+      "mlGovernanceStatuses": [
+        "VERIFIED"
+      ],
+      "p50Ms": 2481,
+      "p95Ms": 3912,
+      "dashboardDurationMs": 3117,
+      "p95ThresholdMs": 30000,
+      "thresholdStatus": "PASS",
+      "thresholdQualification": "HYPOTHÈSE À VALIDER AVEC BOA"
+    },
+    {
+      "portfolioId": "PORTFOLIO-PERF-050",
+      "customerCount": 50,
+      "iterations": 5,
+      "durationsMs": [
+        12156,
+        12435,
+        11511,
+        13262,
+        12450
+      ],
+      "downstreamCallCounts": [
+        250,
+        250,
+        250,
+        250,
+        250
+      ],
+      "mlGovernanceStatuses": [
+        "UNAVAILABLE"
+      ],
+      "p50Ms": 12435,
+      "p95Ms": 13262,
+      "dashboardDurationMs": 12868,
+      "p95ThresholdMs": 90000,
+      "thresholdStatus": "PASS",
+      "thresholdQualification": "HYPOTHÈSE À VALIDER AVEC BOA"
+    },
+    {
+      "portfolioId": "PORTFOLIO-PERF-100",
+      "customerCount": 100,
+      "iterations": 5,
+      "durationsMs": [
+        23707,
+        23426,
+        24597,
+        23562,
+        25060
+      ],
+      "downstreamCallCounts": [
+        500,
+        500,
+        500,
+        500,
+        500
+      ],
+      "mlGovernanceStatuses": [
+        "UNAVAILABLE"
+      ],
+      "p50Ms": 23707,
+      "p95Ms": 25060,
+      "dashboardDurationMs": 25707,
+      "p95ThresholdMs": 180000,
+      "thresholdStatus": "PASS",
+      "thresholdQualification": "HYPOTHÈSE À VALIDER AVEC BOA"
+    },
+    {
+      "portfolioId": "PORTFOLIO-PERF-500",
+      "customerCount": 500,
+      "iterations": 5,
+      "durationsMs": [
+        123893,
+        121644,
+        125042,
+        123860,
+        117861
+      ],
+      "downstreamCallCounts": [
+        2500,
+        2500,
+        2500,
+        2500,
+        2500
+      ],
+      "mlGovernanceStatuses": [
+        "UNAVAILABLE"
+      ],
+      "p50Ms": 123860,
+      "p95Ms": 125042,
+      "dashboardDurationMs": 120209,
+      "p95ThresholdMs": 600000,
+      "thresholdStatus": "PASS",
+      "thresholdQualification": "HYPOTHÈSE À VALIDER AVEC BOA"
+    }
+  ],
+  "limitations": [
+    "POC / SYNTHETIC DATA / NON-PRODUCTION.",
+    "Les seuils de performance sont une HYPOTHÈSE À VALIDER AVEC BOA.",
+    "Mesure mono-nœud sans charge concurrente multi-utilisateur."
+  ]
+}

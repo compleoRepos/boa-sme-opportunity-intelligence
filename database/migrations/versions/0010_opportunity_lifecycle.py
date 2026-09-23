@@ -108,7 +108,7 @@ def downgrade() -> None:
             op.drop_index(name, table_name=TABLE, schema=SCHEMA)
     checks = {item["name"] for item in inspector.get_check_constraints(TABLE, schema=SCHEMA)}
     if LIFECYCLE_CHECK in checks:
-        op.drop_constraint(LIFECYCLE_CHECK, TABLE, schema=SCHEMA, type_="check")
+        op.drop_constraint(op.f(LIFECYCLE_CHECK), TABLE, schema=SCHEMA, type_="check")
     columns = {item["name"] for item in inspector.get_columns(TABLE, schema=SCHEMA)}
     for name in (
         "last_action_at",

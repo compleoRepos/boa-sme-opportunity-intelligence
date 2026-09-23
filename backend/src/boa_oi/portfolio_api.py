@@ -5,8 +5,8 @@ import hmac
 import os
 from collections import Counter
 from collections.abc import Sequence
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import date, datetime, timedelta, timezone
+from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import Depends, Header, Query, Request, Response
@@ -140,25 +140,41 @@ def _rows(
     )
 
 
-def _latest_scores(session: Session, customer_ids: list[Any]) -> dict[Any, PropensityScoreRecord]:
+def _latest_scores(
+    session: Session,
+    customer_ids: list[Any],
+    *,
+    as_of: date | None = None,
+) -> dict[Any, PropensityScoreRecord]:
     if not customer_ids:
         return {}
-    ranked = (
-        select(
-            PropensityScoreRecord.id.label("id"),
-            func.row_number()
-            .over(
-                partition_by=PropensityScoreRecord.customer_id,
-                order_by=(
-                    PropensityScoreRecord.as_of_date.desc(),
-                    PropensityScoreRecord.created_at.desc(),
-                ),
-            )
-            .label("position"),
+    ranked_query = select(
+        PropensityScoreRecord.id.label("id"),
+        func.row_number()
+        .over(
+            partition_by=PropensityScoreRecord.customer_id,
+            order_by=(
+                PropensityScoreRecord.as_of_date.desc(),
+                PropensityScoreRecord.created_at.desc(),
+            ),
         )
-        .where(PropensityScoreRecord.customer_id.in_(customer_ids))
-        .subquery()
+        .label("position"),
+    ).where(
+        PropensityScoreRecord.customer_id.in_(customer_ids),
+        or_(
+            PropensityScoreRecord.valid_until.is_(None),
+            PropensityScoreRecord.valid_until >= PropensityScoreRecord.as_of_date,
+        ),
     )
+    if as_of is not None:
+        ranked_query = ranked_query.where(
+            PropensityScoreRecord.as_of_date <= as_of,
+            or_(
+                PropensityScoreRecord.valid_until.is_(None),
+                PropensityScoreRecord.valid_until >= as_of,
+            ),
+        )
+    ranked = ranked_query.subquery()
     records = session.scalars(
         select(PropensityScoreRecord)
         .join(ranked, PropensityScoreRecord.id == ranked.c.id)
@@ -168,7 +184,10 @@ def _latest_scores(session: Session, customer_ids: list[Any]) -> dict[Any, Prope
 
 
 def _latest_visibility(
-    session: Session, customer_ids: list[Any]
+    session: Session,
+    customer_ids: list[Any],
+    *,
+    as_of: date | None = None,
 ) -> dict[Any, FlowVisibilitySnapshot]:
     if not customer_ids:
         return {}
@@ -177,22 +196,21 @@ def _latest_visibility(
         FlowVisibilitySnapshot.__tablename__, schema="analytics"
     ):
         return {}
-    ranked = (
-        select(
-            FlowVisibilitySnapshot.id.label("id"),
-            func.row_number()
-            .over(
-                partition_by=FlowVisibilitySnapshot.customer_id,
-                order_by=(
-                    FlowVisibilitySnapshot.as_of_date.desc(),
-                    FlowVisibilitySnapshot.created_at.desc(),
-                ),
-            )
-            .label("position"),
+    ranked_query = select(
+        FlowVisibilitySnapshot.id.label("id"),
+        func.row_number()
+        .over(
+            partition_by=FlowVisibilitySnapshot.customer_id,
+            order_by=(
+                FlowVisibilitySnapshot.as_of_date.desc(),
+                FlowVisibilitySnapshot.created_at.desc(),
+            ),
         )
-        .where(FlowVisibilitySnapshot.customer_id.in_(customer_ids))
-        .subquery()
-    )
+        .label("position"),
+    ).where(FlowVisibilitySnapshot.customer_id.in_(customer_ids))
+    if as_of is not None:
+        ranked_query = ranked_query.where(FlowVisibilitySnapshot.as_of_date <= as_of)
+    ranked = ranked_query.subquery()
     records = session.scalars(
         select(FlowVisibilitySnapshot)
         .join(ranked, FlowVisibilitySnapshot.id == ranked.c.id)
@@ -201,17 +219,29 @@ def _latest_visibility(
     return {record.customer_id: record for record in records}
 
 
-def _opportunities(session: Session, customer_ids: list[Any]) -> dict[Any, list[Opportunity]]:
+def _opportunities(
+    session: Session,
+    customer_ids: list[Any],
+    *,
+    as_of: date | None = None,
+) -> dict[Any, list[Opportunity]]:
     result: dict[Any, list[Opportunity]] = {customer_id: [] for customer_id in customer_ids}
     if not customer_ids:
         return result
-    records = session.scalars(
-        select(Opportunity)
-        .where(
-            Opportunity.customer_id.in_(customer_ids),
-            Opportunity.status.in_(("OPEN", "ACCEPTED", "CONTACTED")),
+    statement = select(Opportunity).where(
+        Opportunity.customer_id.in_(customer_ids),
+        Opportunity.status.in_(("OPEN", "ACCEPTED", "CONTACTED")),
+    )
+    if as_of is not None:
+        exclusive_end = datetime.combine(
+            as_of + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc
         )
-        .order_by(Opportunity.priority_score.desc(), Opportunity.generated_at.desc())
+        statement = statement.where(
+            Opportunity.generated_at < exclusive_end,
+            or_(Opportunity.expires_at.is_(None), Opportunity.expires_at >= exclusive_end),
+        )
+    records = session.scalars(
+        statement.order_by(Opportunity.priority_score.desc(), Opportunity.generated_at.desc())
     )
     for record in records:
         result.setdefault(record.customer_id, []).append(record)
@@ -720,21 +750,23 @@ def notification_digest_kpis(
 def customer_propensity(
     customer_id: str,
     request: Request,
+    as_of: Annotated[date | None, Query(alias="asOf")] = None,
     principal: Principal = Depends(current_principal),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
+    reject_unknown_filters(request, {"asOf"})
     row = session.execute(
         _scoped_customers(session, principal).where(Customer.customer_ref == customer_id)
     ).first()
     if row is None:
         raise not_found("Customer")
     customer, _manager, _branch_code = row
-    score_record = _latest_scores(session, [customer.id]).get(customer.id)
+    score_record = _latest_scores(session, [customer.id], as_of=as_of).get(customer.id)
     if score_record is None:
         raise Problem(
             404, "PROPENSITY_NOT_SCORED", "No propensity score is available for this SME."
         )
-    opportunities = _opportunities(session, [customer.id]).get(customer.id, [])
+    opportunities = _opportunities(session, [customer.id], as_of=as_of).get(customer.id, [])
     rules_score = _normalized_rules_score(opportunities)
     propensity = float(score_record.score)
     combined, priority_level, selected = _persisted_priority(propensity, opportunities)
@@ -756,12 +788,14 @@ def customer_propensity(
     return {
         "customerId": customer.customer_ref,
         "score": propensity,
+        "asOf": score_record.as_of_date.isoformat(),
         "scoreMeaning": "observation shadow d'intérêt commercial estimé",
         "priorityLevel": priority_level,
         "model": {
             "modelId": "sales-propensity-logistic",
             "modelVersion": score_record.model_version,
             "featureSetVersion": score_record.feature_set_version,
+            "trainingDatasetVersion": score_record.training_dataset_version,
             "scoredAt": score_record.created_at.isoformat(),
         },
         "combination": {

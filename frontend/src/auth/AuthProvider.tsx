@@ -1,4 +1,4 @@
-import Keycloak, { type KeycloakProfile, type KeycloakTokenParsed } from 'keycloak-js'
+import Keycloak, { type KeycloakTokenParsed } from 'keycloak-js'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react'
 import type { DevPersona, Role } from '../api/types'
 import { DEV_PERSONAS, PERSONA_STORAGE_KEY, personaHeader } from './personas'
@@ -40,7 +40,7 @@ const keycloak = authDisabled
       clientId,
     })
 
-const knownRoles: Role[] = ['RELATIONSHIP_MANAGER', 'BRANCH_MANAGER', 'ADMIN', 'DATA_ANALYST', 'BUSINESS_ANALYST', 'ML_STEWARD', 'RULE_APPROVER']
+const knownRoles: Role[] = ['RELATIONSHIP_MANAGER', 'BRANCH_MANAGER', 'ADMIN', 'DATA_ANALYST', 'BUSINESS_ANALYST', 'ML_STEWARD', 'RULE_APPROVER', 'EXTERNAL_CONSUMER']
 
 function extractRoles(token?: BoaToken) {
   const all = [...(token?.realm_access?.roles ?? []), ...(token?.resource_access?.[clientId]?.roles ?? [])]
@@ -61,7 +61,6 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [initialized, setInitialized] = useState(authDisabled)
   const [authenticated, setAuthenticated] = useState(() => authDisabled && Boolean(storedPersona()))
   const [token, setToken] = useState<string>()
-  const [profile, setProfile] = useState<KeycloakProfile>()
   const [parsed, setParsed] = useState<BoaToken>()
   const started = useRef(false)
 
@@ -87,17 +86,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
         checkLoginIframe: false,
         silentCheckSsoFallback: false,
       })
-      .then(async (isAuthenticated) => {
+      .then((isAuthenticated) => {
         setAuthenticated(isAuthenticated)
         setToken(keycloak.token)
         setParsed(keycloak.tokenParsed as BoaToken | undefined)
-        if (isAuthenticated) {
-          try {
-            setProfile(await keycloak.loadUserProfile())
-          } catch {
-            setProfile(undefined)
-          }
-        }
       })
       .catch(() => setAuthenticated(false))
       .finally(() => setInitialized(true))
@@ -152,8 +144,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
     initialized,
     authenticated,
     token,
-    username: persona?.username || parsed?.preferred_username || profile?.username || 'utilisateur',
-    displayName: persona?.displayName || parsed?.name || [profile?.firstName, profile?.lastName].filter(Boolean).join(' ') || parsed?.preferred_username || 'Chargé d’affaires',
+    username: persona?.username || parsed?.preferred_username || 'utilisateur',
+    displayName: persona?.displayName || parsed?.name || parsed?.preferred_username || 'Chargé d’affaires',
     roles,
     login,
     logout,
@@ -163,7 +155,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     personas: DEV_PERSONAS,
     selectPersona,
     devPersonaHeader: persona ? personaHeader(persona) : undefined,
-  }), [initialized, authenticated, token, parsed, profile, roles, login, logout, persona, selectPersona])
+  }), [initialized, authenticated, token, parsed, roles, login, logout, persona, selectPersona])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

@@ -1,0 +1,71 @@
+{
+  "schemaVersion": "1.0",
+  "status": "PASS",
+  "generatedAt": "2026-09-23T16:02:57Z",
+  "source": {
+    "branch": "feat/financial-intelligence-api",
+    "revision": "9c8edc1f09ce7e545c71856ce430b1e2d89dd73d",
+    "codeDigest": "ea0ccb2ec5928400f88d45d5b9dbb5dfbd980cf7a4f333e3e1c52191ee0edacf",
+    "digestScope": "runtime",
+    "digestManifest": "SOURCE-MANIFEST-FI.json",
+    "digestAlgorithm": "SHA-256 of path-sorted sha256sum lines"
+  },
+  "sampleIntervalSeconds": 2,
+  "sampleCount": 1694,
+  "services": [
+    {
+      "container": "boa_lot16_validation-analytics-1",
+      "samples": 242,
+      "maxCpuPercent": 54.42,
+      "maxMemoryPercent": 22.42,
+      "peakMemoryUsage": "114.8MiB / 512MiB"
+    },
+    {
+      "container": "boa_lot16_validation-api-gateway-1",
+      "samples": 242,
+      "maxCpuPercent": 46.17,
+      "maxMemoryPercent": 18.89,
+      "peakMemoryUsage": "84.65MiB / 448MiB"
+    },
+    {
+      "container": "boa_lot16_validation-customer-1",
+      "samples": 242,
+      "maxCpuPercent": 37.86,
+      "maxMemoryPercent": 34.95,
+      "peakMemoryUsage": "111.9MiB / 320MiB"
+    },
+    {
+      "container": "boa_lot16_validation-financial-intelligence-1",
+      "samples": 242,
+      "maxCpuPercent": 37.54,
+      "maxMemoryPercent": 89.53,
+      "peakMemoryUsage": "286.5MiB / 320MiB"
+    },
+    {
+      "container": "boa_lot16_validation-opportunity-1",
+      "samples": 242,
+      "maxCpuPercent": 60.43,
+      "maxMemoryPercent": 23.50,
+      "peakMemoryUsage": "120.3MiB / 512MiB"
+    },
+    {
+      "container": "boa_lot16_validation-portfolio-1",
+      "samples": 242,
+      "maxCpuPercent": 37.88,
+      "maxMemoryPercent": 38.38,
+      "peakMemoryUsage": "122.8MiB / 320MiB"
+    },
+    {
+      "container": "boa_lot16_validation-signal-1",
+      "samples": 242,
+      "maxCpuPercent": 45.37,
+      "maxMemoryPercent": 27.92,
+      "peakMemoryUsage": "107.2MiB / 384MiB"
+    }
+  ],
+  "limitations": [
+    "Mesure mono-noeud Docker Compose sur donnees synthetiques.",
+    "Les valeurs CPU et memoire ne constituent pas un SLO BOA.",
+    "Tous les seuils sont une HYPOTHESE A VALIDER AVEC BOA."
+  ]
+}

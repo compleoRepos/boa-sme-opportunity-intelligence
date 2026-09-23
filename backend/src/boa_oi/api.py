@@ -43,6 +43,8 @@ def application_for(service_name: str | None = None):
         from boa_oi.portfolio_api import app
     elif service == "notification-service":
         from boa_oi.notification_api import app
+    elif service == "financial-intelligence-service":
+        from boa_oi.financial_intelligence_api import app
     else:
         raise RuntimeError(f"Unknown SERVICE_NAME: {service}")
     return app

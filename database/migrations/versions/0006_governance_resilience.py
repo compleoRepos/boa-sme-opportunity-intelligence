@@ -17,6 +17,21 @@ down_revision = "0005_ml_integration_trace"
 branch_labels = None
 depends_on = None
 
+
+def _drop_check(table: str, schema: str, marker: str) -> None:
+    checks = sa.inspect(op.get_bind()).get_check_constraints(table, schema=schema)
+    name = next(
+        (
+            str(item["name"])
+            for item in checks
+            if item.get("name") and marker in str(item.get("sqltext"))
+        ),
+        None,
+    )
+    if name is not None:
+        op.drop_constraint(op.f(name), table, schema=schema, type_="check")
+
+
 POLICY_ID = uuid.UUID("9e6c871a-8dc0-4e66-91a8-06dadcfd6cd0")
 POLICY_VERSION_ID = uuid.UUID("4d4f6a12-c905-4c4d-a64a-cd6892fb141d")
 POLICY_AUDIT_ID = uuid.UUID("206f8f5c-5aa4-4d87-8ec0-bb01125f2052")
@@ -282,9 +297,9 @@ def upgrade() -> None:
         schema="feature_store",
     )
 
-    op.drop_constraint("ck_model_registry_status", "model_registry", schema="ml", type_="check")
+    _drop_check("model_registry", "ml", "status")
     op.create_check_constraint(
-        "ck_model_registry_status",
+        op.f("ck_model_registry_status"),
         "model_registry",
         "status IN ('REGISTERED','VALIDATING','SUBMITTED','APPROVED','CHALLENGER',"
         "'CHAMPION','ACTIVE','RETIRED')",
@@ -474,7 +489,7 @@ def downgrade() -> None:
         "model_id",
     ):
         op.drop_column("model_registry", name, schema="ml")
-    op.drop_constraint("ck_model_registry_status", "model_registry", schema="ml", type_="check")
+    _drop_check("model_registry", "ml", "status")
     op.execute(
         sa.text(
             "UPDATE ml.model_registry SET status = CASE "
@@ -483,7 +498,7 @@ def downgrade() -> None:
         )
     )
     op.create_check_constraint(
-        "ck_model_registry_status",
+        op.f("ck_model_registry_status"),
         "model_registry",
         "status IN ('CHALLENGER','ACTIVE','RETIRED')",
         schema="ml",
@@ -514,12 +529,8 @@ def downgrade() -> None:
         "scoring_policy_id",
     ):
         op.drop_column("decision_audit", name, schema="opportunity")
-    op.drop_constraint(
-        "ck_opportunities_fallback_mode", "opportunities", schema="opportunity", type_="check"
-    )
-    op.drop_constraint(
-        "ck_opportunities_scoring_weights", "opportunities", schema="opportunity", type_="check"
-    )
+    _drop_check("opportunities", "opportunity", "fallback_mode")
+    _drop_check("opportunities", "opportunity", "rules_weight")
     for name in (
         "fallback_cause_json",
         "fallback_mode",

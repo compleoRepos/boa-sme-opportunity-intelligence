@@ -1,0 +1,675 @@
+{
+  "schemaVersion": "1.1",
+  "status": "BLOCKED",
+  "runId": "fi-final-20260923T161020Z",
+  "generatedAt": "2026-09-23T16:10:20Z",
+  "source": {
+    "branch": "feat/financial-intelligence-api",
+    "revision": "9c8edc1f09ce7e545c71856ce430b1e2d89dd73d",
+    "codeTree": "FUNCTIONAL_PATHS_CLEAN",
+    "codeDigest": "ea0ccb2ec5928400f88d45d5b9dbb5dfbd980cf7a4f333e3e1c52191ee0edacf",
+    "digestManifest": "SOURCE-MANIFEST-FI.json",
+    "digestAlgorithm": "SHA-256",
+    "digestScopes": {
+      "runtime": "backend database frontend/src infrastructure scripts tests",
+      "migration": "backend database infrastructure scripts tests",
+      "security": "explicit ordered security inputs"
+    },
+    "migrationCodeDigest": "c9dbe5f3ce95c4a5e390b0a980223e75df92542c43496783ce90600be70b6f86",
+    "manifest": {
+      "schemaVersion": "1.0",
+      "revision": "9c8edc1f09ce7e545c71856ce430b1e2d89dd73d",
+      "branch": "feat/financial-intelligence-api",
+      "generator": "scripts/generate-financial-intelligence-source-manifest.sh",
+      "sourceTree": "FUNCTIONAL_PATHS_CLEAN",
+      "scopes": {
+        "runtime": {
+          "digest": "ea0ccb2ec5928400f88d45d5b9dbb5dfbd980cf7a4f333e3e1c52191ee0edacf",
+          "algorithm": "SHA-256",
+          "aggregateAlgorithm": "SHA-256 of path-sorted sha256sum lines (<file-sha256><two spaces><relative-path><newline>)",
+          "pathSelection": "git ls-files -- backend database frontend/src infrastructure scripts tests; paths sorted bytewise",
+          "fileCount": 325
+        },
+        "migration": {
+          "digest": "c9dbe5f3ce95c4a5e390b0a980223e75df92542c43496783ce90600be70b6f86",
+          "algorithm": "SHA-256",
+          "aggregateAlgorithm": "SHA-256 of path-sorted sha256sum lines (<file-sha256><two spaces><relative-path><newline>)",
+          "pathSelection": "git ls-files -- backend database infrastructure scripts tests; paths sorted bytewise",
+          "fileCount": 234
+        },
+        "security": {
+          "digest": "936d36f03fbb6385a5504870d916d742cec536ab2b153727ce4ffbca0f86b9e2",
+          "algorithm": "SHA-256",
+          "aggregateAlgorithm": "SHA-256 of the listed sha256sum lines in declared order",
+          "pathSelection": "Explicit ordered security inputs declared by scripts/validate-security-scans.sh",
+          "fileCount": 8
+        }
+      }
+    }
+  },
+  "qualification": {
+    "environment": "LOCAL_DOCKER_COMPOSE",
+    "data": "SYNTHETIC",
+    "production": false,
+    "localFunctionalStatus": "PASS",
+    "releaseStatus": "BLOCKED_IMAGE_CVES",
+    "demoReady": true
+  },
+  "invariants": {
+    "noCreditDecision": true,
+    "executionMode": "DETERMINISTIC_RULES",
+    "operationalPriority": "RULES_ONLY",
+    "mlPolicy": "POC_SHADOW",
+    "mlGovernanceFailClosed": true,
+    "rulesWeight": 1,
+    "maximumMlWeight": 0,
+    "llm": false,
+    "gpu": false,
+    "rawTransactionsExposed": false
+  },
+  "securityOracles": {
+    "noAuthenticationStatus": 401,
+    "adminRoleStatus": 403,
+    "serviceRoleStatus": 403,
+    "mixedPrivilegedRoleStatus": 403,
+    "oauthClientBindingRequired": true,
+    "grantPurpose": "SYNTHETIC_PORTFOLIO_MONITORING",
+    "ownPortfolioStatus": 200,
+    "crossFundStatus": 404,
+    "unknownConsumerFilterStatus": 400,
+    "backendPortfolioResolution": true,
+    "externalBearerForwarded": false,
+    "auditDirectUpdateDeleteTruncateProtected": true,
+    "auditDbaTamperResistance": "NOT_PROVEN_REQUIRES_ROLE_SEPARATION_AND_EXTERNAL_WORM",
+    "provenBy": [
+      "PLAYWRIGHT_OIDC",
+      "UNIT_TESTS",
+      "POSTGRESQL_MIGRATION_MATRIX"
+    ]
+  },
+  "pointInTime": {
+    "membershipWindow": "validFrom <= asOf < validUntil",
+    "propensityScoreBound": "score.as_of_date <= asOf and (valid_until is null or valid_until >= asOf)",
+    "propensityOpportunityBound": "opportunity.generated_at <= endOfDay(asOf) and (expires_at is null or expires_at >= endOfDay(asOf))",
+    "visibilitySnapshotBound": "snapshot.as_of_date <= asOf when an asOf is supplied",
+    "projectionWindow": "asOf-364d <= owner row date <= asOf",
+    "projectionOpportunityExpirationBound": "expiresAt is null or expiresAt >= endOfDay(asOf)",
+    "signalStateAsOfStatus": "NOT_IMPLEMENTED",
+    "opportunityStateAsOfStatus": "NOT_IMPLEMENTED",
+    "notImplementedMakesPartial": true
+  },
+  "data": {
+    "consumers": 2,
+    "portfolios": 6,
+    "memberships": 664,
+    "grants": 26,
+    "auditRows": 190,
+    "auditAllow": 182,
+    "auditDeny": 8
+  },
+  "pipeline": {
+    "asOf": "2026-09-30",
+    "requestedCustomers": 25,
+    "analyticsCustomers": 25,
+    "signalCustomers": 21,
+    "signals": 62,
+    "opportunityCustomers": 12,
+    "opportunities": 12
+  },
+  "stack": {
+    "runningContainers": 24,
+    "unhealthyContainers": 0
+  },
+  "e2e": {
+    "source": {
+      "branch": "feat/financial-intelligence-api",
+      "revision": "9c8edc1f09ce7e545c71856ce430b1e2d89dd73d",
+      "codeTree": "FUNCTIONAL_PATHS_CLEAN",
+      "codeDigest": "ea0ccb2ec5928400f88d45d5b9dbb5dfbd980cf7a4f333e3e1c52191ee0edacf",
+      "digestScope": "runtime",
+      "digestManifest": "SOURCE-MANIFEST-FI.json",
+      "digestAlgorithm": "SHA-256 of path-sorted sha256sum lines"
+    },
+    "stats": {
+      "startTime": "2026-09-23T15:45:18.084Z",
+      "duration": 58054.651,
+      "expected": 6,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "suites": [
+      {
+        "title": "financial-intelligence.spec.ts",
+        "file": "financial-intelligence.spec.ts",
+        "column": 0,
+        "line": 0,
+        "specs": [
+          {
+            "title": "la surface FI refuse un appel sans authentification",
+            "ok": true,
+            "tags": [],
+            "tests": [
+              {
+                "timeout": 90000,
+                "annotations": [],
+                "expectedStatus": "passed",
+                "projectId": "",
+                "projectName": "",
+                "results": [
+                  {
+                    "workerIndex": 0,
+                    "parallelIndex": 0,
+                    "status": "passed",
+                    "duration": 57,
+                    "errors": [],
+                    "stdout": [],
+                    "stderr": [],
+                    "retry": 0,
+                    "startTime": "2026-09-23T15:45:18.972Z",
+                    "annotations": [],
+                    "attachments": []
+                  }
+                ],
+                "status": "expected"
+              }
+            ],
+            "id": "8b17008eceab3a55877a-4672e8e76089cc26fcd3",
+            "file": "financial-intelligence.spec.ts",
+            "line": 44,
+            "column": 1
+          },
+          {
+            "title": "Fonds A parcourt le catalogue autorisé, le portfolio et le drill-down PME",
+            "ok": true,
+            "tags": [],
+            "tests": [
+              {
+                "timeout": 90000,
+                "annotations": [],
+                "expectedStatus": "passed",
+                "projectId": "",
+                "projectName": "",
+                "results": [
+                  {
+                    "workerIndex": 0,
+                    "parallelIndex": 0,
+                    "status": "passed",
+                    "duration": 13480,
+                    "errors": [],
+                    "stdout": [],
+                    "stderr": [],
+                    "retry": 0,
+                    "startTime": "2026-09-23T15:45:19.107Z",
+                    "annotations": [],
+                    "attachments": []
+                  }
+                ],
+                "status": "expected"
+              }
+            ],
+            "id": "8b17008eceab3a55877a-c69d024f33dfcad7cf52",
+            "file": "financial-intelligence.spec.ts",
+            "line": 52,
+            "column": 1
+          },
+          {
+            "title": "le token Fonds A ne peut ni lire le Fonds B ni élargir son scope par consumerId",
+            "ok": true,
+            "tags": [],
+            "tests": [
+              {
+                "timeout": 90000,
+                "annotations": [],
+                "expectedStatus": "passed",
+                "projectId": "",
+                "projectName": "",
+                "results": [
+                  {
+                    "workerIndex": 0,
+                    "parallelIndex": 0,
+                    "status": "passed",
+                    "duration": 7388,
+                    "errors": [],
+                    "stdout": [],
+                    "stderr": [],
+                    "retry": 0,
+                    "startTime": "2026-09-23T15:45:33.138Z",
+                    "annotations": [],
+                    "attachments": []
+                  }
+                ],
+                "status": "expected"
+              }
+            ],
+            "id": "8b17008eceab3a55877a-307506123c232c2b0261",
+            "file": "financial-intelligence.spec.ts",
+            "line": 105,
+            "column": 1
+          },
+          {
+            "title": "le token Fonds B reste limité à son portfolio",
+            "ok": true,
+            "tags": [],
+            "tests": [
+              {
+                "timeout": 90000,
+                "annotations": [],
+                "expectedStatus": "passed",
+                "projectId": "",
+                "projectName": "",
+                "results": [
+                  {
+                    "workerIndex": 0,
+                    "parallelIndex": 0,
+                    "status": "passed",
+                    "duration": 7006,
+                    "errors": [],
+                    "stdout": [],
+                    "stderr": [],
+                    "retry": 0,
+                    "startTime": "2026-09-23T15:45:40.538Z",
+                    "annotations": [],
+                    "attachments": []
+                  }
+                ],
+                "status": "expected"
+              }
+            ],
+            "id": "8b17008eceab3a55877a-bddd1db80143a4d3b21b",
+            "file": "financial-intelligence.spec.ts",
+            "line": 155,
+            "column": 1
+          },
+          {
+            "title": "grant expiré et scope manquant sont refusés sans fuite de ressource",
+            "ok": true,
+            "tags": [],
+            "tests": [
+              {
+                "timeout": 90000,
+                "annotations": [],
+                "expectedStatus": "passed",
+                "projectId": "",
+                "projectName": "",
+                "results": [
+                  {
+                    "workerIndex": 0,
+                    "parallelIndex": 0,
+                    "status": "passed",
+                    "duration": 20951,
+                    "errors": [],
+                    "stdout": [],
+                    "stderr": [],
+                    "retry": 0,
+                    "startTime": "2026-09-23T15:45:47.555Z",
+                    "annotations": [],
+                    "attachments": []
+                  }
+                ],
+                "status": "expected"
+              }
+            ],
+            "id": "8b17008eceab3a55877a-63997342434f2e7ee860",
+            "file": "financial-intelligence.spec.ts",
+            "line": 176,
+            "column": 1
+          },
+          {
+            "title": "contrats FI : point-in-time, minimisation, lineage et cohérence des références",
+            "ok": true,
+            "tags": [],
+            "tests": [
+              {
+                "timeout": 90000,
+                "annotations": [],
+                "expectedStatus": "passed",
+                "projectId": "",
+                "projectName": "",
+                "results": [
+                  {
+                    "workerIndex": 0,
+                    "parallelIndex": 0,
+                    "status": "passed",
+                    "duration": 7523,
+                    "errors": [],
+                    "stdout": [],
+                    "stderr": [],
+                    "retry": 0,
+                    "startTime": "2026-09-23T15:46:08.521Z",
+                    "annotations": [],
+                    "attachments": []
+                  }
+                ],
+                "status": "expected"
+              }
+            ],
+            "id": "8b17008eceab3a55877a-7cc8b48581ca28f0bdc7",
+            "file": "financial-intelligence.spec.ts",
+            "line": 232,
+            "column": 1
+          }
+        ]
+      }
+    ]
+  },
+  "migrations": {
+    "runId": "fi-migrations-20260923T153249Z",
+    "matrix": {
+      "adminOnlyFullCycle": "PASS",
+      "existing0020To0021": "PASS",
+      "downgrade0021To0020": "PASS",
+      "reupgrade0020To0021": "PASS",
+      "destructiveDowngradeRefusedWithData": "PASS",
+      "runtimeLeastPrivilege": "PASS",
+      "auditAppendOnly": "PASS",
+      "auditTruncateProtected": "PASS",
+      "consumerPortfolioIntegrity": "PASS",
+      "inactiveMembershipRequiresEnd": "PASS",
+      "oauthClientBinding": "PASS",
+      "purposeBinding": "PASS"
+    },
+    "invariants": {
+      "serviceRoleRequiredByAlembic": false,
+      "serviceMayReadEntitlements": true,
+      "serviceMayInsertAudit": true,
+      "serviceMayMutateAudit": false,
+      "serviceMayTruncateAudit": false,
+      "administrativeDirectDmlProtected": true,
+      "serviceMayMutateEntitlements": false,
+      "grantPortfolioConsumerConsistency": true,
+      "membershipHistoryUsesValidityWindow": true,
+      "grantRequiresOAuthClient": true,
+      "grantPurposeIsFixed": true
+    }
+  },
+  "performance": {
+    "generatedAt": "2026-09-23T16:02:57.252Z",
+    "results": [
+      {
+        "portfolioId": "PORTFOLIO-PERF-010",
+        "customerCount": 10,
+        "iterations": 5,
+        "durationsMs": [
+          2209,
+          3912,
+          2481,
+          2491,
+          2245
+        ],
+        "downstreamCallCounts": [
+          50,
+          50,
+          50,
+          50,
+          50
+        ],
+        "mlGovernanceStatuses": [
+          "VERIFIED"
+        ],
+        "p50Ms": 2481,
+        "p95Ms": 3912,
+        "dashboardDurationMs": 3117,
+        "p95ThresholdMs": 30000,
+        "thresholdStatus": "PASS",
+        "thresholdQualification": "HYPOTHÈSE À VALIDER AVEC BOA"
+      },
+      {
+        "portfolioId": "PORTFOLIO-PERF-050",
+        "customerCount": 50,
+        "iterations": 5,
+        "durationsMs": [
+          12156,
+          12435,
+          11511,
+          13262,
+          12450
+        ],
+        "downstreamCallCounts": [
+          250,
+          250,
+          250,
+          250,
+          250
+        ],
+        "mlGovernanceStatuses": [
+          "UNAVAILABLE"
+        ],
+        "p50Ms": 12435,
+        "p95Ms": 13262,
+        "dashboardDurationMs": 12868,
+        "p95ThresholdMs": 90000,
+        "thresholdStatus": "PASS",
+        "thresholdQualification": "HYPOTHÈSE À VALIDER AVEC BOA"
+      },
+      {
+        "portfolioId": "PORTFOLIO-PERF-100",
+        "customerCount": 100,
+        "iterations": 5,
+        "durationsMs": [
+          23707,
+          23426,
+          24597,
+          23562,
+          25060
+        ],
+        "downstreamCallCounts": [
+          500,
+          500,
+          500,
+          500,
+          500
+        ],
+        "mlGovernanceStatuses": [
+          "UNAVAILABLE"
+        ],
+        "p50Ms": 23707,
+        "p95Ms": 25060,
+        "dashboardDurationMs": 25707,
+        "p95ThresholdMs": 180000,
+        "thresholdStatus": "PASS",
+        "thresholdQualification": "HYPOTHÈSE À VALIDER AVEC BOA"
+      },
+      {
+        "portfolioId": "PORTFOLIO-PERF-500",
+        "customerCount": 500,
+        "iterations": 5,
+        "durationsMs": [
+          123893,
+          121644,
+          125042,
+          123860,
+          117861
+        ],
+        "downstreamCallCounts": [
+          2500,
+          2500,
+          2500,
+          2500,
+          2500
+        ],
+        "mlGovernanceStatuses": [
+          "UNAVAILABLE"
+        ],
+        "p50Ms": 123860,
+        "p95Ms": 125042,
+        "dashboardDurationMs": 120209,
+        "p95ThresholdMs": 600000,
+        "thresholdStatus": "PASS",
+        "thresholdQualification": "HYPOTHÈSE À VALIDER AVEC BOA"
+      }
+    ],
+    "limitations": [
+      "POC / SYNTHETIC DATA / NON-PRODUCTION.",
+      "Les seuils de performance sont une HYPOTHÈSE À VALIDER AVEC BOA.",
+      "Mesure mono-nœud sans charge concurrente multi-utilisateur."
+    ]
+  },
+  "resources": {
+    "generatedAt": "2026-09-23T16:02:57Z",
+    "sampleCount": 1694,
+    "services": [
+      {
+        "container": "boa_lot16_validation-analytics-1",
+        "samples": 242,
+        "maxCpuPercent": 54.42,
+        "maxMemoryPercent": 22.42,
+        "peakMemoryUsage": "114.8MiB / 512MiB"
+      },
+      {
+        "container": "boa_lot16_validation-api-gateway-1",
+        "samples": 242,
+        "maxCpuPercent": 46.17,
+        "maxMemoryPercent": 18.89,
+        "peakMemoryUsage": "84.65MiB / 448MiB"
+      },
+      {
+        "container": "boa_lot16_validation-customer-1",
+        "samples": 242,
+        "maxCpuPercent": 37.86,
+        "maxMemoryPercent": 34.95,
+        "peakMemoryUsage": "111.9MiB / 320MiB"
+      },
+      {
+        "container": "boa_lot16_validation-financial-intelligence-1",
+        "samples": 242,
+        "maxCpuPercent": 37.54,
+        "maxMemoryPercent": 89.53,
+        "peakMemoryUsage": "286.5MiB / 320MiB"
+      },
+      {
+        "container": "boa_lot16_validation-opportunity-1",
+        "samples": 242,
+        "maxCpuPercent": 60.43,
+        "maxMemoryPercent": 23.50,
+        "peakMemoryUsage": "120.3MiB / 512MiB"
+      },
+      {
+        "container": "boa_lot16_validation-portfolio-1",
+        "samples": 242,
+        "maxCpuPercent": 37.88,
+        "maxMemoryPercent": 38.38,
+        "peakMemoryUsage": "122.8MiB / 320MiB"
+      },
+      {
+        "container": "boa_lot16_validation-signal-1",
+        "samples": 242,
+        "maxCpuPercent": 45.37,
+        "maxMemoryPercent": 27.92,
+        "peakMemoryUsage": "107.2MiB / 384MiB"
+      }
+    ],
+    "limitations": [
+      "Mesure mono-noeud Docker Compose sur donnees synthetiques.",
+      "Les valeurs CPU et memoire ne constituent pas un SLO BOA.",
+      "Tous les seuils sont une HYPOTHESE A VALIDER AVEC BOA."
+    ]
+  },
+  "security": {
+    "runId": "security-scans-20260923T160334Z-3098744",
+    "generatedAt": "2026-09-23T16:10:04Z",
+    "status": "BLOCKED",
+    "scanExecutionStatus": "PASS",
+    "releaseStatus": "BLOCKED_IMAGE_CVES",
+    "secrets": {
+      "worktreeFindings": 0,
+      "historyCommits": 48,
+      "historyFindings": 0
+    },
+    "dependencies": {
+      "python": {
+        "audited": 66,
+        "knownVulnerabilities": 0
+      },
+      "frontend": {
+        "audited": 270,
+        "info": 0,
+        "low": 0,
+        "moderate": 2,
+        "high": 0,
+        "critical": 0
+      }
+    },
+    "images": {
+      "application": {
+        "backend": {
+          "baseImage": "python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9",
+          "osFamily": "debian",
+          "osName": "13.7",
+          "high": 52,
+          "critical": 0,
+          "withUpstreamFix": 0,
+          "withoutUpstreamFix": 52
+        },
+        "frontend": {
+          "buildImage": "node:22-alpine@sha256:b6f26b36c8ff49624cfdac716b8ea1138d606df02586a77d364bb5536a634f85",
+          "runtimeImage": "nginxinc/nginx-unprivileged:stable-alpine@sha256:daa17b944bac2b578e962da4c61ad72a59233b3c63abea17113acaf4e6b9aea4",
+          "osFamily": "alpine",
+          "osName": "3.24.1",
+          "high": 0,
+          "critical": 0,
+          "withUpstreamFix": 0,
+          "withoutUpstreamFix": 0
+        }
+      },
+      "external": {
+        "items": [
+          {
+            "image": "postgres:16.15-alpine@sha256:3c5c8892d184f738f4fe282d14ddaa613a38f00f4189d2d94725ebe6f2909ddb",
+            "osFamily": "alpine",
+            "osName": "3.24.2",
+            "high": 21,
+            "critical": 1,
+            "withUpstreamFix": 22,
+            "withoutUpstreamFix": 0
+          },
+          {
+            "image": "quay.io/keycloak/keycloak:26.7.4@sha256:82a77884f3af238beab1e7afd63b5f530e1b5c0590bd7aa60b40a40463e29b2c",
+            "osFamily": "redhat",
+            "osName": "9.8",
+            "high": 7,
+            "critical": 3,
+            "withUpstreamFix": 6,
+            "withoutUpstreamFix": 4
+          },
+          {
+            "image": "docker.io/axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d",
+            "osFamily": "alpine",
+            "osName": "3.24.2",
+            "high": 0,
+            "critical": 0,
+            "withUpstreamFix": 0,
+            "withoutUpstreamFix": 0
+          }
+        ],
+        "summary": {
+          "high": 28,
+          "critical": 4,
+          "withUpstreamFix": 28,
+          "withoutUpstreamFix": 4
+        }
+      }
+    },
+    "checks": {
+      "gitleaksWorktree": "PASS",
+      "gitleaksHistory": "PASS",
+      "pipAudit": "PASS",
+      "npmHighCritical": "PASS",
+      "trivyApplicationImagesNoKnownUpstreamFix": "PASS",
+      "externalImagesPinnedAndScanned": "PASS",
+      "releaseImageGate": "BLOCKED"
+    },
+    "limitations": [
+      "Les bases de vulnérabilités reflètent leur état au moment du run et doivent être rescannées régulièrement.",
+      "Toutes les CVE HIGH/CRITICAL detectees sont visibles et bloquent le statut release; aucune exclusion --ignore-unfixed n est appliquee. Un FixedVersion Trivy indique une correction de composant connue, pas necessairement un digest d image amont deja publie et valide.",
+      "Deux avis MODERATE concernent Vitest, dépendance de développement; ils ne sont pas masqués et restent une dette à traiter.",
+      "Ces scans automatisés ne remplacent ni pentest, ni revue de configuration de la cible BOA, ni analyse de menace, ni signature/SBOM des artefacts publies."
+    ]
+  },
+  "limitations": [
+    "POC / SYNTHETIC DATA / NON-PRODUCTION.",
+    "No BOA banking data or production IAM was used.",
+    "Performance thresholds and operating limits are a HYPOTHESE A VALIDER AVEC BOA.",
+    "Production remains BLOCKED pending IAM, consent/DPO, security, operations, HA/DR, monitoring, image CVEs and homologation."
+  ]
+}
